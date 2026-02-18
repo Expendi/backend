@@ -1,8 +1,9 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "commonjs",
-    "lib": ["ES2020"],
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
     "outDir": "./dist",
     "rootDir": ".",
     "strict": true,
@@ -10,10 +11,11 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "moduleResolution": "node",
     "sourceMap": true,
-    "declaration": true
+    "declaration": true,
+    "exactOptionalPropertyTypes": false,
+    "noUncheckedIndexedAccess": true
   },
-  "include": ["**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src/**/*", "drizzle.config.ts"],
+  "exclude": ["node_modules", "dist", "src/__tests__"]
 }
