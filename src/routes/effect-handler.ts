@@ -1,0 +1,78 @@
+import { Effect, ManagedRuntime, type ConfigError } from "effect";
+import type { Context as HonoContext } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
+
+import type { WalletService } from "../services/wallet/wallet-service.js";
+import type { WalletResolver } from "../services/wallet/wallet-resolver.js";
+import type { ContractRegistry } from "../services/contract/contract-registry.js";
+import type { ContractExecutor } from "../services/contract/contract-executor.js";
+import type { LedgerService } from "../services/ledger/ledger-service.js";
+import type { TransactionService } from "../services/transaction/transaction-service.js";
+import type { JobberService } from "../services/jobber/jobber-service.js";
+import type { HeartbeatService } from "../services/heartbeat/heartbeat-service.js";
+import type { AdapterService } from "../services/adapters/adapter-service.js";
+import type { DatabaseService } from "../db/client.js";
+import type { ConfigService } from "../config.js";
+import type { PrivyService } from "../services/wallet/privy-layer.js";
+import type { OnboardingService } from "../services/onboarding/onboarding-service.js";
+import type { RecurringPaymentService } from "../services/recurring-payment/recurring-payment-service.js";
+import type { OfframpAdapterRegistry } from "../services/offramp/index.js";
+import type { YieldService } from "../services/yield/yield-service.js";
+
+export type AppDeps =
+  | WalletService
+  | WalletResolver
+  | ContractRegistry
+  | ContractExecutor
+  | LedgerService
+  | TransactionService
+  | JobberService
+  | HeartbeatService
+  | AdapterService
+  | DatabaseService
+  | ConfigService
+  | PrivyService
+  | OnboardingService
+  | RecurringPaymentService
+  | OfframpAdapterRegistry
+  | YieldService;
+
+export type AppRuntime = ManagedRuntime.ManagedRuntime<AppDeps, ConfigError.ConfigError>;
+
+export function runEffect<A, E>(
+  runtime: AppRuntime,
+  effect: Effect.Effect<A, E, NoInfer<AppDeps>>,
+  c: HonoContext,
+  statusCode: ContentfulStatusCode = 200
+): Promise<Response> {
+  return runtime
+    .runPromise(
+      effect.pipe(
+        Effect.map((data) => ({ success: true as const, data })),
+        Effect.catchAll((error) =>
+          Effect.succeed({
+            success: false as const,
+            error: {
+              _tag: (error as { _tag?: string })?._tag ?? "UnknownError",
+              message: String(error),
+            },
+          })
+        )
+      )
+    )
+    .then((result) => {
+      if (result.success) {
+        return c.json(result, statusCode);
+      }
+      return c.json(result, 400);
+    })
+    .catch((error) =>
+      c.json(
+        {
+          success: false,
+          error: { _tag: "InternalError", message: String(error) },
+        },
+        500
+      )
+    );
+}

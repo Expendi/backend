@@ -1,0 +1,84 @@
+import "dotenv/config";
+import { Hono } from "hono";
+import { cors } from "hono/cors";
+import { logger } from "hono/logger";
+import { serve } from "@hono/node-server";
+import { ManagedRuntime } from "effect";
+import { MainLayer } from "./layers/main.js";
+import { PrivyService } from "./services/wallet/privy-layer.js";
+import { ConfigService } from "./config.js";
+import { privyAuthMiddleware, adminKeyMiddleware } from "./middleware/auth.js";
+import type { AuthVariables } from "./middleware/auth.js";
+import { createWalletRoutes } from "./routes/wallets.js";
+import { createTransactionRoutes } from "./routes/transactions.js";
+import { createCategoryRoutes } from "./routes/categories.js";
+import { createInternalRoutes } from "./routes/internal.js";
+import { createOnboardingRoutes } from "./routes/onboarding.js";
+import { createRecurringPaymentRoutes } from "./routes/recurring-payments.js";
+import { createYieldRoutes } from "./routes/yield.js";
+
+const runtime = ManagedRuntime.make(MainLayer);
+
+// Resolve the Privy client and admin API key from the Effect runtime so
+// we can hand them to the Hono middleware layer without requiring Effect
+// context on every HTTP request.
+const { client: privyClient } = await runtime.runPromise(PrivyService);
+const { adminApiKey } = await runtime.runPromise(ConfigService);
+
+const app = new Hono<{ Variables: AuthVariables }>();
+
+app.use("*", cors());
+app.use("*", logger());
+
+// ── Unauthenticated routes ─────────────────────────────────────────
+
+app.get("/", (c) =>
+  c.json({
+    name: "Expendi",
+    version: "1.0.0",
+    description: "Crypto financial backend",
+    endpoints: {
+      wallets: "/api/wallets",
+      transactions: "/api/transactions",
+      categories: "/api/categories",
+      onboard: "/api/onboard",
+      profile: "/api/profile",
+      recurringPayments: "/api/recurring-payments",
+      yield: "/api/yield",
+    },
+  })
+);
+
+app.get("/health", (c) =>
+  c.json({ status: "ok", timestamp: new Date().toISOString() })
+);
+
+// ── Public API routes (Privy auth) ─────────────────────────────────
+
+app.use("/api/*", privyAuthMiddleware(privyClient));
+
+app.route("/api/wallets", createWalletRoutes(runtime));
+app.route("/api/transactions", createTransactionRoutes(runtime));
+app.route("/api/categories", createCategoryRoutes(runtime));
+app.route("/api", createOnboardingRoutes(runtime));
+app.route("/api/recurring-payments", createRecurringPaymentRoutes(runtime));
+app.route("/api/yield", createYieldRoutes(runtime));
+
+// ── Internal admin routes (API key auth) ───────────────────────────
+
+app.use("/internal/*", adminKeyMiddleware(adminApiKey));
+
+app.route("/internal", createInternalRoutes(runtime));
+
+// ── Start server ───────────────────────────────────────────────────
+
+const port = Number(process.env.PORT ?? 3000);
+
+console.log(`Expendi backend starting on port ${port}...`);
+
+serve({
+  fetch: app.fetch,
+  port,
+});
+
+console.log(`Expendi backend running at http://localhost:${port}`);

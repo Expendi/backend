@@ -1,0 +1,1324 @@
+{
+	"info": {
+		"_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+		"name": "Expendi API",
+		"description": "Complete API collection for the Expendi crypto financial backend. Covers public API routes (Privy auth required) and internal admin routes (API key required). Public routes are user-scoped; internal routes have full access.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:3000",
+			"type": "string"
+		},
+		{
+			"key": "authToken",
+			"value": "YOUR_PRIVY_ACCESS_TOKEN",
+			"type": "string"
+		},
+		{
+			"key": "adminApiKey",
+			"value": "YOUR_ADMIN_API_KEY",
+			"type": "string"
+		},
+		{
+			"key": "walletId",
+			"value": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+			"type": "string"
+		},
+		{
+			"key": "transactionId",
+			"value": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+			"type": "string"
+		},
+		{
+			"key": "userId",
+			"value": "did:privy:cm3x9kf2a00cl14mhbz6t7s92",
+			"type": "string"
+		},
+		{
+			"key": "jobId",
+			"value": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+			"type": "string"
+		},
+		{
+			"key": "categoryId",
+			"value": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+			"type": "string"
+		},
+		{
+			"key": "scheduleId",
+			"value": "e2d4f6a8-b0c2-4e6a-8f0a-1c3d5e7f9b0d",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Health",
+			"item": [
+				{
+					"name": "Root Info",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/",
+							"host": ["{{baseUrl}}"],
+							"path": [""]
+						},
+						"description": "Returns basic information about the Expendi API, including the service name, version, and available endpoint paths. No authentication required."
+					},
+					"response": []
+				},
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/health",
+							"host": ["{{baseUrl}}"],
+							"path": ["health"]
+						},
+						"description": "Returns the health status of the Expendi backend with a current timestamp. No authentication required."
+					},
+					"response": []
+				}
+			],
+			"description": "Root and health check endpoints. No authentication required."
+		},
+		{
+			"name": "Public API",
+			"item": [
+				{
+					"name": "Onboarding",
+					"item": [
+						{
+							"name": "Onboard User",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"chainId\": 1\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/onboard",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "onboard"]
+								},
+								"description": "Onboards the authenticated user by creating three wallets (user, server, agent) and a user_profiles record linking them. This operation is idempotent -- calling it again for an already-onboarded user returns the existing profile and wallets without creating duplicates. The chainId defaults to 1 (Ethereum Mainnet) if not specified."
+							},
+							"response": []
+						},
+						{
+							"name": "Get My Profile",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/profile",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "profile"]
+								},
+								"description": "Retrieves the authenticated user's onboarding profile with all wallet details populated (user, server, agent wallets). Returns 400 with OnboardingError if the user has not been onboarded yet."
+							},
+							"response": []
+						},
+						{
+							"name": "Get My Wallet Addresses",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/profile/wallets",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "profile", "wallets"]
+								},
+								"description": "Returns just the wallet addresses for the authenticated user, keyed by type: { user: '0x...', server: '0x...', agent: '0x...' }. A convenience endpoint for clients that only need addresses. Returns 400 with OnboardingError if the user has not been onboarded."
+							},
+							"response": []
+						}
+					],
+					"description": "User onboarding and profile endpoints. Requires Privy auth. Creates a complete wallet set (user, server, agent) and a profile record linking them. The onboard operation is idempotent."
+				},
+				{
+					"name": "Wallets",
+					"item": [
+						{
+							"name": "List My Wallets",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/wallets",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "wallets"]
+								},
+								"description": "Retrieves the authenticated user's own wallets, ordered by creation date. Only wallets where ownerId matches the authenticated user's Privy DID are returned."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Wallet by ID",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/wallets/{{walletId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "wallets", "{{walletId}}"]
+								},
+								"description": "Retrieves a single wallet by its UUID. Returns 400 if the wallet is not found or not owned by the authenticated user."
+							},
+							"response": []
+						},
+						{
+							"name": "Create User Wallet",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/wallets/user",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "wallets", "user"]
+								},
+								"description": "Creates a new user-type wallet via Privy. The userId is automatically extracted from the authenticated Privy token -- no userId in the request body is needed. Returns the new wallet address and type."
+							},
+							"response": []
+						},
+						{
+							"name": "Sign Message",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"message\": \"Please sign this message to verify ownership of wallet 0x742d35Cc6634C0532925a3b844Bc9e7595f2bD68. Nonce: 8a4f2b1c\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/wallets/{{walletId}}/sign",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "wallets", "{{walletId}}", "sign"]
+								},
+								"description": "Signs an arbitrary message using the wallet's private key resolved through Privy. The authenticated user must own the wallet. Returns the hex-encoded signature."
+							},
+							"response": []
+						}
+					],
+					"description": "Public wallet endpoints. Requires Privy auth. Users can only access their own wallets. User wallet creation uses the userId from the auth context."
+				},
+				{
+					"name": "Transactions",
+					"item": [
+						{
+							"name": "List My Transactions",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/transactions",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "transactions"]
+								},
+								"description": "Retrieves all transactions belonging to the authenticated user."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Transaction by ID",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/transactions/{{transactionId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "transactions", "{{transactionId}}"]
+								},
+								"description": "Retrieves a single transaction by its UUID. Only returned if the authenticated user owns the transaction."
+							},
+							"response": []
+						},
+						{
+							"name": "Submit Contract Transaction (by walletId)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"walletId\": \"f47ac10b-58cc-4372-a567-0e02b2c3d479\",\n  \"contractName\": \"usdc\",\n  \"chainId\": 1,\n  \"method\": \"transfer\",\n  \"args\": [\n    \"0xdAC17F958D2ee523a2206206994597C13D831ec7\",\n    \"1000000\"\n  ],\n  \"value\": \"0\",\n  \"categoryId\": \"7c9e6679-7425-40de-944b-e07fc1f90ae7\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/transactions/contract",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "transactions", "contract"]
+								},
+								"description": "Submits a transaction that calls a method on a registered contract, identifying the wallet by its database UUID. The authenticated user must own the specified wallet. The userId is set automatically from the auth context."
+							},
+							"response": []
+						},
+						{
+							"name": "Submit Contract Transaction (by walletType)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"walletType\": \"server\",\n  \"contractName\": \"usdc\",\n  \"chainId\": 1,\n  \"method\": \"transfer\",\n  \"args\": [\n    \"0xdAC17F958D2ee523a2206206994597C13D831ec7\",\n    \"1000000\"\n  ]\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/transactions/contract",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "transactions", "contract"]
+								},
+								"description": "Submits a contract transaction using walletType instead of walletId. The wallet is resolved from the user's onboarding profile (user_profiles table). The user must be onboarded first via POST /api/onboard. Valid walletType values: 'user', 'server', 'agent'."
+							},
+							"response": []
+						},
+						{
+							"name": "Submit Raw Transaction (by walletId)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"walletId\": \"f47ac10b-58cc-4372-a567-0e02b2c3d479\",\n  \"chainId\": 137,\n  \"to\": \"0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174\",\n  \"data\": \"0xa9059cbb000000000000000000000000dac17f958d2ee523a2206206994597c13d831ec700000000000000000000000000000000000000000000000000000000000f4240\",\n  \"value\": \"0\",\n  \"categoryId\": \"7c9e6679-7425-40de-944b-e07fc1f90ae7\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/transactions/raw",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "transactions", "raw"]
+								},
+								"description": "Submits a raw Ethereum transaction with pre-encoded calldata, identifying the wallet by its database UUID. The authenticated user must own the specified wallet. The userId is set automatically from the auth context."
+							},
+							"response": []
+						},
+						{
+							"name": "Submit Raw Transaction (by walletType)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"walletType\": \"user\",\n  \"chainId\": 1,\n  \"to\": \"0x742d35Cc6634C0532925a3b844Bc9e7595f2bD68\",\n  \"value\": \"1000000000000000000\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/transactions/raw",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "transactions", "raw"]
+								},
+								"description": "Submits a raw Ethereum transaction using walletType instead of walletId. The wallet is resolved from the user's onboarding profile (user_profiles table). The user must be onboarded first via POST /api/onboard. Valid walletType values: 'user', 'server', 'agent'."
+							},
+							"response": []
+						}
+					],
+					"description": "Public transaction endpoints. Requires Privy auth. Users can only view their own transactions and must own the wallet used for submissions. Wallets can be identified by walletId (database UUID) or walletType (resolved from the user's onboarding profile)."
+				},
+				{
+					"name": "Categories",
+					"item": [
+						{
+							"name": "List My Categories",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/categories",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "categories"]
+								},
+								"description": "Retrieves global categories (userId is null) plus the authenticated user's own categories."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Category by ID",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/categories/{{categoryId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "categories", "{{categoryId}}"]
+								},
+								"description": "Retrieves a single category by its UUID. Only returned if the category is global or owned by the authenticated user."
+							},
+							"response": []
+						},
+						{
+							"name": "Create Category",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"DeFi Swaps\",\n  \"description\": \"Token swap transactions executed through decentralized exchange aggregators such as 1inch or Paraswap\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/categories",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "categories"]
+								},
+								"description": "Creates a new transaction category scoped to the authenticated user. The userId is set automatically from the auth context."
+							},
+							"response": []
+						},
+						{
+							"name": "Update Category",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"Token Transfers\",\n  \"description\": \"ERC-20 and native token transfers between wallets including cross-chain bridge transfers\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/categories/{{categoryId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "categories", "{{categoryId}}"]
+								},
+								"description": "Updates an existing transaction category. The authenticated user must own the category."
+							},
+							"response": []
+						},
+						{
+							"name": "Delete Category",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/categories/{{categoryId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "categories", "{{categoryId}}"]
+								},
+								"description": "Deletes a transaction category. The authenticated user must own the category."
+							},
+							"response": []
+						}
+					],
+					"description": "Public category endpoints. Requires Privy auth. Categories are user-scoped for write operations."
+				},
+				{
+					"name": "Contracts (Read-Only)",
+					"item": [
+						{
+							"name": "List Registered Contracts",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/contracts",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "contracts"]
+								},
+								"description": "Retrieves all contract connectors registered in the ContractRegistry. Connectors are defined in code (src/connectors/) and loaded at startup."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Contract by Name and Chain",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/contracts/usdc/1",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "contracts", "usdc", "1"]
+								},
+								"description": "Retrieves a specific contract connector by name and chain ID."
+							},
+							"response": []
+						},
+						{
+							"name": "Read Contract (View Call)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"contractName\": \"usdc\",\n  \"chainId\": 1,\n  \"method\": \"balanceOf\",\n  \"args\": [\n    \"0x742d35Cc6634C0532925a3b844Bc9e7595f2bD68\"\n  ]\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/contracts/read",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "contracts", "read"]
+								},
+								"description": "Executes a read-only (view/pure) call on a registered contract without sending a transaction. No wallet is needed."
+							},
+							"response": []
+						}
+					],
+					"description": "Read-only contract endpoints. Connectors are defined in code and cannot be created or deleted via the API. Requires Privy auth."
+				},
+				{
+					"name": "Recurring Payments",
+					"item": [
+						{
+							"name": "List My Recurring Payments",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/recurring-payments",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "recurring-payments"]
+								},
+								"description": "Retrieves the authenticated user's recurring payment schedules, ordered by creation date."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Recurring Payment by ID",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/recurring-payments/{{scheduleId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "recurring-payments", "{{scheduleId}}"]
+								},
+								"description": "Retrieves a single recurring payment schedule by its UUID. Only returned if the authenticated user owns the schedule."
+							},
+							"response": []
+						},
+						{
+							"name": "Create Recurring Payment (ERC-20 Transfer)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"walletType\": \"server\",\n  \"recipientAddress\": \"0xdAC17F958D2ee523a2206206994597C13D831ec7\",\n  \"paymentType\": \"erc20_transfer\",\n  \"amount\": \"1000000\",\n  \"tokenContractName\": \"usdc\",\n  \"chainId\": 1,\n  \"frequency\": \"1d\",\n  \"maxRetries\": 5\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/recurring-payments",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "recurring-payments"]
+								},
+								"description": "Creates a new recurring ERC-20 token transfer schedule. The walletType is resolved from the user's onboarding profile. The chainId is optional and defaults to the server's DEFAULT_CHAIN_ID configuration."
+							},
+							"response": []
+						},
+						{
+							"name": "Create Recurring Payment (Raw Transfer)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"walletType\": \"user\",\n  \"recipientAddress\": \"0x742d35Cc6634C0532925a3b844Bc9e7595f2bD68\",\n  \"paymentType\": \"raw_transfer\",\n  \"amount\": \"1000000000000000000\",\n  \"frequency\": \"7d\",\n  \"startDate\": \"2025-02-01T00:00:00.000Z\",\n  \"endDate\": \"2025-12-31T23:59:59.000Z\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/recurring-payments",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "recurring-payments"]
+								},
+								"description": "Creates a new recurring raw ETH transfer schedule with start and end dates. When chainId is omitted, the server's DEFAULT_CHAIN_ID is used."
+							},
+							"response": []
+						},
+						{
+							"name": "Create Recurring Payment (Offramp)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"walletType\": \"server\",\n  \"recipientAddress\": \"0x742d35Cc6634C0532925a3b844Bc9e7595f2bD68\",\n  \"paymentType\": \"offramp\",\n  \"amount\": \"1000000\",\n  \"chainId\": 1,\n  \"frequency\": \"30d\",\n  \"offramp\": {\n    \"currency\": \"USD\",\n    \"fiatAmount\": \"100.00\",\n    \"provider\": \"moonpay\",\n    \"destinationId\": \"bank-acct-12345\"\n  }\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/recurring-payments",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "recurring-payments"]
+								},
+								"description": "Creates a new recurring offramp (crypto-to-fiat) payment schedule. The offramp object specifies the fiat currency, amount, provider, and destination payment method. Available providers: moonpay, bridge, transak."
+							},
+							"response": []
+						},
+						{
+							"name": "Pause Recurring Payment",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/recurring-payments/{{scheduleId}}/pause",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "recurring-payments", "{{scheduleId}}", "pause"]
+								},
+								"description": "Pauses an active recurring payment schedule. The schedule will not be processed until resumed. The authenticated user must own the schedule."
+							},
+							"response": []
+						},
+						{
+							"name": "Resume Recurring Payment",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/recurring-payments/{{scheduleId}}/resume",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "recurring-payments", "{{scheduleId}}", "resume"]
+								},
+								"description": "Resumes a paused recurring payment schedule. Resets consecutive failure count and recalculates the next execution time. The authenticated user must own the schedule."
+							},
+							"response": []
+						},
+						{
+							"name": "Cancel Recurring Payment",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/recurring-payments/{{scheduleId}}/cancel",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "recurring-payments", "{{scheduleId}}", "cancel"]
+								},
+								"description": "Cancels a recurring payment schedule permanently. The schedule will not be processed again. The authenticated user must own the schedule."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Execution History",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/recurring-payments/{{scheduleId}}/executions?limit=50",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "recurring-payments", "{{scheduleId}}", "executions"],
+									"query": [
+										{
+											"key": "limit",
+											"value": "50",
+											"description": "Maximum number of execution records to return. Defaults to 50."
+										}
+									]
+								},
+								"description": "Retrieves the execution history for a recurring payment schedule. Each execution record includes the status (success/failed), linked transaction ID, error message (if failed), and timestamp. The authenticated user must own the schedule."
+							},
+							"response": []
+						}
+					],
+					"description": "Public recurring payment endpoints. Requires Privy auth. Users can create, manage, and view execution history for their own recurring payment schedules. Supports ERC-20 transfers, raw transfers, contract calls, and offramp (crypto-to-fiat) payments."
+				}
+			],
+			"description": "Public API routes requiring Privy authentication via Authorization: Bearer <token> header. All operations are scoped to the authenticated user."
+		},
+		{
+			"name": "Internal API",
+			"item": [
+				{
+					"name": "Wallets (Admin)",
+					"item": [
+						{
+							"name": "List All Wallets",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/internal/wallets",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "wallets"]
+								},
+								"description": "Retrieves all wallets across all users, ordered by creation date. No user filtering applied."
+							},
+							"response": []
+						},
+						{
+							"name": "Create Server Wallet",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": ""
+								},
+								"url": {
+									"raw": "{{baseUrl}}/internal/wallets/server",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "wallets", "server"]
+								},
+								"description": "Creates a new server-managed wallet via Privy. Server wallets are owned by the application and used for protocol operations such as gas sponsorship or treasury management."
+							},
+							"response": []
+						},
+						{
+							"name": "Create Agent Wallet",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"agentId\": \"agent-defi-rebalancer-001\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/internal/wallets/agent",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "wallets", "agent"]
+								},
+								"description": "Creates a new agent-type wallet via Privy for an autonomous agent. The agentId identifies the agent that will control this wallet."
+							},
+							"response": []
+						}
+					],
+					"description": "Admin wallet management. Requires X-Admin-Key header. Supports creating server and agent wallets, and listing all wallets across all users."
+				},
+				{
+					"name": "Transactions (Admin)",
+					"item": [
+						{
+							"name": "List All Transactions",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/internal/transactions?limit=50&offset=0",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "transactions"],
+									"query": [
+										{
+											"key": "limit",
+											"value": "50",
+											"description": "Maximum number of transactions to return. Defaults to 50."
+										},
+										{
+											"key": "offset",
+											"value": "0",
+											"description": "Number of transactions to skip for pagination. Defaults to 0."
+										}
+									]
+								},
+								"description": "Retrieves a paginated list of all transactions across all users."
+							},
+							"response": []
+						},
+						{
+							"name": "List Transactions by Wallet",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/internal/transactions/wallet/{{walletId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "transactions", "wallet", "{{walletId}}"]
+								},
+								"description": "Retrieves all transactions associated with a specific wallet."
+							},
+							"response": []
+						},
+						{
+							"name": "List Transactions by User",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/internal/transactions/user/{{userId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "transactions", "user", "{{userId}}"]
+								},
+								"description": "Retrieves all transactions associated with a specific user."
+							},
+							"response": []
+						},
+						{
+							"name": "Confirm Transaction",
+							"request": {
+								"method": "PATCH",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"gasUsed\": \"21000\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/internal/transactions/{{transactionId}}/confirm",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "transactions", "{{transactionId}}", "confirm"]
+								},
+								"description": "Marks a transaction as confirmed on-chain. Typically called by an external indexer after a transaction has been included in a block."
+							},
+							"response": []
+						},
+						{
+							"name": "Mark Transaction Failed",
+							"request": {
+								"method": "PATCH",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"error\": \"Transaction reverted: ERC20: transfer amount exceeds balance\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/internal/transactions/{{transactionId}}/fail",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "transactions", "{{transactionId}}", "fail"]
+								},
+								"description": "Marks a transaction as failed with an error message."
+							},
+							"response": []
+						}
+					],
+					"description": "Admin transaction management. Requires X-Admin-Key header. Full access to all transactions regardless of user ownership."
+				},
+				{
+					"name": "Jobs (Admin)",
+					"item": [
+						{
+							"name": "List All Jobs",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/internal/jobs",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "jobs"]
+								},
+								"description": "Retrieves all scheduled jobs ordered by creation date."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Job by ID",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/internal/jobs/{{jobId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "jobs", "{{jobId}}"]
+								},
+								"description": "Retrieves a single job by its UUID."
+							},
+							"response": []
+						},
+						{
+							"name": "Create Job",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"Daily USDC yield harvest\",\n  \"jobType\": \"contract_transaction\",\n  \"schedule\": \"1d\",\n  \"payload\": {\n    \"walletId\": \"f47ac10b-58cc-4372-a567-0e02b2c3d479\",\n    \"walletType\": \"server\",\n    \"contractName\": \"usdc\",\n    \"chainId\": 1,\n    \"method\": \"transfer\",\n    \"args\": [\n      \"0x742d35Cc6634C0532925a3b844Bc9e7595f2bD68\",\n      \"1000000\"\n    ]\n  },\n  \"maxRetries\": 5\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/internal/jobs",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "jobs"]
+								},
+								"description": "Creates a new scheduled job. The schedule field uses a simple duration format (30s, 5m, 1h, 1d). The jobType is 'contract_transaction' or 'raw_transaction'. maxRetries defaults to 3 if not specified."
+							},
+							"response": []
+						},
+						{
+							"name": "Cancel Job",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/internal/jobs/{{jobId}}/cancel",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "jobs", "{{jobId}}", "cancel"]
+								},
+								"description": "Cancels a scheduled job by its ID. Sets the job status to 'cancelled'."
+							},
+							"response": []
+						},
+						{
+							"name": "Process Due Jobs",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/internal/jobs/process",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "jobs", "process"]
+								},
+								"description": "Triggers immediate processing of all jobs that are due to run. Returns the count of processed jobs and their results."
+							},
+							"response": []
+						}
+					],
+					"description": "Admin job management. Requires X-Admin-Key header. Jobs are only accessible through the internal API."
+				},
+				{
+					"name": "Recurring Payments (Admin)",
+					"item": [
+						{
+							"name": "List All Recurring Payments",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/internal/recurring-payments?limit=50&offset=0",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "recurring-payments"],
+									"query": [
+										{
+											"key": "limit",
+											"value": "50",
+											"description": "Maximum number of schedules to return. Defaults to 50."
+										},
+										{
+											"key": "offset",
+											"value": "0",
+											"description": "Number of schedules to skip for pagination. Defaults to 0."
+										}
+									]
+								},
+								"description": "Retrieves a paginated list of all recurring payment schedules across all users, ordered by creation date."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Recurring Payment by ID",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/internal/recurring-payments/{{scheduleId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "recurring-payments", "{{scheduleId}}"]
+								},
+								"description": "Retrieves a single recurring payment schedule by its UUID. No ownership check is performed."
+							},
+							"response": []
+						},
+						{
+							"name": "Force Execute Recurring Payment",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/internal/recurring-payments/{{scheduleId}}/execute",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "recurring-payments", "{{scheduleId}}", "execute"]
+								},
+								"description": "Force-executes a recurring payment schedule immediately, regardless of its next scheduled execution time or current status. Returns the execution record with success/failure status and linked transaction ID."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Execution History",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/internal/recurring-payments/{{scheduleId}}/executions?limit=50",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "recurring-payments", "{{scheduleId}}", "executions"],
+									"query": [
+										{
+											"key": "limit",
+											"value": "50",
+											"description": "Maximum number of execution records to return. Defaults to 50."
+										}
+									]
+								},
+								"description": "Retrieves the execution history for a recurring payment schedule. Returns an array of execution records ordered by execution time."
+							},
+							"response": []
+						},
+						{
+							"name": "Process Due Recurring Payments",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/internal/recurring-payments/process",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "recurring-payments", "process"]
+								},
+								"description": "Triggers immediate processing of all recurring payments that are due to execute. Finds active schedules where nextExecutionAt is in the past, executes each one, records the result, and reschedules. Returns the count of processed payments and their execution records."
+							},
+							"response": []
+						}
+					],
+					"description": "Admin recurring payment management. Requires X-Admin-Key header. Full access to all recurring payment schedules, execution history, and manual processing triggers."
+				},
+				{
+					"name": "Profiles (Admin)",
+					"item": [
+						{
+							"name": "List All Profiles",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/internal/profiles",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "profiles"]
+								},
+								"description": "Retrieves all user onboarding profiles ordered by creation date. Each profile links a Privy user to their three wallets (user, server, agent)."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Profile by Privy User ID",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/internal/profiles/{{userId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "profiles", "{{userId}}"]
+								},
+								"description": "Retrieves a specific user's onboarding profile with all wallet details populated. Returns 400 with OnboardingError if the user has not been onboarded."
+							},
+							"response": []
+						},
+						{
+							"name": "Admin-Triggered Onboarding",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"chainId\": 1\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/internal/profiles/{{userId}}/onboard",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "profiles", "{{userId}}", "onboard"]
+								},
+								"description": "Triggers onboarding for a specific user without requiring their Privy auth token. Creates three wallets (user, server, agent) and a user_profiles record. Idempotent -- calling it again for an already-onboarded user returns the existing profile. The chainId defaults to 1 (Ethereum Mainnet) if not specified."
+							},
+							"response": []
+						}
+					],
+					"description": "Admin profile management. Requires X-Admin-Key header. View all user profiles, look up specific profiles, and trigger onboarding on behalf of users."
+				}
+			],
+			"description": "Internal admin API routes requiring X-Admin-Key header. Full access to all data regardless of user ownership. Used by the admin dashboard."
+		}
+	]
+}
