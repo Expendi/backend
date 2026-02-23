@@ -149,6 +149,7 @@ export const erc20Connectors = [
       42161: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", // Arbitrum One
       10: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",    // Optimism
       8453: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",  // Base
+      84532: "0x036cbd53842c5426634e7929541ec2318f3dcf7e"
     },
     abi: ERC20_ABI,
     methods: erc20Methods,
@@ -160,6 +161,7 @@ export const erc20Connectors = [
       137: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",  // Polygon PoS
       42161: "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9", // Arbitrum One
       10: "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58",    // Optimism
+      8453: "0x2d1aDB45Bb1d7D2556c6558aDb76CFD4F9F4ed16"
     },
     abi: ERC20_ABI,
     methods: erc20Methods,
