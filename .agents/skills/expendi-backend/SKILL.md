@@ -5,7 +5,7 @@
 Expendi is a crypto financial backend built with **Hono + Effect-TS** on Node.js, deployed on the **Base** chain (chain ID `8453`). It provides:
 
 - **Wallet management** -- three wallets per user (user, server, agent) via Privy embedded wallets
-- **Transaction execution** -- contract calls and raw transactions on Base
+- **Transaction execution** -- contract calls and raw transactions on Base (with optional gas sponsorship)
 - **Recurring payments** -- scheduled ERC-20 transfers, raw transfers, contract calls, and offramps
 - **Yield positions** -- deposit into ERC-4626 vaults with time-locked positions
 - **Offramp to African mobile money** -- via Pretium (Kenya, Nigeria, Ghana, Uganda, DR Congo, Malawi, Ethiopia)
@@ -191,6 +191,7 @@ interface Wallet {
   data?: `0x${string}`;    // Calldata (optional)
   value?: string;           // Wei value as string (optional)
   categoryId?: string;
+  sponsor?: boolean;        // Enable Privy gas sponsorship (optional)
 }
 ```
 
@@ -928,3 +929,5 @@ NEXT_PUBLIC_PRIVY_APP_ID=your-privy-app-id
 - **Pretium offramp flow:** The frontend must first send USDC to the settlement address on-chain, then call the offramp endpoint with the transaction hash as proof. The backend handles the fiat disbursement.
 
 - **Uniswap swap flow:** The `/api/uniswap/swap` endpoint handles the full flow (check approval, submit approval tx if needed, get quote, submit swap tx) in a single call. Use `/api/uniswap/quote` for read-only price checks before committing.
+
+- **Gas sponsorship:** All wallet `sendTransaction` calls support Privy gas sponsorship. Set `sponsor: true` in the transaction params to have Privy pay the gas fees. This requires gas sponsorship policies to be configured in the Privy dashboard for the target chains.

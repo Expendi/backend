@@ -344,6 +344,7 @@ As with `POST /api/transactions/contract`, you can identify the wallet by `walle
 | `data` | `0x${string}` | no | Encoded calldata |
 | `value` | string | no | Native token value in wei (as a string) |
 | `categoryId` | string | no | Transaction category ID |
+| `sponsor` | boolean | no | Enable Privy gas sponsorship (requires sponsorship policies configured in Privy dashboard) |
 
 Using `walletId`:
 

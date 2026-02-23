@@ -11,6 +11,7 @@ export interface SendTransactionParams {
   readonly value?: bigint;
   readonly data?: string;
   readonly chainId: number;
+  readonly sponsor?: boolean;
 }
 
 export interface WalletInstance {
