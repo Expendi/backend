@@ -427,7 +427,8 @@ export const yieldTimelockConnectors = [
   ...expandMultiChain({
     name: "yield-timelock",
     addresses: {
-      1: "0x0000000000000000000000000000000000000000", // Ethereum Mainnet — TODO: replace with actual deployment address
+      8453: "0x3da4E8d093051603519aCE4E3472C7c5d5Cf56d6",
+      84532: "0xeA70131274f6a69c7175be61Cef4fcFaF30579e9", // Base Sepolia
     },
     abi: YIELD_TIMELOCK_ABI,
     methods: yieldTimelockMethods,
