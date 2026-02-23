@@ -18,6 +18,9 @@ import type { OnboardingService } from "../services/onboarding/onboarding-servic
 import type { RecurringPaymentService } from "../services/recurring-payment/recurring-payment-service.js";
 import type { OfframpAdapterRegistry } from "../services/offramp/index.js";
 import type { YieldService } from "../services/yield/yield-service.js";
+import type { PretiumService } from "../services/pretium/pretium-service.js";
+import type { ExchangeRateService } from "../services/pretium/exchange-rate-service.js";
+import type { UniswapService } from "../services/uniswap/uniswap-service.js";
 
 export type AppDeps =
   | WalletService
@@ -35,7 +38,10 @@ export type AppDeps =
   | OnboardingService
   | RecurringPaymentService
   | OfframpAdapterRegistry
-  | YieldService;
+  | YieldService
+  | PretiumService
+  | ExchangeRateService
+  | UniswapService;
 
 export type AppRuntime = ManagedRuntime.ManagedRuntime<AppDeps, ConfigError.ConfigError>;
 

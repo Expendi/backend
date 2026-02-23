@@ -11,14 +11,14 @@ import {
   recurringPaymentStatusEnum,
   recurringPaymentTypeEnum,
   executionStatusEnum,
-} from "./enums.js";
-import { wallets } from "./wallets.js";
+} from "./enums";
+import { wallets } from "./wallets";
 
 export {
   recurringPaymentStatusEnum,
   recurringPaymentTypeEnum,
   executionStatusEnum,
-} from "./enums.js";
+} from "./enums";
 
 export const recurringPayments = pgTable("recurring_payments", {
   id: text("id")

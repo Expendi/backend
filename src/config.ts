@@ -8,6 +8,9 @@ export interface AppConfig {
   readonly adminApiKey: string;
   readonly defaultChainId: number;
   readonly port: number;
+  readonly pretiumApiKey: string;
+  readonly pretiumBaseUri: string;
+  readonly uniswapApiKey: string;
 }
 
 export class ConfigService extends Context.Tag("ConfigService")<
@@ -28,6 +31,13 @@ export const ConfigLive: Layer.Layer<ConfigService, ConfigError.ConfigError> =
       const adminApiKey = yield* Config.string("ADMIN_API_KEY");
       const defaultChainId = yield* Config.withDefault(Config.integer("DEFAULT_CHAIN_ID"), 1);
       const port = yield* Config.withDefault(Config.integer("PORT"), 3000);
+      const pretiumApiKey = yield* Config.string("PRETIUM_API_KEY");
+      const pretiumBaseUri = yield* Config.withDefault(
+        Config.string("PRETIUM_BASE_URI"),
+        "https://api.xwift.africa"
+      );
+
+      const uniswapApiKey = yield* Config.withDefault(Config.string("UNISWAP_API_KEY"), "");
 
       return {
         databaseUrl,
@@ -37,6 +47,9 @@ export const ConfigLive: Layer.Layer<ConfigService, ConfigError.ConfigError> =
         adminApiKey,
         defaultChainId,
         port,
+        pretiumApiKey,
+        pretiumBaseUri,
+        uniswapApiKey,
       };
     })
   );

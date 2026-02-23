@@ -1,10 +1,8 @@
-import "dotenv/config";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { serve } from "@hono/node-server";
-import { ManagedRuntime } from "effect";
-import { MainLayer } from "./layers/main.js";
+import { runtime } from "./runtime.js";
 import { PrivyService } from "./services/wallet/privy-layer.js";
 import { ConfigService } from "./config.js";
 import { privyAuthMiddleware, adminKeyMiddleware } from "./middleware/auth.js";
@@ -16,8 +14,11 @@ import { createInternalRoutes } from "./routes/internal.js";
 import { createOnboardingRoutes } from "./routes/onboarding.js";
 import { createRecurringPaymentRoutes } from "./routes/recurring-payments.js";
 import { createYieldRoutes } from "./routes/yield.js";
-
-const runtime = ManagedRuntime.make(MainLayer);
+import {
+  createPretiumRoutes,
+  createPretiumWebhookRoutes,
+} from "./routes/pretium.js";
+import { createUniswapRoutes } from "./routes/uniswap.js";
 
 // Resolve the Privy client and admin API key from the Effect runtime so
 // we can hand them to the Hono middleware layer without requiring Effect
@@ -45,6 +46,9 @@ app.get("/", (c) =>
       profile: "/api/profile",
       recurringPayments: "/api/recurring-payments",
       yield: "/api/yield",
+      pretium: "/api/pretium",
+      uniswap: "/api/uniswap",
+      webhooks: "/webhooks/pretium",
     },
   })
 );
@@ -63,6 +67,12 @@ app.route("/api/categories", createCategoryRoutes(runtime));
 app.route("/api", createOnboardingRoutes(runtime));
 app.route("/api/recurring-payments", createRecurringPaymentRoutes(runtime));
 app.route("/api/yield", createYieldRoutes(runtime));
+app.route("/api/pretium", createPretiumRoutes(runtime));
+app.route("/api/uniswap", createUniswapRoutes(runtime));
+
+// ── Webhook routes (no auth -- called by payment providers) ────────
+
+app.route("/webhooks", createPretiumWebhookRoutes(runtime));
 
 // ── Internal admin routes (API key auth) ───────────────────────────
 

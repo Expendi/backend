@@ -46,6 +46,12 @@ All endpoints return JSON in a consistent envelope:
 }
 ```
 
+## Postman Collection
+
+A ready-to-use Postman collection is available at [`docs/expendi-api.postman_collection.json`](./expendi-api.postman_collection.json). Import it into Postman to get pre-configured requests for every endpoint listed below.
+
+---
+
 ## Authentication
 
 Expendi uses two authentication mechanisms:
@@ -54,6 +60,7 @@ Expendi uses two authentication mechanisms:
 |-------------|-------------|--------|-------------|
 | `/api/*` | Privy access token | `Authorization: Bearer <token>` | Verifies the user's identity via Privy. The user's DID is extracted and used to scope all operations. |
 | `/internal/*` | Admin API key | `X-Admin-Key: <key>` | Static key matching the `ADMIN_API_KEY` environment variable. Used by the admin dashboard and backend services. |
+| `/webhooks/*` | None | -- | Payment provider webhook callbacks (e.g., Pretium). No authentication; payloads are validated by the receiving handler. |
 | `/`, `/health` | None | -- | Unauthenticated health and discovery endpoints. |
 
 ---
@@ -78,7 +85,12 @@ curl http://localhost:3000/
     "transactions": "/api/transactions",
     "categories": "/api/categories",
     "onboard": "/api/onboard",
-    "profile": "/api/profile"
+    "profile": "/api/profile",
+    "recurringPayments": "/api/recurring-payments",
+    "yield": "/api/yield",
+    "pretium": "/api/pretium",
+    "uniswap": "/api/uniswap",
+    "webhooks": "/webhooks/pretium"
   }
 }
 ```
@@ -1035,6 +1047,635 @@ curl http://localhost:3000/api/yield/portfolio \
 
 ---
 
+### Pretium (Offramp)
+
+Pretium endpoints enable crypto-to-fiat disbursements across 7 African countries (KE, NG, GH, UG, CD, MW, ET). Supports mobile money and bank transfer payouts.
+
+#### `GET /api/pretium/countries`
+
+List all supported countries with their payment configurations.
+
+```bash
+curl http://localhost:3000/api/pretium/countries \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `Array<CountryPaymentConfig>`
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "code": "KE",
+      "name": "Kenya",
+      "currency": "KES",
+      "paymentTypes": ["MOBILE", "BUY_GOODS", "PAYBILL"],
+      "mobileNetworks": ["SAFARICOM", "AIRTEL"]
+    }
+  ]
+}
+```
+
+#### `GET /api/pretium/countries/:code`
+
+Get the payment configuration for a specific country.
+
+| Parameter | Location | Type | Required | Description |
+|-----------|----------|------|----------|-------------|
+| `code` | path | string | yes | ISO 3166-1 alpha-2 country code (e.g., `KE`, `NG`) |
+
+```bash
+curl http://localhost:3000/api/pretium/countries/KE \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `CountryPaymentConfig`
+
+**Errors:** `Error` if the country code is not supported.
+
+#### `GET /api/pretium/exchange-rate/:currency`
+
+Get the current USDC-to-fiat exchange rate for a currency.
+
+| Parameter | Location | Type | Required | Description |
+|-----------|----------|------|----------|-------------|
+| `currency` | path | string | yes | Fiat currency code (e.g., `KES`, `NGN`, `GHS`) |
+
+```bash
+curl http://localhost:3000/api/pretium/exchange-rate/KES \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "currency": "KES",
+    "rate": "129.50",
+    "updatedAt": "2025-01-15T10:30:00.000Z"
+  }
+}
+```
+
+**Errors:** `Error` if the currency is not supported.
+
+#### `POST /api/pretium/convert/usdc-to-fiat`
+
+Convert a USDC amount to its equivalent fiat value using the current exchange rate.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `usdcAmount` | number | yes | Amount in USDC to convert |
+| `currency` | string | yes | Target fiat currency code (e.g., `KES`, `NGN`) |
+
+```bash
+curl -X POST http://localhost:3000/api/pretium/convert/usdc-to-fiat \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "usdcAmount": 100,
+    "currency": "KES"
+  }'
+```
+
+**Response data:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "usdcAmount": 100,
+    "fiatAmount": "12950.00",
+    "currency": "KES",
+    "exchangeRate": "129.50"
+  }
+}
+```
+
+**Errors:** `Error` if the currency is not supported.
+
+#### `POST /api/pretium/convert/fiat-to-usdc`
+
+Convert a fiat amount to its equivalent USDC value using the current exchange rate.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `fiatAmount` | number | yes | Amount in fiat currency to convert |
+| `currency` | string | yes | Source fiat currency code (e.g., `KES`, `NGN`) |
+
+```bash
+curl -X POST http://localhost:3000/api/pretium/convert/fiat-to-usdc \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "fiatAmount": 12950,
+    "currency": "KES"
+  }'
+```
+
+**Response data:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "fiatAmount": 12950,
+    "usdcAmount": "100.00",
+    "currency": "KES",
+    "exchangeRate": "129.50"
+  }
+}
+```
+
+**Errors:** `Error` if the currency is not supported.
+
+#### `POST /api/pretium/validate/phone`
+
+Validate a phone number and look up the mobile network operator (MNO) name for a given country and network.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `country` | string | yes | ISO 3166-1 alpha-2 country code |
+| `phoneNumber` | string | yes | Phone number to validate |
+| `network` | string | yes | Mobile network identifier (e.g., `SAFARICOM`, `MTN`) |
+
+```bash
+curl -X POST http://localhost:3000/api/pretium/validate/phone \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "country": "KE",
+    "phoneNumber": "+254712345678",
+    "network": "SAFARICOM"
+  }'
+```
+
+**Response data:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "valid": true,
+    "phoneNumber": "+254712345678",
+    "network": "SAFARICOM",
+    "networkName": "Safaricom"
+  }
+}
+```
+
+**Errors:** `Error` if the phone number is invalid or the network is not supported in the specified country.
+
+#### `POST /api/pretium/validate/bank-account`
+
+Validate a bank account number and look up the account holder name.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `country` | string | yes | ISO 3166-1 alpha-2 country code (NG, KE) |
+| `accountNumber` | string | yes | Bank account number |
+| `bankCode` | string | yes | Bank code identifier |
+
+```bash
+curl -X POST http://localhost:3000/api/pretium/validate/bank-account \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "country": "NG",
+    "accountNumber": "0123456789",
+    "bankCode": "058"
+  }'
+```
+
+**Response data:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "valid": true,
+    "accountNumber": "0123456789",
+    "bankCode": "058",
+    "accountName": "John Doe"
+  }
+}
+```
+
+**Errors:** `Error` if the account number or bank code is invalid.
+
+#### `GET /api/pretium/banks/:country`
+
+Get the list of supported banks for a country. Currently available for Nigeria (NG) and Kenya (KE) only.
+
+| Parameter | Location | Type | Required | Description |
+|-----------|----------|------|----------|-------------|
+| `country` | path | string | yes | ISO 3166-1 alpha-2 country code (`NG` or `KE`) |
+
+```bash
+curl http://localhost:3000/api/pretium/banks/NG \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "bankCode": "058",
+      "bankName": "Guaranty Trust Bank"
+    },
+    {
+      "bankCode": "033",
+      "bankName": "United Bank for Africa"
+    }
+  ]
+}
+```
+
+**Errors:** `Error` if the country does not support bank transfers.
+
+#### `GET /api/pretium/settlement-address`
+
+Get the USDC deposit address where funds should be sent before initiating an offramp disbursement.
+
+```bash
+curl http://localhost:3000/api/pretium/settlement-address \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "address": "0x1234567890abcdef1234567890abcdef12345678",
+    "network": "ethereum",
+    "token": "USDC"
+  }
+}
+```
+
+#### `POST /api/pretium/offramp`
+
+Initiate an offramp disbursement. Sends USDC to the Pretium settlement address and triggers a fiat payout to the specified mobile money or bank account.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `country` | string | yes | ISO 3166-1 alpha-2 country code |
+| `walletId` | string | yes | Database ID of the wallet to debit |
+| `usdcAmount` | number | yes | Amount of USDC to offramp |
+| `phoneNumber` | string | yes | Recipient phone number for mobile money payouts |
+| `mobileNetwork` | string | yes | Mobile network identifier (e.g., `SAFARICOM`, `MTN`) |
+| `transactionHash` | string | yes | On-chain transaction hash of the USDC transfer to the settlement address |
+| `paymentType` | string | no | Payment method: `MOBILE`, `BUY_GOODS`, `PAYBILL`, or `BANK_TRANSFER` (defaults to `MOBILE`) |
+| `accountNumber` | string | no | Bank account number (required for `BANK_TRANSFER`) |
+| `accountName` | string | no | Bank account holder name |
+| `bankAccount` | string | no | Bank account identifier |
+| `bankCode` | string | no | Bank code (required for `BANK_TRANSFER`) |
+| `bankName` | string | no | Bank name |
+| `callbackUrl` | string | no | URL to receive payment status webhooks |
+| `fee` | number | no | Fee amount in USDC |
+
+```bash
+curl -X POST http://localhost:3000/api/pretium/offramp \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "country": "KE",
+    "walletId": "wallet-uuid",
+    "usdcAmount": 100,
+    "phoneNumber": "+254712345678",
+    "mobileNetwork": "SAFARICOM",
+    "transactionHash": "0xabc123def456789...",
+    "paymentType": "MOBILE"
+  }'
+```
+
+**Response data:** `PretiumTransaction`
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "userId": "did:privy:cm3x9kf2a00cl14mhbz6t7s92",
+    "walletId": "wallet-uuid",
+    "countryCode": "KE",
+    "fiatCurrency": "KES",
+    "usdcAmount": "100.000000",
+    "fiatAmount": "12950.00",
+    "exchangeRate": "129.50",
+    "fee": null,
+    "paymentType": "MOBILE",
+    "status": "pending",
+    "onChainTxHash": "0xabc123def456789...",
+    "pretiumTransactionCode": null,
+    "pretiumReceiptNumber": null,
+    "phoneNumber": "+254712345678",
+    "mobileNetwork": "SAFARICOM",
+    "accountNumber": null,
+    "bankCode": null,
+    "bankName": null,
+    "accountName": null,
+    "failureReason": null,
+    "callbackUrl": null,
+    "metadata": null,
+    "createdAt": "2025-01-15T10:30:00.000Z",
+    "updatedAt": "2025-01-15T10:30:00.000Z",
+    "completedAt": null
+  }
+}
+```
+
+**Errors:** `Error` if wallet not found, country not supported, or Pretium API call fails.
+
+#### `GET /api/pretium/offramp`
+
+List the authenticated user's offramp transactions with pagination.
+
+| Parameter | Location | Type | Default | Description |
+|-----------|----------|------|---------|-------------|
+| `limit` | query | number | 50 | Maximum number of results |
+| `offset` | query | number | 0 | Number of results to skip |
+
+```bash
+curl "http://localhost:3000/api/pretium/offramp?limit=10&offset=0" \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `Array<PretiumTransaction>`
+
+#### `GET /api/pretium/offramp/:id`
+
+Get a specific offramp transaction by its database ID. Returns the transaction only if the authenticated user owns it.
+
+| Parameter | Location | Type | Required |
+|-----------|----------|------|----------|
+| `id` | path | string | yes |
+
+```bash
+curl http://localhost:3000/api/pretium/offramp/some-uuid \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `PretiumTransaction`
+
+**Errors:** `Error` if not found or not owned by the authenticated user.
+
+#### `POST /api/pretium/offramp/:id/refresh`
+
+Poll the Pretium API for the latest status of an offramp transaction and update the local record.
+
+| Parameter | Location | Type | Required |
+|-----------|----------|------|----------|
+| `id` | path | string | yes |
+
+```bash
+curl -X POST http://localhost:3000/api/pretium/offramp/some-uuid/refresh \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `PretiumTransaction` (with updated status from Pretium)
+
+**Errors:** `Error` if not found or not owned by the authenticated user. `Error` if the Pretium API call fails.
+
+---
+
+### Uniswap Swaps
+
+Token swap endpoints powered by the [Uniswap Trading API](https://trade-api.gateway.uniswap.org/v1). All swaps execute on Base (chain ID 8453). The route handler resolves the wallet address from the database, calls the Uniswap Trading API, and submits resulting transactions through the existing `TransactionService` ledger.
+
+#### Base chain token addresses
+
+| Token | Address |
+|-------|---------|
+| ETH | `0x0000000000000000000000000000000000000000` |
+| WETH | `0x4200000000000000000000000000000000000006` |
+| USDC | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
+| USDbC | `0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6Ca` |
+
+#### `POST /api/uniswap/check-approval`
+
+Check whether a token approval transaction is required before swapping. If the token already has sufficient allowance for the Uniswap router, `approval` will be `null`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `walletId` | string | yes | Database ID of the wallet performing the swap |
+| `tokenIn` | `0x${string}` | yes | Address of the token to sell |
+| `amount` | string | yes | Amount in the token's smallest unit (e.g. `"1000000"` for 1 USDC) |
+
+```bash
+curl -X POST http://localhost:3000/api/uniswap/check-approval \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "walletId": "wallet-uuid",
+    "tokenIn": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "amount": "1000000"
+  }'
+```
+
+**Response data:** `ApprovalResult`
+
+When approval is needed:
+
+```json
+{
+  "success": true,
+  "data": {
+    "approval": {
+      "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "from": "0xYourWalletAddress",
+      "data": "0x095ea7b3...",
+      "value": "0",
+      "chainId": 8453
+    }
+  }
+}
+```
+
+When no approval is needed (sufficient allowance already exists):
+
+```json
+{
+  "success": true,
+  "data": {
+    "approval": null
+  }
+}
+```
+
+**Errors:** `Error` if wallet not found. `UniswapError` if the Uniswap API call fails.
+
+#### `POST /api/uniswap/quote`
+
+Get a swap quote without executing. Returns routing information, expected input/output amounts, and estimated gas fees. The quote is fetched from the Uniswap Trading API using the `BEST_PRICE` routing preference.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `walletId` | string | yes | Database ID of the wallet performing the swap |
+| `tokenIn` | `0x${string}` | yes | Address of the token to sell |
+| `tokenOut` | `0x${string}` | yes | Address of the token to buy |
+| `amount` | string | yes | Amount in the token's smallest unit |
+| `type` | `"EXACT_INPUT"` \| `"EXACT_OUTPUT"` | no | Quote type (default: `"EXACT_INPUT"`) |
+| `slippageTolerance` | number | no | Slippage tolerance as a percentage (default: `0.5`) |
+
+```bash
+curl -X POST http://localhost:3000/api/uniswap/quote \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "walletId": "wallet-uuid",
+    "tokenIn": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "tokenOut": "0x4200000000000000000000000000000000000006",
+    "amount": "1000000",
+    "type": "EXACT_INPUT",
+    "slippageTolerance": 0.5
+  }'
+```
+
+**Response data:** `QuoteResponse`
+
+```json
+{
+  "success": true,
+  "data": {
+    "routing": "CLASSIC",
+    "quote": {
+      "input": {
+        "token": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "amount": "1000000"
+      },
+      "output": {
+        "token": "0x4200000000000000000000000000000000000006",
+        "amount": "312500000000000"
+      },
+      "slippage": 0.5,
+      "gasFee": "150000000000000",
+      "gasFeeUSD": "0.01",
+      "gasUseEstimate": "150000"
+    }
+  }
+}
+```
+
+**Errors:** `Error` if wallet not found. `UniswapError` if the Uniswap API call fails.
+
+#### `POST /api/uniswap/swap`
+
+Execute a full swap. This endpoint orchestrates the complete flow:
+
+1. Resolve the wallet address from the database using `walletId`.
+2. Check if a token approval is needed via the Uniswap `/check_approval` endpoint.
+3. If approval is needed, submit the approval transaction through `TransactionService.submitRawTransaction` and record it in the ledger.
+4. Get a fresh quote from the Uniswap `/quote` endpoint.
+5. Get the swap calldata from the Uniswap `/swap` endpoint.
+6. Submit the swap transaction through `TransactionService.submitRawTransaction` and record it in the ledger.
+
+Both the approval and swap transactions are recorded in the `transactions` table with `chainId = 8453` and `method = "raw_transfer"`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `walletId` | string | yes | Database ID of the wallet performing the swap |
+| `tokenIn` | `0x${string}` | yes | Address of the token to sell |
+| `tokenOut` | `0x${string}` | yes | Address of the token to buy |
+| `amount` | string | yes | Amount in the token's smallest unit |
+| `type` | `"EXACT_INPUT"` \| `"EXACT_OUTPUT"` | no | Quote type (default: `"EXACT_INPUT"`) |
+| `slippageTolerance` | number | no | Slippage tolerance as a percentage (default: `0.5`) |
+
+```bash
+curl -X POST http://localhost:3000/api/uniswap/swap \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "walletId": "wallet-uuid",
+    "tokenIn": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "tokenOut": "0x4200000000000000000000000000000000000006",
+    "amount": "1000000",
+    "type": "EXACT_INPUT",
+    "slippageTolerance": 0.5
+  }'
+```
+
+**Response data:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "approvalTxId": "uuid-or-omitted-if-not-needed",
+    "swapTxId": "uuid",
+    "swapTxHash": "0xabc123...",
+    "quote": {
+      "routing": "CLASSIC",
+      "input": {
+        "token": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "amount": "1000000"
+      },
+      "output": {
+        "token": "0x4200000000000000000000000000000000000006",
+        "amount": "312500000000000"
+      },
+      "gasFeeUSD": "0.01"
+    }
+  }
+}
+```
+
+The `approvalTxId` field is only present when a token approval was required and submitted. If the token already had sufficient allowance, this field is omitted.
+
+**Errors:** `Error` if wallet not found or not owned by the user. `UniswapError` if any Uniswap API call fails (approval check, quote, or swap). `TransactionError`, `LedgerError`, or `WalletError` if transaction submission fails.
+
+---
+
+### Webhooks
+
+#### `POST /webhooks/pretium`
+
+Receives payment status callbacks from the Pretium payment provider. No authentication is required -- this endpoint is called directly by Pretium's servers when a payment status changes.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `transaction_code` | string | yes | Pretium transaction identifier |
+| `status` | string | yes | Payment status (`completed`, `failed`, `reversed`) |
+| `receipt_number` | string | no | Payment receipt number (on success) |
+| `failure_reason` | string | no | Reason for failure (on failure) |
+| `amount` | number | no | Disbursed amount |
+| `currency_code` | string | no | Currency code of the disbursement |
+
+```bash
+curl -X POST http://localhost:3000/webhooks/pretium \
+  -H "Content-Type: application/json" \
+  -d '{
+    "transaction_code": "PTX-123456",
+    "status": "completed",
+    "receipt_number": "RCP-789012",
+    "amount": 12950,
+    "currency_code": "KES"
+  }'
+```
+
+**Response data:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "received": true
+  }
+}
+```
+
+**Errors:** Returns HTTP 200 even if the transaction code is not found, to prevent webhook retries from Pretium.
+
+---
+
 ## Internal API
 
 All `/internal/*` routes require the `X-Admin-Key` header with the value matching the `ADMIN_API_KEY` environment variable. These routes are intended for backend administration and the admin dashboard. They are not user-scoped -- they can access data across all users.
@@ -1693,6 +2334,30 @@ curl -X POST http://localhost:3000/internal/yield/snapshots/run \
 
 ---
 
+## Scheduled Tasks (Trigger.dev)
+
+Three background processing pipelines run automatically via [Trigger.dev](https://trigger.dev) scheduled tasks. These tasks call the same Effect service methods that the internal admin endpoints use, but without requiring an HTTP request.
+
+| Task | Schedule | Service method | What it does |
+|------|----------|----------------|-------------|
+| `process-due-jobs` | Every 1 minute | `JobberService.processDueJobs()` | Finds pending jobs with `nextRunAt <= now`, executes them, and reschedules. |
+| `process-due-payments` | Every 5 minutes | `RecurringPaymentService.processDuePayments()` | Finds active recurring payment schedules with `nextExecutionAt <= now`, executes each, records results, and reschedules. |
+| `snapshot-yield-positions` | Every hour (on the hour) | `YieldService.snapshotAllActivePositions()` | Reads accrued yield from on-chain for all active positions, calculates APY, and stores snapshots. |
+
+### Manual trigger endpoints
+
+The scheduled tasks do not replace the existing internal admin endpoints. These endpoints remain available as manual fallbacks and are useful for debugging or forcing an immediate run:
+
+| Task | Manual endpoint |
+|------|----------------|
+| `process-due-jobs` | `POST /internal/jobs/process` |
+| `process-due-payments` | `POST /internal/recurring-payments/process` |
+| `snapshot-yield-positions` | `POST /internal/yield/snapshots/run` |
+
+All three manual endpoints require the `X-Admin-Key` header. See the corresponding sections under [Internal API](#internal-api) for request and response details.
+
+---
+
 ## Type Reference
 
 ### Wallet
@@ -1918,5 +2583,85 @@ curl -X POST http://localhost:3000/internal/yield/snapshots/run \
   totalYield: string; // arbitrary precision
   averageApy: string; // e.g. "5.0000"
   positionCount: number;
+}
+```
+
+### ApprovalResult
+
+```typescript
+{
+  approval: {
+    to: string;
+    from: string;
+    data: string;
+    value: string;
+    chainId: number;
+  } | null;
+}
+```
+
+### QuoteResponse
+
+```typescript
+{
+  routing: string;
+  quote: {
+    input: { token: string; amount: string };
+    output: { token: string; amount: string };
+    slippage: number;
+    gasFee: string;
+    gasFeeUSD: string;
+    gasUseEstimate: string;
+  };
+  permitData?: Record<string, unknown> | null;
+}
+```
+
+### UniswapSwapResult
+
+```typescript
+{
+  approvalTxId?: string;      // only present when approval was needed
+  swapTxId: string;
+  swapTxHash: string | null;
+  quote: {
+    routing: string;
+    input: { token: string; amount: string };
+    output: { token: string; amount: string };
+    gasFeeUSD: string;
+  };
+}
+```
+
+### PretiumTransaction
+
+```typescript
+{
+  id: string;
+  userId: string;
+  walletId: string;
+  countryCode: string;
+  fiatCurrency: string;
+  usdcAmount: string;
+  fiatAmount: string;
+  exchangeRate: string;
+  fee: string | null;
+  paymentType: "MOBILE" | "BUY_GOODS" | "PAYBILL" | "BANK_TRANSFER";
+  status: "pending" | "processing" | "completed" | "failed" | "reversed";
+  onChainTxHash: string;
+  pretiumTransactionCode: string | null;
+  pretiumReceiptNumber: string | null;
+  phoneNumber: string | null;
+  mobileNetwork: string | null;
+  accountNumber: string | null;
+  bankCode: string | null;
+  bankName: string | null;
+  accountName: string | null;
+  failureReason: string | null;
+  callbackUrl: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string; // ISO timestamp
+  updatedAt: string; // ISO timestamp
+  completedAt: string | null; // ISO timestamp
 }
 ```

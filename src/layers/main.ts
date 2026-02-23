@@ -15,6 +15,9 @@ import { OnboardingServiceLive } from "../services/onboarding/onboarding-service
 import { RecurringPaymentServiceLive } from "../services/recurring-payment/recurring-payment-service.js";
 import { OfframpAdapterRegistryLive } from "../services/offramp/index.js";
 import { YieldServiceLive } from "../services/yield/yield-service.js";
+import { PretiumServiceLive } from "../services/pretium/pretium-service.js";
+import { ExchangeRateServiceLive } from "../services/pretium/exchange-rate-service.js";
+import { UniswapServiceLive } from "../services/uniswap/uniswap-service.js";
 
 const ConfigLayer = ConfigLive;
 
@@ -83,6 +86,18 @@ const YieldServiceLayer = YieldServiceLive.pipe(
   Layer.provide(ConfigLayer)
 );
 
+const PretiumServiceLayer = PretiumServiceLive.pipe(
+  Layer.provide(ConfigLayer)
+);
+
+const ExchangeRateServiceLayer = ExchangeRateServiceLive.pipe(
+  Layer.provide(ConfigLayer)
+);
+
+const UniswapServiceLayer = UniswapServiceLive.pipe(
+  Layer.provide(ConfigLayer)
+);
+
 export const MainLayer = Layer.mergeAll(
   ConfigLayer,
   DatabaseLayer,
@@ -99,5 +114,8 @@ export const MainLayer = Layer.mergeAll(
   OnboardingServiceLayer,
   RecurringPaymentServiceLayer,
   OfframpAdapterRegistryLayer,
-  YieldServiceLayer
+  YieldServiceLayer,
+  PretiumServiceLayer,
+  ExchangeRateServiceLayer,
+  UniswapServiceLayer
 );

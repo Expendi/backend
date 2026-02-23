@@ -73,6 +73,9 @@ graph TD
     Onboarding["OnboardingService<br/>(user onboarding + profiles)"]
     RP["RecurringPaymentService<br/>(payment schedules + execution)"]
     Offramp["OfframpAdapterRegistry<br/>(Moonpay, Bridge, Transak)"]
+    Pretium["PretiumService<br/>(offramp + validation)"]
+    ExRate["ExchangeRateService<br/>(rates + conversion)"]
+    Uniswap["UniswapService<br/>(Uniswap Trading API)"]
 
     DB --> Config
     Privy --> Config
@@ -96,6 +99,9 @@ graph TD
     RP --> TxSvc
     RP --> Config
     RP --> Offramp
+    Pretium --> Config
+    ExRate --> Config
+    Uniswap --> Config
 ```
 
 Arrows point from a service to its dependency. For example, `WalletService` depends on both `PrivyService` and `DatabaseService`.
@@ -104,7 +110,7 @@ Arrows point from a service to its dependency. For example, `WalletService` depe
 
 | Service | File | Purpose |
 |---------|------|---------|
-| `ConfigService` | `src/config.ts` | Reads `DATABASE_URL`, `PRIVY_APP_ID`, `PRIVY_APP_SECRET`, `COINMARKETCAP_API_KEY`, `ADMIN_API_KEY`, `DEFAULT_CHAIN_ID`, and `PORT` from environment variables using Effect's `Config` module. `DEFAULT_CHAIN_ID` defaults to `1` (Ethereum Mainnet) when not set. |
+| `ConfigService` | `src/config.ts` | Reads `DATABASE_URL`, `PRIVY_APP_ID`, `PRIVY_APP_SECRET`, `COINMARKETCAP_API_KEY`, `ADMIN_API_KEY`, `DEFAULT_CHAIN_ID`, `PRETIUM_API_KEY`, `PRETIUM_BASE_URI`, `UNISWAP_API_KEY`, and `PORT` from environment variables using Effect's `Config` module. `DEFAULT_CHAIN_ID` defaults to `1` (Ethereum Mainnet) when not set. |
 | `DatabaseService` | `src/db/client.ts` | Creates a `pg.Pool` and a Drizzle ORM instance bound to the full schema. Exposes `{ db, pool }`. |
 | `PrivyService` | `src/services/wallet/privy-layer.ts` | Initializes the Privy Node SDK client. Exposes `{ client }`. |
 | `WalletService` | `src/services/wallet/wallet-service-live.ts` | Creates wallets via Privy, persists them to the `wallets` table, and returns `WalletInstance` objects. Supports `createUserWallet`, `createServerWallet`, `createAgentWallet`, and `getWallet`. |
@@ -118,7 +124,10 @@ Arrows point from a service to its dependency. For example, `WalletService` depe
 | `HeartbeatService` | `src/services/heartbeat/heartbeat-service.ts` | Reactive condition monitoring. Conditions are stored in an in-memory `Ref<Map>`. Supports three condition types: `balance_threshold`, `price_trigger`, and `block_event`. When a condition triggers, it executes an action (currently: submit a raw transaction). |
 | `OnboardingService` | `src/services/onboarding/onboarding-service.ts` | User onboarding and profile management. Creates a complete wallet set (user, server, agent) and a `user_profiles` record linking them. Provides `onboardUser` (idempotent), `getProfile`, `getProfileWithWallets`, and `isOnboarded`. |
 | `RecurringPaymentService` | `src/services/recurring-payment/recurring-payment-service.ts` | Manages recurring payment schedules with configurable frequency, payment types (`erc20_transfer`, `raw_transfer`, `contract_call`, `offramp`), retry limits, and start/end dates. Provides `createSchedule`, `pauseSchedule`, `resumeSchedule`, `cancelSchedule`, `executeSchedule`, `processDuePayments`, and `getExecutionHistory`. Execution records are stored in `recurring_payment_executions`. Offramp payments delegate to the `OfframpAdapterRegistry` for provider-specific conversion logic. |
-| `OfframpAdapterRegistry` | `src/services/offramp/offramp-registry.ts` | Resolves offramp provider adapters by name. Pre-registers adapters for Moonpay, Bridge, and Transak at construction time. Each adapter implements the `OfframpAdapter` interface providing `initiateOfframp`, `getOfframpStatus`, `getDepositAddress`, `getSupportedCurrencies`, and `estimateOfframp`. |
+| `OfframpAdapterRegistry` | `src/services/offramp/offramp-registry.ts` | Resolves offramp provider adapters by name. Pre-registers adapters for Moonpay, Bridge, Transak, and Pretium at construction time. Each adapter implements the `OfframpAdapter` interface providing `initiateOfframp`, `getOfframpStatus`, `getDepositAddress`, `getSupportedCurrencies`, and `estimateOfframp`. |
+| `PretiumService` | `src/services/pretium/pretium-service.ts` | Handles crypto-to-fiat disbursement via the Pretium API for 7 African countries (KE, NG, GH, UG, CD, MW, ET). Supports mobile money and bank transfers. Provides `disburse`, `getTransactionStatus`, `validatePhoneWithMno`, `validateBankAccount`, `getBanksForCountry`, and country/payment config lookups. |
+| `ExchangeRateService` | `src/services/pretium/exchange-rate-service.ts` | Fetches live exchange rates from the Pretium API with 5-minute caching. Provides `getExchangeRate`, `convertUsdcToFiat`, `convertFiatToUsdc`, and `clearCache`. |
+| `UniswapService` | `src/services/uniswap/uniswap-service.ts` | Wraps the [Uniswap Trading API](https://trade-api.gateway.uniswap.org/v1) for token swaps on Base (chain ID 8453). Provides `checkApproval`, `getQuote`, and `getSwapTransaction`. The service only handles HTTP communication with the Uniswap API -- route handlers in `src/routes/uniswap.ts` orchestrate the full swap flow by resolving wallet addresses from the database and submitting resulting transactions through `TransactionService.submitRawTransaction`. |
 
 ### Layer composition in MainLayer
 
@@ -150,6 +159,18 @@ const RecurringPaymentServiceLayer = RecurringPaymentServiceLive.pipe(
   Layer.provide(OfframpRegistryLayer)
 );
 
+const PretiumServiceLayer = PretiumServiceLive.pipe(
+  Layer.provide(ConfigLayer)
+);
+
+const ExchangeRateServiceLayer = ExchangeRateServiceLive.pipe(
+  Layer.provide(ConfigLayer)
+);
+
+const UniswapServiceLayer = UniswapServiceLive.pipe(
+  Layer.provide(ConfigLayer)
+);
+
 export const MainLayer = Layer.mergeAll(
   ConfigLayer,
   DatabaseLayer,
@@ -165,7 +186,10 @@ export const MainLayer = Layer.mergeAll(
   HeartbeatServiceLayer,
   OnboardingServiceLayer,
   RecurringPaymentServiceLayer,
-  OfframpRegistryLayer
+  OfframpRegistryLayer,
+  PretiumServiceLayer,
+  ExchangeRateServiceLayer,
+  UniswapServiceLayer
 );
 ```
 
@@ -263,6 +287,25 @@ GET /health                  # No auth -- health check
   POST /api/recurring-payments/:id/resume  # Resume schedule (ownership verified)
   POST /api/recurring-payments/:id/cancel  # Cancel schedule (ownership verified)
   GET /api/recurring-payments/:id/executions  # Execution history (ownership verified)
+  GET /api/pretium/countries              # Supported countries
+  GET /api/pretium/countries/:code        # Country payment config
+  GET /api/pretium/exchange-rate/:currency # Live exchange rate
+  POST /api/pretium/convert/usdc-to-fiat  # Currency conversion
+  POST /api/pretium/convert/fiat-to-usdc  # Currency conversion
+  POST /api/pretium/validate/phone        # MNO name lookup
+  POST /api/pretium/validate/bank-account # Bank account lookup
+  GET /api/pretium/banks/:country         # Bank list (NG, KE)
+  GET /api/pretium/settlement-address     # USDC deposit address
+  POST /api/pretium/offramp               # Initiate offramp
+  GET /api/pretium/offramp                # List user's offramps
+  GET /api/pretium/offramp/:id            # Get offramp details
+  POST /api/pretium/offramp/:id/refresh   # Poll for status update
+  POST /api/uniswap/check-approval       # Check token approval for swap
+  POST /api/uniswap/quote                # Get swap quote (no execution)
+  POST /api/uniswap/swap                 # Execute full swap (approval + swap)
+
+/webhooks/*                 # No auth -- payment provider callbacks
+  POST /webhooks/pretium    # Pretium payment status callback
 
 /internal/*                  # Admin key (X-Admin-Key header)
   GET /internal/wallets                    # All wallets (unfiltered)
@@ -388,13 +431,16 @@ app.post("/some-action", (c) =>
 );
 ```
 
-The `runtime` parameter is a `ManagedRuntime` created once at application startup in `src/index.ts`:
+The `runtime` parameter is a `ManagedRuntime` exported from `src/runtime.ts`:
 
 ```typescript
-const runtime = ManagedRuntime.make(MainLayer);
+import { ManagedRuntime } from "effect";
+import { MainLayer } from "./layers/main.js";
+
+export const runtime = ManagedRuntime.make(MainLayer);
 ```
 
-This runtime is shared across all route handlers. It initializes all services (database connections, Privy client, etc.) lazily on first use and keeps them alive for the lifetime of the process.
+This runtime is shared across both the Hono route handlers and the Trigger.dev scheduled tasks. It initializes all services (database connections, Privy client, etc.) lazily on first use and keeps them alive for the lifetime of the process. See [Scheduled Tasks (Trigger.dev)](#scheduled-tasks-triggerdev) for how the same runtime is reused by background task workers.
 
 ## Contract Connector System
 
@@ -472,6 +518,11 @@ export class RecurringPaymentError extends Data.TaggedError("RecurringPaymentErr
 export class OfframpError extends Data.TaggedError("OfframpError")<{
   readonly message: string;
   readonly provider: string;
+  readonly cause?: unknown;
+}> {}
+
+export class UniswapError extends Data.TaggedError("UniswapError")<{
+  readonly message: string;
   readonly cause?: unknown;
 }> {}
 ```
@@ -624,6 +675,118 @@ The admin dashboard communicates exclusively through the `/internal/*` API route
 | Profiles | `/profiles` | `GET /internal/profiles`, `GET /internal/profiles/:privyUserId`, `POST /internal/profiles/:privyUserId/onboard` |
 | Impersonate | `/impersonate` | Queries user-specific data via `/internal/transactions/user/:userId`, `GET /internal/profiles/:privyUserId` |
 
+## Scheduled Tasks (Trigger.dev)
+
+Expendi uses [Trigger.dev](https://trigger.dev) to run automated scheduled jobs. Three processing pipelines that previously required manual HTTP calls to internal admin endpoints now run automatically on cron schedules.
+
+### Shared runtime
+
+The `ManagedRuntime` instance in `src/runtime.ts` is the single entry point for running Effect programs. Both the Hono HTTP server (`src/index.ts`) and the Trigger.dev task workers (`trigger/*.ts`) import the same module:
+
+```
+src/runtime.ts          <-- shared ManagedRuntime (MainLayer)
+  |
+  +-- src/index.ts      <-- Hono server imports runtime for route handlers
+  |
+  +-- trigger/*.ts      <-- Trigger.dev tasks import runtime for scheduled work
+```
+
+Each Trigger.dev task worker process creates its own runtime instance when it boots, giving it full access to `DatabaseService`, `TransactionService`, `JobberService`, `RecurringPaymentService`, `YieldService`, and every other service in the dependency graph. There is no HTTP roundtrip between the task worker and the Hono server -- the task runs the Effect program directly against the database.
+
+### Scheduled tasks
+
+| Task file | Task ID | Cron schedule | Service call | Description |
+|-----------|---------|---------------|--------------|-------------|
+| `trigger/process-due-jobs.ts` | `process-due-jobs` | `* * * * *` (every minute) | `JobberService.processDueJobs()` | Finds jobs with `status = "pending"` and `nextRunAt <= now`, executes them via `TransactionService`, then reschedules. |
+| `trigger/process-due-payments.ts` | `process-due-payments` | `*/5 * * * *` (every 5 minutes) | `RecurringPaymentService.processDuePayments()` | Finds active recurring payment schedules with `nextExecutionAt <= now`, executes each one, records the result, and reschedules. |
+| `trigger/snapshot-yield.ts` | `snapshot-yield-positions` | `0 * * * *` (every hour, on the hour) | `YieldService.snapshotAllActivePositions()` | Reads accrued yield from on-chain for all active positions, calculates APY, and stores yield snapshots. |
+
+Each task follows the same pattern:
+
+```typescript
+import { schedules } from "@trigger.dev/sdk";
+import { Effect } from "effect";
+import { runtime } from "../src/runtime.js";
+import { SomeService } from "../src/services/some/some-service.js";
+
+export const myTask = schedules.task({
+  id: "my-task-id",
+  cron: "*/5 * * * *",
+  run: async (payload) => {
+    const result = await runtime.runPromise(
+      Effect.gen(function* () {
+        const service = yield* SomeService;
+        return yield* service.someMethod();
+      })
+    );
+    return { count: result.length, timestamp: payload.timestamp };
+  },
+});
+```
+
+### Manual fallback endpoints
+
+The internal admin endpoints that these tasks automate still exist and can be called manually for debugging, one-off processing, or when Trigger.dev is unavailable:
+
+| Scheduled task | Manual endpoint |
+|----------------|----------------|
+| `process-due-jobs` | `POST /internal/jobs/process` |
+| `process-due-payments` | `POST /internal/recurring-payments/process` |
+| `snapshot-yield-positions` | `POST /internal/yield/snapshots/run` |
+
+### Directory structure
+
+```
+trigger/
+  process-due-jobs.ts        # Cron: every 1 minute
+  process-due-payments.ts    # Cron: every 5 minutes
+  snapshot-yield.ts          # Cron: every hour
+
+trigger.config.ts            # Trigger.dev project configuration
+```
+
+The `trigger.config.ts` at the project root configures the Trigger.dev project reference, task directories, runtime, and maximum task duration (300 seconds):
+
+```typescript
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: process.env.TRIGGER_PROJECT_REF ?? "your-project-ref",
+  dirs: ["./trigger"],
+  runtime: "node",
+  maxDuration: 300,
+});
+```
+
+### Environment variables
+
+Two additional environment variables are required for Trigger.dev:
+
+| Variable | Description |
+|----------|-------------|
+| `TRIGGER_SECRET_KEY` | API key from the Trigger.dev dashboard. Used by the SDK to authenticate with the Trigger.dev platform. |
+| `TRIGGER_PROJECT_REF` | Project reference from the Trigger.dev dashboard. Identifies which project the tasks belong to. |
+
+### Running locally
+
+Run the Trigger.dev dev server alongside the Hono backend:
+
+```bash
+# Terminal 1 -- Hono backend
+pnpm dev
+
+# Terminal 2 -- Trigger.dev task runner (connects to Trigger.dev cloud, executes tasks locally)
+pnpm trigger:dev
+```
+
+The `trigger:dev` command starts a local task worker that registers the scheduled tasks with Trigger.dev and executes them on the configured cron schedules. Both processes share the same `src/runtime.ts` module, so they use identical service implementations and connect to the same database.
+
+To deploy tasks to the Trigger.dev cloud for production:
+
+```bash
+pnpm trigger:deploy
+```
+
 ## Database Schema
 
 Expendi uses Drizzle ORM with PostgreSQL. The schema is defined in `src/db/schema/` using Drizzle's TypeScript-first approach.
@@ -734,18 +897,92 @@ erDiagram
         timestamp executed_at
     }
 
+    pretium_transactions {
+        text id PK
+        text user_id
+        text wallet_id FK
+        text country_code
+        text fiat_currency
+        text usdc_amount
+        text fiat_amount
+        text exchange_rate
+        text fee
+        pretium_payment_type payment_type "MOBILE | BUY_GOODS | PAYBILL | BANK_TRANSFER"
+        pretium_transaction_status status "pending | processing | completed | failed | reversed"
+        text on_chain_tx_hash
+        text pretium_transaction_code
+        text pretium_receipt_number
+        text phone_number
+        text mobile_network
+        text account_number
+        text bank_code
+        text bank_name
+        text account_name
+        text failure_reason
+        text callback_url
+        jsonb metadata
+        timestamp created_at
+        timestamp updated_at
+        timestamp completed_at
+    }
+
+    yield_vaults {
+        text id PK
+        text vault_address
+        integer chain_id
+        text name
+        text description
+        text underlying_token
+        text underlying_symbol
+        integer underlying_decimals
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    yield_positions {
+        text id PK
+        text user_id
+        text wallet_id FK
+        text vault_id FK
+        text on_chain_lock_id
+        text principal_amount
+        text shares
+        timestamp unlock_time
+        text label
+        yield_position_status status "active | matured | withdrawn | emergency"
+        text transaction_id FK
+        integer chain_id
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    yield_snapshots {
+        text id PK
+        text position_id FK
+        text current_assets
+        text accrued_yield
+        numeric estimated_apy
+        timestamp snapshot_at
+    }
+
     wallets ||--o{ transactions : "has many"
     wallets ||--o{ recurring_payments : "has many"
+    wallets ||--o{ pretium_transactions : "has many"
     recurring_payments ||--o{ recurring_payment_executions : "has many"
     transaction_categories ||--o{ transactions : "has many"
     wallets ||--o| user_profiles : "user_wallet"
     wallets ||--o| user_profiles : "server_wallet"
     wallets ||--o| user_profiles : "agent_wallet"
+    yield_vaults ||--o{ yield_positions : "has many"
+    wallets ||--o{ yield_positions : "has many"
+    yield_positions ||--o{ yield_snapshots : "has many"
+    transactions ||--o| yield_positions : "created by"
 ```
 
 ### Enums
 
-Six PostgreSQL enums are defined in `src/db/schema/enums.ts`:
+Nine PostgreSQL enums are defined in `src/db/schema/enums.ts`:
 
 | Enum | Values |
 |------|--------|
@@ -755,6 +992,9 @@ Six PostgreSQL enums are defined in `src/db/schema/enums.ts`:
 | `recurring_payment_status` | `active`, `paused`, `cancelled`, `completed`, `failed` |
 | `recurring_payment_type` | `erc20_transfer`, `raw_transfer`, `contract_call`, `offramp` |
 | `execution_status` | `success`, `failed` |
+| `pretium_transaction_status` | `pending`, `processing`, `completed`, `failed`, `reversed` |
+| `pretium_payment_type` | `MOBILE`, `BUY_GOODS`, `PAYBILL`, `BANK_TRANSFER` |
+| `yield_position_status` | `active`, `matured`, `withdrawn`, `emergency` |
 
 ### Table details
 
@@ -771,6 +1011,14 @@ Six PostgreSQL enums are defined in `src/db/schema/enums.ts`:
 **recurring_payments** -- User-facing recurring payment schedules. Each record defines a payment type (`erc20_transfer`, `raw_transfer`, `contract_call`, or `offramp`), amount, recipient, wallet, chain, and frequency. The `frequency` field uses the same duration format as jobs (`5m`, `1h`, `1d`, `7d`). Active schedules are processed by `RecurringPaymentService.processDuePayments`, which finds schedules with `status = "active"` and `next_execution_at <= now()`, executes each one, and reschedules. If a schedule accumulates more consecutive failures than `max_retries`, it is automatically paused. Offramp-specific fields (`is_offramp`, `offramp_currency`, `offramp_fiat_amount`, `offramp_provider`, `offramp_destination_id`, `offramp_metadata`) are populated when `payment_type = "offramp"` and store the provider configuration for fiat off-ramp conversions.
 
 **recurring_payment_executions** -- Execution log for recurring payments. Each row records a single execution attempt, linking back to the `recurring_payments` schedule and optionally to a `transactions` record. The `status` column is either `"success"` or `"failed"`, and the `error` column stores the failure message when applicable.
+
+**pretium_transactions** -- Records crypto-to-fiat offramp disbursements via the Pretium API. Each row tracks a single offramp: the USDC amount sent, the fiat amount disbursed, the exchange rate at the time, the recipient details (phone number for mobile money, or bank account for bank transfers), and the current status from Pretium. The `on_chain_tx_hash` column stores the transaction hash of the USDC transfer to the settlement address. The `pretium_transaction_code` and `pretium_receipt_number` columns are populated as the disbursement progresses through Pretium's pipeline. The `wallet_id` references the wallet used to send USDC.
+
+**yield_vaults** -- Represents on-chain yield vaults where users can deposit tokens. Each vault has an on-chain contract address, a chain ID, a human-readable name, and metadata about the underlying token (address, symbol, decimals). The `is_active` flag controls whether the vault accepts new deposits. Vaults are managed through the internal admin API and can be synced from on-chain data.
+
+**yield_positions** -- Represents a user's deposit into a yield vault. Created when a user locks tokens via the YieldTimeLock contract. The `on_chain_lock_id` stores the lock identifier returned by the contract. The `principal_amount` and `shares` track the original deposit. The `unlock_time` determines when the lock expires and the position can be withdrawn. Status progresses from `active` to `matured` (when unlock time passes) to `withdrawn` (after successful withdrawal). The `emergency` status is reserved for forced unlocks.
+
+**yield_snapshots** -- Periodic snapshots of yield accrual for each active position. Created hourly by the `snapshot-yield-positions` scheduled task. Each snapshot records the current total assets, accrued yield since deposit, and an estimated annualized percentage yield (APY). Used to render yield history charts and portfolio summaries.
 
 ### Migrations
 
