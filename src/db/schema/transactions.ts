@@ -6,11 +6,11 @@ import {
   bigint,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { walletTypeEnum, transactionStatusEnum } from "./enums";
-import { wallets } from "./wallets";
-import { transactionCategories } from "./transaction-categories";
+import { walletTypeEnum, transactionStatusEnum } from "./enums.js";
+import { wallets } from "./wallets.js";
+import { transactionCategories } from "./transaction-categories.js";
 
-export { transactionStatusEnum } from "./enums";
+export { transactionStatusEnum } from "./enums.js";
 
 export const transactions = pgTable("transactions", {
   id: text("id")
