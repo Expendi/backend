@@ -20,6 +20,16 @@ export type AuthVariables = {
  */
 export function privyAuthMiddleware(privyClient: PrivyClient) {
   return createMiddleware<{ Variables: AuthVariables }>(async (c, next) => {
+    // Dev bypass: allow X-Dev-User-Id header in development mode
+    if (process.env.NODE_ENV === "development") {
+      const devUserId = c.req.header("X-Dev-User-Id");
+      if (devUserId) {
+        c.set("userId", devUserId);
+        await next();
+        return;
+      }
+    }
+
     const authorization = c.req.header("Authorization");
 
     if (!authorization || !authorization.startsWith("Bearer ")) {

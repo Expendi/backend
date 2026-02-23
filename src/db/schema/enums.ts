@@ -47,3 +47,15 @@ export const yieldPositionStatusEnum = pgEnum("yield_position_status", [
   "withdrawn",
   "emergency",
 ]);
+
+export const pretiumTransactionStatusEnum = pgEnum(
+  "pretium_transaction_status",
+  ["pending", "processing", "completed", "failed", "reversed"]
+);
+
+export const pretiumPaymentTypeEnum = pgEnum("pretium_payment_type", [
+  "MOBILE",
+  "BUY_GOODS",
+  "PAYBILL",
+  "BANK_TRANSFER",
+]);

@@ -64,3 +64,12 @@ export {
   type YieldSnapshot,
   type NewYieldSnapshot,
 } from "./yield.js";
+
+export {
+  pretiumTransactions,
+  pretiumTransactionsRelations,
+  pretiumTransactionStatusEnum,
+  pretiumPaymentTypeEnum,
+  type PretiumTransaction,
+  type NewPretiumTransaction,
+} from "./pretium-transactions.js";

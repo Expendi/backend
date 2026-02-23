@@ -1,10 +1,11 @@
-import { Effect, Context, Layer, Data } from "effect";
+import { Effect, Context, Layer } from "effect";
 import type { OfframpAdapter } from "./offramp-adapter.js";
 import { OfframpError } from "./offramp-adapter.js";
 import {
   createMoonpayAdapter,
   createBridgeAdapter,
   createTransakAdapter,
+  createPretiumAdapter,
 } from "./adapters/index.js";
 
 // ── Service interface ────────────────────────────────────────────────
@@ -36,10 +37,12 @@ export const OfframpAdapterRegistryLive: Layer.Layer<
   const moonpay = createMoonpayAdapter();
   const bridge = createBridgeAdapter();
   const transak = createTransakAdapter();
+  const pretium = createPretiumAdapter();
 
   adapters.set(moonpay.providerName, moonpay);
   adapters.set(bridge.providerName, bridge);
   adapters.set(transak.providerName, transak);
+  adapters.set(pretium.providerName, pretium);
 
   return {
     getAdapter: (providerName: string) =>

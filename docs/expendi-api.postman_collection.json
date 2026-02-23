@@ -8,7 +8,7 @@
 	"variable": [
 		{
 			"key": "baseUrl",
-			"value": "http://localhost:3000",
+			"value": "http://localhost:8080",
 			"type": "string"
 		},
 		{
@@ -18,7 +18,7 @@
 		},
 		{
 			"key": "adminApiKey",
-			"value": "YOUR_ADMIN_API_KEY",
+			"value": "test",
 			"type": "string"
 		},
 		{
@@ -49,6 +49,21 @@
 		{
 			"key": "scheduleId",
 			"value": "e2d4f6a8-b0c2-4e6a-8f0a-1c3d5e7f9b0d",
+			"type": "string"
+		},
+		{
+			"key": "vaultId",
+			"value": "a1b2c3d4-5678-90ab-cdef-1234567890ab",
+			"type": "string"
+		},
+		{
+			"key": "positionId",
+			"value": "b2c3d4e5-6789-01ab-cdef-234567890abc",
+			"type": "string"
+		},
+		{
+			"key": "pretiumTransactionId",
+			"value": "d4e5f6a7-8901-23bc-def0-456789012345",
 			"type": "string"
 		}
 	],
@@ -806,6 +821,586 @@
 						}
 					],
 					"description": "Public recurring payment endpoints. Requires Privy auth. Users can create, manage, and view execution history for their own recurring payment schedules. Supports ERC-20 transfers, raw transfers, contract calls, and offramp (crypto-to-fiat) payments."
+				},
+				{
+					"name": "Yield",
+					"item": [
+						{
+							"name": "List Active Vaults",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/yield/vaults?chainId=1",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "yield", "vaults"],
+									"query": [
+										{
+											"key": "chainId",
+											"value": "1",
+											"description": "Optional. Filter vaults by chain ID."
+										}
+									]
+								},
+								"description": "Retrieves all active yield vaults. Optionally filter by chain ID."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Vault by ID",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/yield/vaults/{{vaultId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "yield", "vaults", "{{vaultId}}"]
+								},
+								"description": "Retrieves a single yield vault by its UUID. Returns 400 if not found."
+							},
+							"response": []
+						},
+						{
+							"name": "Create Yield Position",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"walletType\": \"server\",\n  \"vaultId\": \"a1b2c3d4-5678-90ab-cdef-1234567890ab\",\n  \"amount\": \"1000000\",\n  \"unlockTime\": 1735689600,\n  \"label\": \"USDC yield lock\",\n  \"chainId\": 1\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/yield/positions",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "yield", "positions"]
+								},
+								"description": "Creates a new yield position (lock) in a vault. The walletType is resolved from the user's onboarding profile if walletId is not provided. The chainId defaults to DEFAULT_CHAIN_ID if not specified."
+							},
+							"response": []
+						},
+						{
+							"name": "List My Positions",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/yield/positions",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "yield", "positions"]
+								},
+								"description": "Retrieves all yield positions belonging to the authenticated user."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Position by ID",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/yield/positions/{{positionId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "yield", "positions", "{{positionId}}"]
+								},
+								"description": "Retrieves a single yield position by its UUID. The authenticated user must own the position."
+							},
+							"response": []
+						},
+						{
+							"name": "Withdraw Position",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"walletType\": \"server\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/yield/positions/{{positionId}}/withdraw",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "yield", "positions", "{{positionId}}", "withdraw"]
+								},
+								"description": "Withdraws a matured yield position. The authenticated user must own the position. Optionally specify walletId or walletType for the withdrawal destination; defaults to the wallet used for the original deposit."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Position Yield History",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/yield/positions/{{positionId}}/history?limit=50",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "yield", "positions", "{{positionId}}", "history"],
+									"query": [
+										{
+											"key": "limit",
+											"value": "50",
+											"description": "Maximum number of snapshot records to return. Defaults to 50."
+										}
+									]
+								},
+								"description": "Retrieves the yield snapshot history for a position. Each snapshot records the position's value at a point in time. The authenticated user must own the position."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Portfolio Summary",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/yield/portfolio",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "yield", "portfolio"]
+								},
+								"description": "Retrieves a portfolio summary for the authenticated user, including total deposited, total yield earned, and weighted average APY across all active positions."
+							},
+							"response": []
+						}
+					],
+					"description": "Public yield endpoints. Requires Privy auth. Users can browse vaults, create positions (locks), withdraw matured positions, and view yield history and portfolio summaries."
+				},
+				{
+					"name": "Pretium",
+					"item": [
+						{
+							"name": "List Supported Countries",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/pretium/countries",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "pretium", "countries"]
+								},
+								"description": "Lists all countries supported by the Pretium offramp service, including their payment configurations, supported mobile networks, and currency codes. Currently supports KE, NG, GH, UG, CD, MW, and ET."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Country Payment Config",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/pretium/countries/KE",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "pretium", "countries", "KE"]
+								},
+								"description": "Retrieves the payment configuration for a specific country, including supported payment types, mobile networks, and currency. Pass the ISO 3166-1 alpha-2 country code as a path parameter."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Exchange Rate",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/pretium/exchange-rate/KES",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "pretium", "exchange-rate", "KES"]
+								},
+								"description": "Fetches the current USDC-to-fiat exchange rate for the specified currency code. Rates are cached for 5 minutes. Supported currencies include KES, NGN, GHS, UGX, CDF, MWK, and ETB."
+							},
+							"response": []
+						},
+						{
+							"name": "Convert USDC to Fiat",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"usdcAmount\": 100,\n  \"currency\": \"KES\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/pretium/convert/usdc-to-fiat",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "pretium", "convert", "usdc-to-fiat"]
+								},
+								"description": "Converts a USDC amount to its equivalent fiat value using the current live exchange rate from the Pretium API."
+							},
+							"response": []
+						},
+						{
+							"name": "Convert Fiat to USDC",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"fiatAmount\": 12950,\n  \"currency\": \"KES\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/pretium/convert/fiat-to-usdc",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "pretium", "convert", "fiat-to-usdc"]
+								},
+								"description": "Converts a fiat amount to its equivalent USDC value using the current live exchange rate from the Pretium API."
+							},
+							"response": []
+						},
+						{
+							"name": "Validate Phone Number",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"country\": \"KE\",\n  \"phoneNumber\": \"+254712345678\",\n  \"network\": \"SAFARICOM\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/pretium/validate/phone",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "pretium", "validate", "phone"]
+								},
+								"description": "Validates a phone number against the Pretium API and looks up the mobile network operator (MNO) name. Used to verify the recipient before initiating an offramp disbursement."
+							},
+							"response": []
+						},
+						{
+							"name": "Validate Bank Account",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"country\": \"NG\",\n  \"accountNumber\": \"0123456789\",\n  \"bankCode\": \"058\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/pretium/validate/bank-account",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "pretium", "validate", "bank-account"]
+								},
+								"description": "Validates a bank account number against the Pretium API and looks up the account holder name. Available for countries that support bank transfers (NG, KE)."
+							},
+							"response": []
+						},
+						{
+							"name": "List Banks for Country",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/pretium/banks/NG",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "pretium", "banks", "NG"]
+								},
+								"description": "Retrieves the list of supported banks for a country. Currently available for Nigeria (NG) and Kenya (KE). Returns bank codes and names needed for bank transfer offramps."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Settlement Address",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/pretium/settlement-address",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "pretium", "settlement-address"]
+								},
+								"description": "Returns the USDC deposit address where funds must be sent before initiating an offramp disbursement. The on-chain transfer to this address must be completed and its transaction hash included in the offramp request."
+							},
+							"response": []
+						},
+						{
+							"name": "Initiate Offramp",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"country\": \"KE\",\n  \"walletId\": \"f47ac10b-58cc-4372-a567-0e02b2c3d479\",\n  \"usdcAmount\": 100,\n  \"phoneNumber\": \"+254712345678\",\n  \"mobileNetwork\": \"SAFARICOM\",\n  \"transactionHash\": \"0xabc123def456789012345678901234567890abcdef1234567890abcdef12345678\",\n  \"paymentType\": \"MOBILE\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/pretium/offramp",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "pretium", "offramp"]
+								},
+								"description": "Initiates a crypto-to-fiat offramp disbursement via Pretium. The USDC must already have been transferred to the settlement address and the on-chain transaction hash must be provided. Supports mobile money (MOBILE, BUY_GOODS, PAYBILL) and bank transfer (BANK_TRANSFER) payment types."
+							},
+							"response": []
+						},
+						{
+							"name": "List My Offramp Transactions",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/pretium/offramp?limit=50&offset=0",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "pretium", "offramp"],
+									"query": [
+										{
+											"key": "limit",
+											"value": "50",
+											"description": "Maximum number of transactions to return. Defaults to 50."
+										},
+										{
+											"key": "offset",
+											"value": "0",
+											"description": "Number of transactions to skip for pagination. Defaults to 0."
+										}
+									]
+								},
+								"description": "Retrieves the authenticated user's Pretium offramp transactions with pagination, ordered by creation date."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Offramp Transaction by ID",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/pretium/offramp/{{pretiumTransactionId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "pretium", "offramp", "{{pretiumTransactionId}}"]
+								},
+								"description": "Retrieves a single Pretium offramp transaction by its UUID. Only returned if the authenticated user owns the transaction."
+							},
+							"response": []
+						},
+						{
+							"name": "Refresh Offramp Status",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/pretium/offramp/{{pretiumTransactionId}}/refresh",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "pretium", "offramp", "{{pretiumTransactionId}}", "refresh"]
+								},
+								"description": "Polls the Pretium API for the latest status of an offramp transaction and updates the local record. Use this to manually check for status changes without waiting for the webhook callback."
+							},
+							"response": []
+						}
+					],
+					"description": "Pretium offramp endpoints for crypto-to-fiat disbursements across African countries. Requires Privy auth. Supports mobile money (M-Pesa, MTN, Airtel) and bank transfers in KE, NG, GH, UG, CD, MW, and ET."
+				},
+				{
+					"name": "Uniswap",
+					"item": [
+						{
+							"name": "Check Token Approval",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"walletId\": \"{{walletId}}\",\n  \"tokenIn\": \"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\",\n  \"amount\": \"1000000\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/uniswap/check-approval",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "uniswap", "check-approval"]
+								},
+								"description": "Checks whether a token approval transaction is required before performing a swap on Uniswap. The wallet address is resolved from the database using the walletId. If the token already has sufficient allowance for the Uniswap Universal Router, the approval field in the response will be null. All checks are performed on Base (chain ID 8453)."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Swap Quote",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"walletId\": \"{{walletId}}\",\n  \"tokenIn\": \"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\",\n  \"tokenOut\": \"0x4200000000000000000000000000000000000006\",\n  \"amount\": \"1000000\",\n  \"type\": \"EXACT_INPUT\",\n  \"slippageTolerance\": 0.5\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/uniswap/quote",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "uniswap", "quote"]
+								},
+								"description": "Fetches a swap quote from the Uniswap Trading API without executing the swap. Returns routing information, expected input and output amounts, slippage, and estimated gas fees. The wallet address is resolved from the database. The type field defaults to EXACT_INPUT and slippageTolerance defaults to 0.5%. All quotes are for Base (chain ID 8453). Common Base token addresses: ETH (0x0000000000000000000000000000000000000000), WETH (0x4200000000000000000000000000000000000006), USDC (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913), USDbC (0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6Ca)."
+							},
+							"response": []
+						},
+						{
+							"name": "Execute Swap",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"walletId\": \"{{walletId}}\",\n  \"tokenIn\": \"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\",\n  \"tokenOut\": \"0x4200000000000000000000000000000000000006\",\n  \"amount\": \"1000000\",\n  \"type\": \"EXACT_INPUT\",\n  \"slippageTolerance\": 0.5\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/uniswap/swap",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "uniswap", "swap"]
+								},
+								"description": "Executes a full token swap on Uniswap via the Trading API. The endpoint orchestrates the complete flow: (1) resolve the wallet address from the database, (2) check if a token approval is needed, (3) submit the approval transaction if required, (4) fetch a fresh quote, (5) get the swap calldata, (6) submit the swap transaction. Both approval and swap transactions are recorded in the transactions table through the existing ledger system. The response includes the swap transaction ID and hash, an optional approval transaction ID (only present when approval was needed), and the quote details. All swaps execute on Base (chain ID 8453)."
+							},
+							"response": []
+						}
+					],
+					"description": "Uniswap token swap endpoints on Base (chain ID 8453). Requires Privy auth. Wraps the Uniswap Trading API for approval checks, quotes, and full swap execution. Swap transactions are recorded in the ledger through TransactionService."
 				}
 			],
 			"description": "Public API routes requiring Privy authentication via Authorization: Bearer <token> header. All operations are scoped to the authenticated user."
@@ -1316,9 +1911,193 @@
 						}
 					],
 					"description": "Admin profile management. Requires X-Admin-Key header. View all user profiles, look up specific profiles, and trigger onboarding on behalf of users."
+				},
+				{
+					"name": "Yield (Admin)",
+					"item": [
+						{
+							"name": "List All Vaults",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/internal/yield/vaults?chainId=1",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "yield", "vaults"],
+									"query": [
+										{
+											"key": "chainId",
+											"value": "1",
+											"description": "Optional. Filter vaults by chain ID."
+										}
+									]
+								},
+								"description": "Retrieves all yield vaults including inactive ones. Optionally filter by chain ID."
+							},
+							"response": []
+						},
+						{
+							"name": "Add Vault",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"vaultAddress\": \"0x1234567890abcdef1234567890abcdef12345678\",\n  \"chainId\": 1,\n  \"name\": \"USDC Vault\",\n  \"description\": \"High-yield USDC vault\",\n  \"underlyingToken\": \"0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48\",\n  \"underlyingSymbol\": \"USDC\",\n  \"underlyingDecimals\": 6\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/internal/yield/vaults",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "yield", "vaults"]
+								},
+								"description": "Adds a new yield vault to the system. Requires vault address, chain ID, and name at minimum."
+							},
+							"response": []
+						},
+						{
+							"name": "Deactivate Vault",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/internal/yield/vaults/{{vaultId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "yield", "vaults", "{{vaultId}}"]
+								},
+								"description": "Deactivates a yield vault. Deactivated vaults are no longer shown to users in the public API."
+							},
+							"response": []
+						},
+						{
+							"name": "Sync Vaults from Chain",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"chainId\": 1\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/internal/yield/vaults/sync",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "yield", "vaults", "sync"]
+								},
+								"description": "Triggers a sync of vault data from the blockchain for the specified chain ID. Updates vault metadata and APY information."
+							},
+							"response": []
+						},
+						{
+							"name": "List All Positions",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/internal/yield/positions?limit=50&offset=0",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "yield", "positions"],
+									"query": [
+										{
+											"key": "limit",
+											"value": "50",
+											"description": "Maximum number of positions to return. Defaults to 50."
+										},
+										{
+											"key": "offset",
+											"value": "0",
+											"description": "Number of positions to skip for pagination. Defaults to 0."
+										}
+									]
+								},
+								"description": "Retrieves a paginated list of all yield positions across all users."
+							},
+							"response": []
+						},
+						{
+							"name": "Trigger Yield Snapshots",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/internal/yield/snapshots/run",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "yield", "snapshots", "run"]
+								},
+								"description": "Triggers a yield snapshot for all active positions. Records the current value of each position for historical tracking. Returns the count of snapshots taken."
+							},
+							"response": []
+						}
+					],
+					"description": "Admin yield management. Requires X-Admin-Key header. Full access to vault management, position listing, and yield snapshot triggers."
 				}
 			],
 			"description": "Internal admin API routes requiring X-Admin-Key header. Full access to all data regardless of user ownership. Used by the admin dashboard."
+		},
+		{
+			"name": "Webhooks",
+			"item": [
+				{
+					"name": "Pretium Payment Callback",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"transaction_code\": \"PTX-123456\",\n  \"status\": \"completed\",\n  \"receipt_number\": \"RCP-789012\",\n  \"amount\": 12950,\n  \"currency_code\": \"KES\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/webhooks/pretium",
+							"host": ["{{baseUrl}}"],
+							"path": ["webhooks", "pretium"]
+						},
+						"description": "Receives payment status callbacks from the Pretium payment provider. No authentication required. Called by Pretium servers when a disbursement status changes (completed, failed, reversed). Updates the corresponding pretium_transactions record in the database."
+					},
+					"response": []
+				}
+			],
+			"description": "Webhook endpoints for payment provider callbacks. No authentication required. These endpoints are called by external payment providers to notify Expendi of status changes."
 		}
 	]
 }

@@ -88,7 +88,8 @@ describe("OfframpAdapterRegistry", () => {
       expect(result).toContain("moonpay");
       expect(result).toContain("bridge");
       expect(result).toContain("transak");
-      expect(result).toHaveLength(3);
+      expect(result).toContain("pretium");
+      expect(result).toHaveLength(4);
     });
   });
 

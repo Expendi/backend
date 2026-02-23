@@ -1,0 +1,930 @@
+# Expendi Backend API -- Frontend Integration Skill
+
+## 1. Overview
+
+Expendi is a crypto financial backend built with **Hono + Effect-TS** on Node.js, deployed on the **Base** chain (chain ID `8453`). It provides:
+
+- **Wallet management** -- three wallets per user (user, server, agent) via Privy embedded wallets
+- **Transaction execution** -- contract calls and raw transactions on Base
+- **Recurring payments** -- scheduled ERC-20 transfers, raw transfers, contract calls, and offramps
+- **Yield positions** -- deposit into ERC-4626 vaults with time-locked positions
+- **Offramp to African mobile money** -- via Pretium (Kenya, Nigeria, Ghana, Uganda, DR Congo, Malawi, Ethiopia)
+- **Token swaps** -- Uniswap V3 swaps on Base
+- **Transaction categories** -- user-defined and global categories for organizing transactions
+
+The backend base URL defaults to `http://localhost:3000` in development.
+
+---
+
+## 2. Authentication
+
+### Public API (`/api/*`) -- Privy Access Token
+
+All `/api/*` routes require a Privy access token:
+
+```
+Authorization: Bearer <privy-access-token>
+```
+
+The token is obtained from the Privy SDK after the user authenticates (email, social login, or wallet connect).
+
+### Development Bypass
+
+When the backend runs with `NODE_ENV=development`, you can skip real Privy auth by sending:
+
+```
+X-Dev-User-Id: <any-string-you-choose>
+```
+
+This sets the authenticated user ID to whatever string you provide. Useful for local development without Privy setup.
+
+### Admin API (`/internal/*`) -- API Key
+
+```
+X-Admin-Key: <admin-api-key>
+```
+
+The key matches the `ADMIN_API_KEY` environment variable on the backend. These routes are not for end-users.
+
+### Webhooks (`/webhooks/*`) -- No Auth
+
+Webhook endpoints accept POST requests without authentication. In production, protect with IP allowlisting.
+
+---
+
+## 3. Response Format
+
+All endpoints return consistent JSON shapes.
+
+**Success (HTTP 200 or 201):**
+```json
+{
+  "success": true,
+  "data": { ... }
+}
+```
+
+**Known/domain error (HTTP 400):**
+```json
+{
+  "success": false,
+  "error": {
+    "_tag": "ErrorType",
+    "message": "Human-readable description"
+  }
+}
+```
+
+**Authentication error (HTTP 401):**
+```json
+{ "error": "Unauthorized" }
+```
+
+**Forbidden (HTTP 403):**
+```json
+{ "error": "Forbidden" }
+```
+
+**Internal error (HTTP 500):**
+```json
+{
+  "success": false,
+  "error": {
+    "_tag": "InternalError",
+    "message": "..."
+  }
+}
+```
+
+---
+
+## 4. Onboarding Flow
+
+Users must be onboarded before using wallets, transactions, or any feature that requires a wallet. Onboarding is **idempotent** -- calling it multiple times for the same user returns the existing profile.
+
+1. Authenticate with Privy (get access token)
+2. `POST /api/onboard` with optional `{ "chainId": 8453 }` body
+3. Backend creates 3 Privy embedded wallets (user, server, agent) and a user profile
+4. Response includes the profile with wallet IDs and addresses
+5. Use wallet IDs in subsequent API calls (transactions, swaps, yield, etc.)
+
+```typescript
+// After Privy login:
+const res = await api.post("/api/onboard", { chainId: 8453 });
+const { profile, wallets } = res.data;
+// wallets.user.address  -- user's wallet address
+// wallets.server.address -- server-side wallet address
+// wallets.agent.address -- AI agent wallet address
+```
+
+---
+
+## 5. Complete Endpoint Reference
+
+### 5.1 Health and Discovery
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/` | None | Returns API name, version, and available endpoint groups |
+| GET | `/health` | None | Returns `{ "status": "ok", "timestamp": "..." }` |
+
+### 5.2 Onboarding and Profile
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| POST | `/api/onboard` | Privy | `{ chainId?: number }` | `{ profile: { id, privyUserId, userWalletId, serverWalletId, agentWalletId, createdAt, updatedAt }, wallets: { user: Wallet, server: Wallet, agent: Wallet } }` |
+| GET | `/api/profile` | Privy | -- | Full profile with wallet objects (id, type, privyWalletId, ownerId, address, chainId, createdAt) |
+| GET | `/api/profile/wallets` | Privy | -- | `{ user: "0x...", server: "0x...", agent: "0x..." }` (addresses only) |
+
+### 5.3 Wallets
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| GET | `/api/wallets` | Privy | -- | Array of user's wallets: `[{ id, type, privyWalletId, ownerId, address, chainId, createdAt }]` |
+| GET | `/api/wallets/:id` | Privy | -- | Single wallet object (must be owned by the authenticated user) |
+| POST | `/api/wallets/user` | Privy | -- | `{ address: "0x...", type: "user" }` |
+| POST | `/api/wallets/:id/sign` | Privy | `{ message: string }` | `{ signature: "0x..." }` |
+
+**Wallet object shape:**
+```typescript
+interface Wallet {
+  id: string;            // UUID
+  type: "user" | "server" | "agent";
+  privyWalletId: string;
+  ownerId: string;       // Privy user DID
+  address: string | null; // 0x address
+  chainId: string | null;
+  createdAt: string;     // ISO 8601
+}
+```
+
+### 5.4 Transactions
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| GET | `/api/transactions` | Privy | -- | Array of user's transactions |
+| GET | `/api/transactions/:id` | Privy | -- | Single transaction (must be owned by user) |
+| POST | `/api/transactions/contract` | Privy | See below | Transaction result with `id`, `txHash`, `status` |
+| POST | `/api/transactions/raw` | Privy | See below | Transaction result with `id`, `txHash`, `status` |
+
+**POST `/api/transactions/contract` body:**
+```typescript
+{
+  walletId?: string;        // Direct wallet ID (optional if walletType given)
+  walletType: "user" | "server" | "agent"; // Resolves wallet from profile
+  contractName: string;     // Registered contract name
+  chainId?: number;         // Defaults to backend default chain
+  method: string;           // Contract method name
+  args: unknown[];          // Method arguments
+  value?: string;           // Wei value as string (optional)
+  categoryId?: string;      // Transaction category UUID (optional)
+}
+```
+
+**POST `/api/transactions/raw` body:**
+```typescript
+{
+  walletId?: string;
+  walletType: "user" | "server" | "agent";
+  chainId?: number;
+  to: `0x${string}`;       // Destination address
+  data?: `0x${string}`;    // Calldata (optional)
+  value?: string;           // Wei value as string (optional)
+  categoryId?: string;
+}
+```
+
+**Transaction object shape:**
+```typescript
+interface Transaction {
+  id: string;
+  walletId: string;
+  walletType: "user" | "server" | "agent";
+  chainId: string;
+  contractId: string | null;
+  method: string;
+  payload: Record<string, unknown>;
+  status: "pending" | "submitted" | "confirmed" | "failed";
+  txHash: string | null;
+  gasUsed: string | null;   // bigint as string
+  categoryId: string | null;
+  userId: string | null;
+  error: string | null;
+  createdAt: string;
+  confirmedAt: string | null;
+}
+```
+
+### 5.5 Transaction Categories
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| GET | `/api/categories` | Privy | -- | Array of global + user's categories |
+| GET | `/api/categories/:id` | Privy | -- | Single category |
+| POST | `/api/categories` | Privy | `{ name: string, description?: string }` | Created category |
+| PUT | `/api/categories/:id` | Privy | `{ name?: string, description?: string }` | Updated category (user-owned only) |
+| DELETE | `/api/categories/:id` | Privy | -- | `{ deleted: true, id: "..." }` (user-owned only) |
+
+### 5.6 Recurring Payments
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| GET | `/api/recurring-payments` | Privy | -- | Array of user's schedules |
+| GET | `/api/recurring-payments/:id` | Privy | -- | Single schedule |
+| POST | `/api/recurring-payments` | Privy | See below | Created schedule (HTTP 201) |
+| POST | `/api/recurring-payments/:id/pause` | Privy | -- | Updated schedule |
+| POST | `/api/recurring-payments/:id/resume` | Privy | -- | Updated schedule |
+| POST | `/api/recurring-payments/:id/cancel` | Privy | -- | Updated schedule |
+| GET | `/api/recurring-payments/:id/executions` | Privy | Query: `?limit=50` | Array of execution records |
+
+**POST `/api/recurring-payments` body:**
+```typescript
+{
+  walletId?: string;
+  walletType: "user" | "server" | "agent";
+  recipientAddress: string;    // 0x address
+  paymentType: "erc20_transfer" | "raw_transfer" | "contract_call" | "offramp";
+  amount: string;              // Token amount as string
+  tokenContractName?: string;  // For erc20_transfer
+  contractName?: string;       // For contract_call
+  contractMethod?: string;     // For contract_call
+  contractArgs?: unknown[];    // For contract_call
+  chainId?: number;
+  frequency: string;           // Interval: "5m", "1h", "1d", "7d", "30d"
+  startDate?: string;          // ISO 8601 (defaults to now)
+  endDate?: string;            // ISO 8601 (optional)
+  maxRetries?: number;         // Default: 3
+  offramp?: {                  // For offramp payment type
+    currency: string;
+    fiatAmount: string;
+    provider: string;
+    destinationId: string;
+    metadata?: Record<string, unknown>;
+  };
+}
+```
+
+**Schedule object shape:**
+```typescript
+interface RecurringPayment {
+  id: string;
+  userId: string;
+  walletId: string;
+  walletType: "user" | "server" | "agent";
+  recipientAddress: string;
+  paymentType: "erc20_transfer" | "raw_transfer" | "contract_call" | "offramp";
+  amount: string;
+  tokenContractName: string | null;
+  contractName: string | null;
+  contractMethod: string | null;
+  contractArgs: unknown[] | null;
+  chainId: number;
+  isOfframp: boolean;
+  offrampCurrency: string | null;
+  offrampFiatAmount: string | null;
+  offrampProvider: string | null;
+  offrampDestinationId: string | null;
+  offrampMetadata: Record<string, unknown> | null;
+  frequency: string;
+  status: "active" | "paused" | "cancelled" | "completed" | "failed";
+  startDate: string;
+  endDate: string | null;
+  nextExecutionAt: string;
+  maxRetries: number;
+  consecutiveFailures: number;
+  totalExecutions: number;
+  createdAt: string;
+  updatedAt: string;
+}
+```
+
+### 5.7 Yield
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| GET | `/api/yield/vaults` | Privy | Query: `?chainId=8453` | Array of active vaults |
+| GET | `/api/yield/vaults/:id` | Privy | -- | Single vault |
+| POST | `/api/yield/positions` | Privy | See below | Created position (HTTP 201) |
+| GET | `/api/yield/positions` | Privy | -- | Array of user's positions |
+| GET | `/api/yield/positions/:id` | Privy | -- | Single position |
+| POST | `/api/yield/positions/:id/withdraw` | Privy | `{ walletId?: string, walletType: "user" \| "server" \| "agent" }` | Withdrawal result |
+| GET | `/api/yield/positions/:id/history` | Privy | Query: `?limit=50` | Array of yield snapshots |
+| GET | `/api/yield/portfolio` | Privy | -- | Portfolio summary (totals, APY) |
+
+**POST `/api/yield/positions` body:**
+```typescript
+{
+  walletId?: string;
+  walletType: "user" | "server" | "agent";
+  vaultId: string;        // UUID of the vault
+  amount: string;          // Deposit amount as string
+  unlockTime: number;      // Unix timestamp for maturity
+  label?: string;          // Optional label
+  chainId?: number;
+}
+```
+
+### 5.8 Pretium (Offramp to African Mobile Money / Bank)
+
+#### Country and Payment Info
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| GET | `/api/pretium/countries` | Privy | -- | Array of supported countries with payment configs |
+| GET | `/api/pretium/countries/:code` | Privy | -- | Single country details (code is uppercase: KE, NG, GH, etc.) |
+
+#### Exchange Rates
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| GET | `/api/pretium/exchange-rate/:currency` | Privy | -- | Exchange rate for currency (e.g., KES, NGN) |
+| POST | `/api/pretium/convert/usdc-to-fiat` | Privy | `{ usdcAmount: number, currency: string }` | `{ amount, exchangeRate, ... }` |
+| POST | `/api/pretium/convert/fiat-to-usdc` | Privy | `{ fiatAmount: number, currency: string }` | `{ amount, exchangeRate, ... }` |
+
+#### Validation
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| POST | `/api/pretium/validate/phone` | Privy | `{ country: string, phoneNumber: string, network: string }` | Name lookup result (KE, GH, UG only) |
+| POST | `/api/pretium/validate/bank-account` | Privy | `{ country: string, accountNumber: string, bankCode: string }` | Name lookup result (NG only) |
+
+#### Banks
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| GET | `/api/pretium/banks/:country` | Privy | -- | Array of banks (NG and KE only) |
+
+#### Settlement
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| GET | `/api/pretium/settlement-address` | Privy | -- | `{ address: "0x...", chain: "BASE" }` |
+
+#### Offramp
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| POST | `/api/pretium/offramp` | Privy | See below | `{ transaction, pretiumResponse }` (HTTP 201) |
+| GET | `/api/pretium/offramp` | Privy | Query: `?limit=50&offset=0` | Array of user's offramp transactions |
+| GET | `/api/pretium/offramp/:id` | Privy | -- | Single offramp transaction |
+| POST | `/api/pretium/offramp/:id/refresh` | Privy | -- | `{ transaction, pretiumStatus }` (polls Pretium for latest status) |
+
+**POST `/api/pretium/offramp` body:**
+```typescript
+{
+  country: string;            // "KE", "NG", "GH", "UG", "CD", "MW", "ET"
+  walletId: string;           // Wallet that sent the USDC
+  usdcAmount: number;         // USDC amount (not wei, e.g., 10.5)
+  phoneNumber: string;        // Recipient phone number
+  mobileNetwork: string;      // e.g., "safaricom", "mtn", "airtel"
+  transactionHash: string;    // On-chain tx hash of USDC transfer to settlement
+  paymentType?: string;       // "MOBILE" | "BUY_GOODS" | "PAYBILL" | "BANK_TRANSFER"
+  accountNumber?: string;     // For PAYBILL payments
+  accountName?: string;       // For NG bank transfers
+  bankAccount?: string;       // Bank account number
+  bankCode?: string;          // Bank code
+  bankName?: string;          // Bank name
+  callbackUrl?: string;       // Webhook URL for status updates
+  fee?: number;               // Fee amount
+}
+```
+
+**Supported countries and currencies:**
+
+| Country | Code | Currency | Mobile Networks | Payment Types |
+|---------|------|----------|-----------------|---------------|
+| Kenya | KE | KES | safaricom, airtel | MOBILE, BUY_GOODS, PAYBILL, BANK_TRANSFER |
+| Nigeria | NG | NGN | -- | BANK_TRANSFER |
+| Ghana | GH | GHS | mtn, vodafone, airtel | MOBILE |
+| Uganda | UG | UGX | mtn, airtel | MOBILE |
+| DR Congo | CD | CDF | vodacom, airtel, orange | MOBILE |
+| Malawi | MW | MWK | airtel, tnm | MOBILE |
+| Ethiopia | ET | ETB | telebirr | MOBILE |
+
+**Offramp transaction statuses:** `pending` | `processing` | `completed` | `failed` | `reversed`
+
+### 5.9 Uniswap (Token Swaps on Base)
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| POST | `/api/uniswap/check-approval` | Privy | `{ walletId: string, tokenIn: string, amount: string }` | `{ approval: { to, data, value } \| null }` |
+| POST | `/api/uniswap/quote` | Privy | See below | Quote with routing, input/output amounts, gas fee |
+| POST | `/api/uniswap/swap` | Privy | See below | `{ approvalTxId?, swapTxId, swapTxHash, quote: { routing, input, output, gasFeeUSD } }` |
+
+**POST `/api/uniswap/quote` body:**
+```typescript
+{
+  walletId: string;
+  tokenIn: string;           // Token address (see table below)
+  tokenOut: string;          // Token address
+  amount: string;            // Amount in token units (wei for ETH, 6 decimals for USDC)
+  type?: "EXACT_INPUT" | "EXACT_OUTPUT";  // Default: EXACT_INPUT
+  slippageTolerance?: number; // e.g., 0.5 for 0.5%
+}
+```
+
+**POST `/api/uniswap/swap` body:** Same as quote body. The backend handles approval, quoting, and swap execution in a single call.
+
+All Uniswap operations are on **Base (chain ID 8453)**.
+
+### 5.10 Webhooks
+
+| Method | Path | Auth | Body | Description |
+|--------|------|------|------|-------------|
+| POST | `/webhooks/pretium` | None | `{ transaction_code, status, receipt_number?, failure_reason?, amount?, currency_code? }` | Pretium payment status callback |
+
+### 5.11 Internal/Admin API
+
+All internal routes require `X-Admin-Key` header. These are not for frontend use in normal flows but are listed for completeness.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/internal/wallets` | List all wallets |
+| POST | `/internal/wallets/server` | Create server wallet |
+| POST | `/internal/wallets/agent` | Create agent wallet (body: `{ agentId }`) |
+| GET | `/internal/transactions` | List all transactions (`?limit&offset`) |
+| GET | `/internal/transactions/wallet/:walletId` | Transactions by wallet |
+| GET | `/internal/transactions/user/:userId` | Transactions by user |
+| PATCH | `/internal/transactions/:id/confirm` | Mark confirmed (body: `{ gasUsed? }`) |
+| PATCH | `/internal/transactions/:id/fail` | Mark failed (body: `{ error }`) |
+| GET | `/internal/jobs` | List jobs |
+| GET | `/internal/jobs/:id` | Get job |
+| POST | `/internal/jobs` | Create job |
+| POST | `/internal/jobs/:id/cancel` | Cancel job |
+| POST | `/internal/jobs/process` | Process due jobs |
+| GET | `/internal/profiles` | List all profiles |
+| GET | `/internal/profiles/:privyUserId` | Get profile with wallets |
+| POST | `/internal/profiles/:privyUserId/onboard` | Admin onboard user |
+| GET | `/internal/recurring-payments` | List all schedules |
+| GET | `/internal/recurring-payments/:id` | Get schedule |
+| POST | `/internal/recurring-payments/:id/execute` | Force-execute schedule |
+| GET | `/internal/recurring-payments/:id/executions` | Execution history |
+| POST | `/internal/recurring-payments/process` | Process all due payments |
+| GET | `/internal/yield/vaults` | List all vaults (including inactive) |
+| POST | `/internal/yield/vaults` | Add vault |
+| DELETE | `/internal/yield/vaults/:id` | Deactivate vault |
+| POST | `/internal/yield/vaults/sync` | Sync vaults from chain |
+| GET | `/internal/yield/positions` | List all positions |
+| POST | `/internal/yield/snapshots/run` | Trigger yield snapshots |
+
+---
+
+## 6. Base Chain Token Addresses (for Uniswap)
+
+| Token | Address | Decimals |
+|-------|---------|----------|
+| ETH (native) | `0x0000000000000000000000000000000000000000` | 18 |
+| WETH | `0x4200000000000000000000000000000000000006` | 18 |
+| USDC | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | 6 |
+| USDbC (bridged) | `0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6Ca` | 6 |
+
+When specifying `amount` for Uniswap endpoints, use the token's smallest unit:
+- ETH/WETH: wei (multiply by 10^18), e.g., "1000000000000000000" for 1 ETH
+- USDC/USDbC: 6 decimals, e.g., "1000000" for 1 USDC
+
+---
+
+## 7. Frontend Integration Patterns
+
+### 7.1 Setting Up Privy Auth in React
+
+```typescript
+// providers.tsx
+import { PrivyProvider } from "@privy-io/react-auth";
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  return (
+    <PrivyProvider
+      appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID!}
+      config={{
+        loginMethods: ["email", "wallet", "google", "apple"],
+        appearance: {
+          theme: "dark",
+        },
+        embeddedWallets: {
+          createOnLogin: "off", // Backend handles wallet creation via onboarding
+        },
+      }}
+    >
+      {children}
+    </PrivyProvider>
+  );
+}
+```
+
+### 7.2 Creating an API Client
+
+```typescript
+// lib/api.ts
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+
+export async function apiRequest<T>(
+  path: string,
+  options: {
+    method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
+    body?: unknown;
+    accessToken: string | null;
+  }
+): Promise<{ success: true; data: T } | { success: false; error: { _tag: string; message: string } }> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  if (options.accessToken) {
+    headers["Authorization"] = `Bearer ${options.accessToken}`;
+  } else if (process.env.NODE_ENV === "development") {
+    // Dev bypass -- use a stable user ID for local testing
+    headers["X-Dev-User-Id"] = "dev-user-1";
+  }
+
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: options.method ?? "GET",
+    headers,
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+
+  if (res.status === 401) {
+    throw new Error("Unauthorized -- access token expired or invalid");
+  }
+
+  if (res.status === 403) {
+    throw new Error("Forbidden -- insufficient permissions");
+  }
+
+  return res.json();
+}
+```
+
+### 7.3 Using the API Client with Privy
+
+```typescript
+// hooks/use-api.ts
+import { usePrivy } from "@privy-io/react-auth";
+import { apiRequest } from "../lib/api";
+
+export function useApi() {
+  const { getAccessToken } = usePrivy();
+
+  async function request<T>(
+    path: string,
+    options?: { method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH"; body?: unknown }
+  ) {
+    const accessToken = await getAccessToken();
+    const result = await apiRequest<T>(path, {
+      ...options,
+      accessToken,
+    });
+
+    if (!result.success) {
+      throw new Error(`${result.error._tag}: ${result.error.message}`);
+    }
+
+    return result.data;
+  }
+
+  return { request };
+}
+```
+
+### 7.4 Onboarding Flow
+
+```typescript
+// components/onboard-button.tsx
+import { useApi } from "../hooks/use-api";
+
+interface OnboardResult {
+  profile: {
+    id: string;
+    privyUserId: string;
+    userWalletId: string;
+    serverWalletId: string;
+    agentWalletId: string;
+  };
+  wallets: {
+    user: { id: string; address: string; type: "user" };
+    server: { id: string; address: string; type: "server" };
+    agent: { id: string; address: string; type: "agent" };
+  };
+}
+
+function OnboardButton() {
+  const { request } = useApi();
+
+  async function handleOnboard() {
+    const result = await request<OnboardResult>("/api/onboard", {
+      method: "POST",
+      body: { chainId: 8453 },
+    });
+
+    console.log("User wallet:", result.wallets.user.address);
+    console.log("Server wallet:", result.wallets.server.address);
+    console.log("Agent wallet:", result.wallets.agent.address);
+  }
+
+  return <button onClick={handleOnboard}>Set Up Account</button>;
+}
+```
+
+### 7.5 Listing Wallets and Transactions
+
+```typescript
+// Fetch wallets
+const wallets = await request<Wallet[]>("/api/wallets");
+
+// Fetch wallet addresses only
+const addresses = await request<{ user: string; server: string; agent: string }>(
+  "/api/profile/wallets"
+);
+
+// Fetch transactions
+const transactions = await request<Transaction[]>("/api/transactions");
+
+// Fetch single transaction
+const tx = await request<Transaction>(`/api/transactions/${txId}`);
+```
+
+### 7.6 Submitting a USDC Transfer
+
+To send USDC, use a raw transaction that calls the ERC-20 `transfer` function, or use the contract transaction endpoint with a registered contract name.
+
+```typescript
+import { encodeFunctionData, parseUnits } from "viem";
+
+const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+
+// Encode ERC-20 transfer calldata
+const data = encodeFunctionData({
+  abi: [
+    {
+      name: "transfer",
+      type: "function",
+      inputs: [
+        { name: "to", type: "address" },
+        { name: "amount", type: "uint256" },
+      ],
+      outputs: [{ type: "bool" }],
+    },
+  ],
+  functionName: "transfer",
+  args: [recipientAddress, parseUnits("10", 6)], // 10 USDC
+});
+
+const result = await request<Transaction>("/api/transactions/raw", {
+  method: "POST",
+  body: {
+    walletType: "server",    // Use the server wallet
+    to: USDC_ADDRESS,
+    data,
+    chainId: 8453,
+  },
+});
+
+console.log("TX hash:", result.txHash);
+```
+
+### 7.7 Getting a Swap Quote and Executing a Swap
+
+```typescript
+const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const WETH = "0x4200000000000000000000000000000000000006";
+
+// Step 1: Get a quote (read-only, no transaction submitted)
+const quote = await request("/api/uniswap/quote", {
+  method: "POST",
+  body: {
+    walletId: userWalletId,
+    tokenIn: USDC,
+    tokenOut: WETH,
+    amount: "10000000",      // 10 USDC (6 decimals)
+    type: "EXACT_INPUT",
+    slippageTolerance: 0.5,  // 0.5%
+  },
+});
+
+// Step 2: Execute the swap (handles approval + quote + execution)
+const swapResult = await request("/api/uniswap/swap", {
+  method: "POST",
+  body: {
+    walletId: userWalletId,
+    tokenIn: USDC,
+    tokenOut: WETH,
+    amount: "10000000",
+    type: "EXACT_INPUT",
+    slippageTolerance: 0.5,
+  },
+});
+
+// swapResult = {
+//   approvalTxId: "..." | undefined,  // Set if token approval was needed
+//   swapTxId: "...",
+//   swapTxHash: "0x...",
+//   quote: { routing, input, output, gasFeeUSD }
+// }
+```
+
+### 7.8 Initiating an Offramp to Mobile Money
+
+```typescript
+import { encodeFunctionData, parseUnits } from "viem";
+
+const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+
+// Step 1: Get the settlement address
+const { address: settlementAddress } = await request<{ address: string; chain: string }>(
+  "/api/pretium/settlement-address"
+);
+
+// Step 2: Get exchange rate
+const conversion = await request("/api/pretium/convert/usdc-to-fiat", {
+  method: "POST",
+  body: { usdcAmount: 10, currency: "KES" },
+});
+// conversion.data = { amount: 1290.50, exchangeRate: 129.05, ... }
+
+// Step 3: Send USDC to settlement address on-chain
+const transferData = encodeFunctionData({
+  abi: [{
+    name: "transfer",
+    type: "function",
+    inputs: [
+      { name: "to", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ type: "bool" }],
+  }],
+  functionName: "transfer",
+  args: [settlementAddress, parseUnits("10", 6)],
+});
+
+const transferTx = await request<Transaction>("/api/transactions/raw", {
+  method: "POST",
+  body: {
+    walletType: "server",
+    to: USDC_ADDRESS,
+    data: transferData,
+    chainId: 8453,
+  },
+});
+
+// Step 4: Initiate the offramp (disburse fiat)
+const offramp = await request("/api/pretium/offramp", {
+  method: "POST",
+  body: {
+    country: "KE",
+    walletId: serverWalletId,
+    usdcAmount: 10,
+    phoneNumber: "254712345678",
+    mobileNetwork: "safaricom",
+    transactionHash: transferTx.txHash,
+    paymentType: "MOBILE",
+  },
+});
+
+// Step 5: Poll for status updates
+const status = await request(`/api/pretium/offramp/${offramp.data.transaction.id}`);
+// Or refresh from Pretium:
+const refreshed = await request(`/api/pretium/offramp/${offramp.data.transaction.id}/refresh`, {
+  method: "POST",
+});
+```
+
+### 7.9 Creating a Recurring Payment
+
+```typescript
+// Monthly USDC payment
+const schedule = await request("/api/recurring-payments", {
+  method: "POST",
+  body: {
+    walletType: "server",
+    recipientAddress: "0xRecipientAddress...",
+    paymentType: "erc20_transfer",
+    amount: "5000000",              // 5 USDC
+    tokenContractName: "USDC",      // Registered contract name
+    chainId: 8453,
+    frequency: "30d",               // Every 30 days
+    startDate: new Date().toISOString(),
+    maxRetries: 3,
+  },
+});
+
+// Pause it
+await request(`/api/recurring-payments/${schedule.id}/pause`, { method: "POST" });
+
+// Resume it
+await request(`/api/recurring-payments/${schedule.id}/resume`, { method: "POST" });
+
+// Cancel it
+await request(`/api/recurring-payments/${schedule.id}/cancel`, { method: "POST" });
+
+// Get execution history
+const executions = await request(`/api/recurring-payments/${schedule.id}/executions`);
+```
+
+---
+
+## 8. Error Handling
+
+### Error Tags
+
+Domain errors returned in `error._tag` include:
+
+| Error Tag | Description |
+|-----------|-------------|
+| `WalletError` | Wallet creation, resolution, or signing failure |
+| `TransactionError` | Transaction submission or lookup failure |
+| `LedgerError` | Ledger recording or query failure |
+| `ContractExecutionError` | On-chain contract call failed |
+| `ContractNotFoundError` | Contract name not found in registry |
+| `OnboardingError` | User onboarding failure (e.g., Privy wallet creation issue) |
+| `RecurringPaymentError` | Recurring payment schedule operation failure |
+| `OfframpError` | Fiat disbursement failure via Pretium |
+| `UniswapError` | Swap quote, approval, or execution failure |
+| `YieldError` | Vault or position operation failure |
+| `InternalError` | Unhandled server-side error |
+
+### Frontend Error Handling Pattern
+
+```typescript
+async function safeRequest<T>(path: string, options?: { method?: string; body?: unknown }) {
+  try {
+    const result = await apiRequest<T>(path, {
+      ...options,
+      accessToken: await getAccessToken(),
+    });
+
+    if (!result.success) {
+      const { _tag, message } = result.error;
+
+      switch (_tag) {
+        case "OnboardingError":
+          // Prompt user to complete onboarding
+          break;
+        case "WalletError":
+          // Wallet issue -- may need re-onboarding
+          break;
+        case "UniswapError":
+          // Swap failed -- show error and suggest retry
+          break;
+        case "OfframpError":
+          // Offramp failed -- check phone number, network, etc.
+          break;
+        default:
+          // Generic error display
+          break;
+      }
+
+      throw new ApiError(_tag, message);
+    }
+
+    return result.data;
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError("NetworkError", "Failed to connect to server");
+  }
+}
+
+class ApiError extends Error {
+  constructor(public tag: string, message: string) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+```
+
+---
+
+## 9. Environment Setup
+
+Frontend applications need these environment variables:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `NEXT_PUBLIC_PRIVY_APP_ID` | Privy application ID (must match backend's `PRIVY_APP_ID`) | `clxxxxxxxxxxxxxx` |
+| `NEXT_PUBLIC_API_URL` | Backend API URL | `http://localhost:3000` |
+
+For local development with the dev bypass (no Privy required), only `NEXT_PUBLIC_API_URL` is needed.
+
+### Minimal `.env.local` for Development
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:3000
+NEXT_PUBLIC_PRIVY_APP_ID=your-privy-app-id
+```
+
+---
+
+## 10. Key Implementation Notes
+
+- **Wallet resolution:** Most endpoints that require a wallet accept either `walletId` (direct UUID) or `walletType` (`"user" | "server" | "agent"`). When `walletType` is provided without `walletId`, the backend resolves the wallet from the user's onboarding profile. Prefer using `walletType` for simplicity.
+
+- **Chain ID:** Defaults to the backend's configured `DEFAULT_CHAIN_ID` when not specified. For Base mainnet, use `8453`.
+
+- **Amounts as strings:** All token amounts are strings to avoid floating-point precision issues. Use the token's smallest unit (wei for ETH, 6-decimal units for USDC).
+
+- **Idempotent onboarding:** `POST /api/onboard` is safe to call multiple times. If the user already has a profile, it returns the existing one.
+
+- **CORS:** The backend enables CORS for all origins (`*`). No special configuration needed on the frontend.
+
+- **Pretium offramp flow:** The frontend must first send USDC to the settlement address on-chain, then call the offramp endpoint with the transaction hash as proof. The backend handles the fiat disbursement.
+
+- **Uniswap swap flow:** The `/api/uniswap/swap` endpoint handles the full flow (check approval, submit approval tx if needed, get quote, submit swap tx) in a single call. Use `/api/uniswap/quote` for read-only price checks before committing.
