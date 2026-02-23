@@ -18,6 +18,7 @@
   "license": "ISC",
   "packageManager": "pnpm@10.28.2",
   "devDependencies": {
+    "@trigger.dev/build": "4.4.1",
     "@types/node": "^25.2.3",
     "@types/pg": "^8.16.0",
     "drizzle-kit": "^0.31.9",
@@ -28,7 +29,7 @@
   "dependencies": {
     "@hono/node-server": "^1.14.1",
     "@privy-io/node": "^0.9.0",
-    "@trigger.dev/sdk": "^4.4.1",
+    "@trigger.dev/sdk": "4.4.1",
     "dotenv": "^17.3.1",
     "drizzle-orm": "^0.45.1",
     "effect": "^3.19.18",
