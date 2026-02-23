@@ -1,6 +1,6 @@
 import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { wallets } from "./wallets";
+import { wallets } from "./wallets.js";
 
 export const userProfiles = pgTable("user_profiles", {
   id: text("id")
