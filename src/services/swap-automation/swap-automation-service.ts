@@ -1,25 +1,21 @@
 import { Effect, Context, Layer, Data } from "effect";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { DatabaseService } from "../../db/client.js";
 import {
   swapAutomations,
   swapAutomationExecutions,
+  wallets,
   type SwapAutomation,
   type NewSwapAutomation,
   type SwapAutomationExecution,
   type NewSwapAutomationExecution,
 } from "../../db/schema/index.js";
-import {
-  TransactionService,
-} from "../transaction/transaction-service.js";
-import {
-  UniswapService,
-  BASE_CHAIN_ID,
-} from "../uniswap/uniswap-service.js";
+import { TransactionService } from "../transaction/transaction-service.js";
+import { UniswapService, BASE_CHAIN_ID } from "../uniswap/uniswap-service.js";
 import { AdapterService, type PriceData } from "../adapters/adapter-service.js";
 import { WalletService } from "../wallet/wallet-service.js";
 import { ConfigService } from "../../config.js";
-import { createPublicClient, http, erc20Abi, formatUnits } from "viem";
+import { createPublicClient, http, erc20Abi, type Hash } from "viem";
 import { base } from "viem/chains";
 
 // ── Error type ───────────────────────────────────────────────────────
@@ -164,7 +160,7 @@ export const SwapAutomationServiceLive: Layer.Layer<
     const uniswap = yield* UniswapService;
     const adapter = yield* AdapterService;
     const walletService = yield* WalletService;
-    const config = yield* ConfigService;
+    // ConfigService dependency kept for layer composition
 
     const publicClient = createPublicClient({
       chain: base,
@@ -203,14 +199,37 @@ export const SwapAutomationServiceLive: Layer.Layer<
           }),
       });
 
-    // Resolve wallet address from walletId
-    const resolveWalletAddress = (
+    // Resolve wallet from internal walletId to get both address and privyWalletId
+    const resolveWallet = (
       walletId: string,
       walletType: "server" | "agent"
     ) =>
       Effect.gen(function* () {
+        // Look up the wallet record to get the privyWalletId
+        const [walletRecord] = yield* Effect.tryPromise({
+          try: () =>
+            db
+              .select()
+              .from(wallets)
+              .where(eq(wallets.id, walletId))
+              .limit(1),
+          catch: (error) =>
+            new SwapAutomationError({
+              message: `Failed to look up wallet: ${error}`,
+              cause: error,
+            }),
+        });
+
+        if (!walletRecord) {
+          return yield* Effect.fail(
+            new SwapAutomationError({
+              message: `Wallet not found: ${walletId}`,
+            })
+          );
+        }
+
         const wallet = yield* walletService
-          .getWallet(walletId, walletType)
+          .getWallet(walletRecord.privyWalletId, walletType)
           .pipe(
             Effect.mapError(
               (e) =>
@@ -220,7 +239,8 @@ export const SwapAutomationServiceLive: Layer.Layer<
                 })
             )
           );
-        return yield* wallet.getAddress().pipe(
+
+        const address = yield* wallet.getAddress().pipe(
           Effect.mapError(
             (e) =>
               new SwapAutomationError({
@@ -229,6 +249,29 @@ export const SwapAutomationServiceLive: Layer.Layer<
               })
           )
         );
+
+        return { wallet, address, privyWalletId: walletRecord.privyWalletId };
+      });
+
+    // Wait for transaction confirmation on chain
+    const waitForConfirmation = (txHash: Hash) =>
+      Effect.tryPromise({
+        try: async () => {
+          const receipt = await publicClient.waitForTransactionReceipt({
+            hash: txHash,
+            confirmations: 1,
+            timeout: 60_000, // 60 second timeout
+          });
+          if (receipt.status === "reverted") {
+            throw new Error(`Transaction reverted: ${txHash}`);
+          }
+          return receipt;
+        },
+        catch: (error) =>
+          new SwapAutomationError({
+            message: `Transaction confirmation failed: ${error}`,
+            cause: error,
+          }),
       });
 
     // Execute a single automation swap
@@ -237,16 +280,20 @@ export const SwapAutomationServiceLive: Layer.Layer<
       currentPrice: number
     ) =>
       Effect.gen(function* () {
-        const walletAddress = yield* resolveWalletAddress(
+        const { address: walletAddress, privyWalletId } = yield* resolveWallet(
           automation.walletId,
           automation.walletType as "server" | "agent"
         );
 
-        // Check balance
+        // Check balance (add gas buffer for ETH swaps)
+        const isEthSwap = automation.tokenIn.toLowerCase() === ETH_ADDRESS.toLowerCase();
+        const gasBuffer = isEthSwap ? BigInt("50000000000000000") : BigInt(0); // 0.05 ETH buffer for gas
+        const requiredAmount = BigInt(automation.amount) + gasBuffer;
+
         const hasSufficientBalance = yield* checkBalance(
           walletAddress,
           automation.tokenIn,
-          BigInt(automation.amount)
+          requiredAmount
         );
 
         if (!hasSufficientBalance) {
@@ -259,7 +306,9 @@ export const SwapAutomationServiceLive: Layer.Layer<
                   automationId: automation.id,
                   status: "skipped",
                   priceAtExecution: currentPrice,
-                  error: "Insufficient wallet balance",
+                  error: isEthSwap
+                    ? "Insufficient wallet balance (including gas buffer)"
+                    : "Insufficient wallet balance",
                 } satisfies NewSwapAutomationExecution)
                 .returning(),
             catch: (error) =>
@@ -294,48 +343,53 @@ export const SwapAutomationServiceLive: Layer.Layer<
           return execution!;
         }
 
-        // Execute swap: approval → quote → swap
+        // Execute swap: approval (if ERC-20) → wait for confirmation → quote → swap
         const swapResult = yield* Effect.gen(function* () {
-          // 1. Check approval
-          const approvalResult = yield* uniswap.checkApproval({
-            walletAddress,
-            token: automation.tokenIn,
-            amount: automation.amount,
-            chainId: automation.chainId,
-          }).pipe(
-            Effect.mapError(
-              (e) =>
-                new SwapAutomationError({
-                  message: `Approval check failed: ${e.message}`,
-                  cause: e,
-                })
-            )
-          );
+          // 1. Check and submit approval ONLY for ERC-20 tokens (not ETH)
+          if (!isEthSwap) {
+            const approvalResult = yield* uniswap.checkApproval({
+              walletAddress,
+              token: automation.tokenIn,
+              amount: automation.amount,
+              chainId: automation.chainId,
+            }).pipe(
+              Effect.mapError(
+                (e) =>
+                  new SwapAutomationError({
+                    message: `Approval check failed: ${e.message}`,
+                    cause: e,
+                  })
+              )
+            );
 
-          // 2. Submit approval if needed
-          if (approvalResult.approval) {
-            yield* txService
-              .submitRawTransaction({
-                walletId: automation.walletId,
-                walletType: automation.walletType as "server" | "agent",
-                chainId: automation.chainId,
-                to: approvalResult.approval.to as `0x${string}`,
-                data: approvalResult.approval.data as `0x${string}`,
-                value: BigInt(approvalResult.approval.value || "0"),
-                userId: automation.userId,
-              })
-              .pipe(
-                Effect.mapError(
-                  (e) =>
-                    new SwapAutomationError({
-                      message: `Approval tx failed: ${e}`,
-                      cause: e,
-                    })
-                )
-              );
+            // 2. Submit approval if needed and WAIT for confirmation
+            if (approvalResult.approval) {
+              const approvalTx = yield* txService
+                .submitRawTransaction({
+                  walletId: privyWalletId,
+                  walletType: automation.walletType as "server" | "agent",
+                  chainId: automation.chainId,
+                  to: approvalResult.approval.to as `0x${string}`,
+                  data: approvalResult.approval.data as `0x${string}`,
+                  value: BigInt(approvalResult.approval.value || "0"),
+                  userId: automation.userId,
+                })
+                .pipe(
+                  Effect.mapError(
+                    (e) =>
+                      new SwapAutomationError({
+                        message: `Approval tx failed: ${e}`,
+                        cause: e,
+                      })
+                  )
+                );
+
+              // Wait for approval to be confirmed on-chain before proceeding
+              yield* waitForConfirmation(approvalTx.txHash as Hash);
+            }
           }
 
-          // 3. Get quote
+          // 3. Get quote (after approval is confirmed)
           const quote = yield* uniswap.getQuote({
             swapper: walletAddress,
             tokenIn: automation.tokenIn,
@@ -368,7 +422,7 @@ export const SwapAutomationServiceLive: Layer.Layer<
           // 5. Submit swap
           const tx = yield* txService
             .submitRawTransaction({
-              walletId: automation.walletId,
+              walletId: privyWalletId,
               walletType: automation.walletType as "server" | "agent",
               chainId: automation.chainId,
               to: swapTx.to as `0x${string}`,

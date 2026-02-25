@@ -20,6 +20,15 @@ interface CmcQuoteResponse {
   >;
 }
 
+// Cache configuration
+const CACHE_TTL_MS = 60_000; // 1 minute cache (prices checked every minute anyway)
+const REQUEST_TIMEOUT_MS = 10_000; // 10 second timeout
+
+interface CachedPrices {
+  readonly data: CmcQuoteResponse;
+  readonly cachedAt: number;
+}
+
 export const CoinMarketCapAdapterLive: Layer.Layer<
   AdapterService,
   never,
@@ -30,9 +39,45 @@ export const CoinMarketCapAdapterLive: Layer.Layer<
     const config = yield* ConfigService;
     const baseUrl = "https://pro-api.coinmarketcap.com/v1";
 
+    // In-memory price cache
+    const priceCache = new Map<string, CachedPrices>();
+
+    const getCacheKey = (symbols: ReadonlyArray<string>): string =>
+      [...symbols].sort().join(",").toUpperCase();
+
+    const getCachedPrices = (
+      symbols: ReadonlyArray<string>
+    ): CmcQuoteResponse | null => {
+      const key = getCacheKey(symbols);
+      const cached = priceCache.get(key);
+      if (!cached) return null;
+
+      const age = Date.now() - cached.cachedAt;
+      if (age > CACHE_TTL_MS) {
+        priceCache.delete(key);
+        return null;
+      }
+
+      return cached.data;
+    };
+
+    const setCachedPrices = (
+      symbols: ReadonlyArray<string>,
+      data: CmcQuoteResponse
+    ): void => {
+      const key = getCacheKey(symbols);
+      priceCache.set(key, { data, cachedAt: Date.now() });
+    };
+
     const fetchQuotes = (symbols: ReadonlyArray<string>) =>
       Effect.tryPromise({
         try: async () => {
+          // Check cache first
+          const cached = getCachedPrices(symbols);
+          if (cached) {
+            return cached;
+          }
+
           const response = await fetch(
             `${baseUrl}/cryptocurrency/quotes/latest?symbol=${symbols.join(",")}`,
             {
@@ -40,6 +85,7 @@ export const CoinMarketCapAdapterLive: Layer.Layer<
                 "X-CMC_PRO_API_KEY": config.coinmarketcapApiKey,
                 Accept: "application/json",
               },
+              signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
             }
           );
 
@@ -50,14 +96,26 @@ export const CoinMarketCapAdapterLive: Layer.Layer<
           }
 
           const json = (await response.json()) as CmcQuoteResponse;
+
+          // Cache the response
+          setCachedPrices(symbols, json);
+
           return json;
         },
-        catch: (error) =>
-          new AdapterError({
+        catch: (error) => {
+          if (error instanceof DOMException && error.name === "TimeoutError") {
+            return new AdapterError({
+              message: "CoinMarketCap API request timed out",
+              source: "coinmarketcap",
+              cause: error,
+            });
+          }
+          return new AdapterError({
             message: `Failed to fetch from CoinMarketCap: ${error}`,
             source: "coinmarketcap",
             cause: error,
-          }),
+          });
+        },
       });
 
     const mapQuoteToPrice = (
@@ -67,6 +125,12 @@ export const CoinMarketCapAdapterLive: Layer.Layer<
       const entry = data[symbol.toUpperCase()];
       if (!entry) return undefined;
       const usd = entry.quote.USD;
+
+      // Validate price is reasonable (not 0, null, or negative)
+      if (!usd.price || usd.price <= 0) {
+        return undefined;
+      }
+
       return {
         symbol: entry.symbol,
         price: usd.price,
@@ -95,6 +159,8 @@ export const CoinMarketCapAdapterLive: Layer.Layer<
 
       getPrices: (symbols: ReadonlyArray<string>) =>
         Effect.gen(function* () {
+          if (symbols.length === 0) return [];
+
           const response = yield* fetchQuotes(symbols);
           const prices: PriceData[] = [];
           for (const symbol of symbols) {

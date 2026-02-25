@@ -120,13 +120,28 @@ export const UniswapServiceLive: Layer.Layer<
             method: "POST",
             headers,
             body: JSON.stringify(body),
+            signal: AbortSignal.timeout(30_000), // 30 second timeout
           });
 
-          const data = (await res.json()) as Record<string, unknown>;
+          let data: Record<string, unknown>;
+          try {
+            data = (await res.json()) as Record<string, unknown>;
+          } catch {
+            throw new UniswapError({
+              message: `Uniswap API returned invalid JSON: ${res.status}`,
+            });
+          }
 
           if (!res.ok) {
+            // Handle various error response formats from Uniswap
+            const errorMessage =
+              data.detail ??
+              data.message ??
+              (data.error as Record<string, unknown>)?.message ??
+              data.errorMessage ??
+              `Uniswap API error: ${res.status}`;
             throw new UniswapError({
-              message: String(data.detail ?? data.message ?? `Uniswap API error: ${res.status}`),
+              message: String(errorMessage),
               cause: data,
             });
           }
@@ -135,6 +150,12 @@ export const UniswapServiceLive: Layer.Layer<
         },
         catch: (error) => {
           if (error instanceof UniswapError) return error;
+          if (error instanceof DOMException && error.name === "TimeoutError") {
+            return new UniswapError({
+              message: "Uniswap API request timed out",
+              cause: error,
+            });
+          }
           return new UniswapError({
             message: `Uniswap API request failed: ${error}`,
             cause: error,
@@ -157,8 +178,8 @@ export const UniswapServiceLive: Layer.Layer<
           swapper: params.swapper,
           tokenIn: params.tokenIn,
           tokenOut: params.tokenOut,
-          tokenInChainId: String(chainId),
-          tokenOutChainId: String(chainId),
+          tokenInChainId: chainId, // Must be integer, not string
+          tokenOutChainId: chainId, // Must be integer, not string
           amount: params.amount,
           type: params.type ?? "EXACT_INPUT",
           slippageTolerance: params.slippageTolerance ?? 0.5,
