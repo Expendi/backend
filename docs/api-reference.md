@@ -1694,6 +1694,7 @@ Create a new swap automation. The authenticated user must own the specified wall
 | `slippageTolerance` | number | no | Slippage tolerance as a percentage (default: `0.5`) |
 | `chainId` | number | no | EVM chain ID (default: `8453`) |
 | `maxExecutions` | number | no | Maximum times the automation can trigger (default: `1`) |
+| `maxExecutionsPerDay` | number | no | Maximum times the automation can trigger per calendar day UTC (default: `null` — no daily limit) |
 | `cooldownSeconds` | number | no | Minimum seconds between executions (default: `60`) |
 | `maxRetries` | number | no | Consecutive failures before auto-pausing (default: `3`) |
 
@@ -1712,6 +1713,7 @@ curl -X POST http://localhost:3000/api/swap-automations \
     "thresholdValue": 4000,
     "slippageTolerance": 0.5,
     "maxExecutions": 1,
+    "maxExecutionsPerDay": 3,
     "cooldownSeconds": 60,
     "maxRetries": 3
   }'
@@ -1731,6 +1733,7 @@ Update an existing swap automation. The authenticated user must own the automati
 | `amount` | string | no | New amount in the token's smallest unit |
 | `slippageTolerance` | number | no | New slippage tolerance as a percentage |
 | `maxExecutions` | number | no | New maximum execution count |
+| `maxExecutionsPerDay` | number \| null | no | New daily execution limit (`null` to remove) |
 | `cooldownSeconds` | number | no | New minimum seconds between executions |
 | `maxRetries` | number | no | New consecutive failure limit |
 
@@ -2893,6 +2896,7 @@ All three manual endpoints require the `X-Admin-Key` header. See the correspondi
   referencePrice: number | null;
   status: "active" | "paused" | "cancelled" | "triggered" | "failed";
   maxExecutions: number;
+  maxExecutionsPerDay: number | null;
   totalExecutions: number;
   consecutiveFailures: number;
   maxRetries: number;
