@@ -11,7 +11,7 @@ import {
   recurringPaymentStatusEnum,
   recurringPaymentTypeEnum,
   executionStatusEnum,
-} from "./enums";
+} from "./enums.js";
 import { wallets } from "./wallets.js";
 
 export {
