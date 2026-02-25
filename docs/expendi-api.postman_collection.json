@@ -65,6 +65,11 @@
 			"key": "pretiumTransactionId",
 			"value": "d4e5f6a7-8901-23bc-def0-456789012345",
 			"type": "string"
+		},
+		{
+			"key": "swapAutomationId",
+			"value": "a1b2c3d4-0000-0000-0000-000000000000",
+			"type": "string"
 		}
 	],
 	"item": [
@@ -1401,6 +1406,186 @@
 						}
 					],
 					"description": "Uniswap token swap endpoints on Base (chain ID 8453). Requires Privy auth. Wraps the Uniswap Trading API for approval checks, quotes, and full swap execution. Swap transactions are recorded in the ledger through TransactionService."
+				},
+				{
+					"name": "Swap Automations",
+					"item": [
+						{
+							"name": "List My Swap Automations",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/swap-automations",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "swap-automations"]
+								},
+								"description": "Lists all swap automations for the authenticated user, ordered by creation date."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Swap Automation",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/swap-automations/{{swapAutomationId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "swap-automations", "{{swapAutomationId}}"]
+								},
+								"description": "Retrieves a single swap automation by its UUID."
+							},
+							"response": []
+						},
+						{
+							"name": "Create Swap Automation",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"walletId\": \"{{walletId}}\",\n  \"walletType\": \"server\",\n  \"tokenIn\": \"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\",\n  \"tokenOut\": \"0x4200000000000000000000000000000000000006\",\n  \"amount\": \"1000000\",\n  \"indicatorType\": \"price_above\",\n  \"indicatorToken\": \"ETH\",\n  \"thresholdValue\": 4000,\n  \"slippageTolerance\": 0.5,\n  \"maxExecutions\": 1,\n  \"cooldownSeconds\": 300\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/swap-automations",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "swap-automations"]
+								},
+								"description": "Creates a new swap automation that will execute a Uniswap swap when the specified indicator condition is met. The automation checks prices every minute via a Trigger.dev cron task. Supported indicator types: price_above (trigger when price >= threshold), price_below (trigger when price <= threshold), percent_change_up (trigger when price increases by threshold% from reference), percent_change_down (trigger when price decreases by threshold% from reference). For percent_change indicators, a reference price is automatically captured at creation time. Users can choose server or agent wallet for execution."
+							},
+							"response": []
+						},
+						{
+							"name": "Update Swap Automation",
+							"request": {
+								"method": "PATCH",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"thresholdValue\": 4500,\n  \"amount\": \"2000000\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/swap-automations/{{swapAutomationId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "swap-automations", "{{swapAutomationId}}"]
+								},
+								"description": "Updates modifiable fields on a swap automation. Only the provided fields are changed."
+							},
+							"response": []
+						},
+						{
+							"name": "Pause Swap Automation",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/swap-automations/{{swapAutomationId}}/pause",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "swap-automations", "{{swapAutomationId}}", "pause"]
+								},
+								"description": "Pauses an active swap automation. The cron task will skip paused automations."
+							},
+							"response": []
+						},
+						{
+							"name": "Resume Swap Automation",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/swap-automations/{{swapAutomationId}}/resume",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "swap-automations", "{{swapAutomationId}}", "resume"]
+								},
+								"description": "Resumes a paused swap automation. Resets consecutive failure count."
+							},
+							"response": []
+						},
+						{
+							"name": "Cancel Swap Automation",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/swap-automations/{{swapAutomationId}}/cancel",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "swap-automations", "{{swapAutomationId}}", "cancel"]
+								},
+								"description": "Permanently cancels a swap automation. Cannot be resumed."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Execution History",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/swap-automations/{{swapAutomationId}}/executions?limit=50",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "swap-automations", "{{swapAutomationId}}", "executions"],
+									"query": [
+										{
+											"key": "limit",
+											"value": "50"
+										}
+									]
+								},
+								"description": "Retrieves the execution history for a swap automation. Each execution records the price at evaluation time, whether the swap succeeded or was skipped, and a snapshot of the quote."
+							},
+							"response": []
+						}
+					],
+					"description": "Indicator-based swap automation endpoints. Users can define conditional swaps that execute automatically when price conditions are met. Supports price_above, price_below, percent_change_up, and percent_change_down indicators. Automations execute on Base (chain ID 8453) via Uniswap."
 				}
 			],
 			"description": "Public API routes requiring Privy authentication via Authorization: Bearer <token> header. All operations are scoped to the authenticated user."

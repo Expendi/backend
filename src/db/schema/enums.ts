@@ -59,3 +59,23 @@ export const pretiumPaymentTypeEnum = pgEnum("pretium_payment_type", [
   "PAYBILL",
   "BANK_TRANSFER",
 ]);
+
+export const swapAutomationStatusEnum = pgEnum("swap_automation_status", [
+  "active",
+  "paused",
+  "cancelled",
+  "triggered",
+  "failed",
+]);
+
+export const swapIndicatorTypeEnum = pgEnum("swap_indicator_type", [
+  "price_above",
+  "price_below",
+  "percent_change_up",
+  "percent_change_down",
+]);
+
+export const swapAutomationExecutionStatusEnum = pgEnum(
+  "swap_automation_execution_status",
+  ["success", "failed", "skipped"]
+);

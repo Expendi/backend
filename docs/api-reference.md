@@ -90,6 +90,7 @@ curl http://localhost:3000/
     "yield": "/api/yield",
     "pretium": "/api/pretium",
     "uniswap": "/api/uniswap",
+    "swapAutomations": "/api/swap-automations",
     "webhooks": "/webhooks/pretium"
   }
 }
@@ -1635,6 +1636,211 @@ The `approvalTxId` field is only present when a token approval was required and 
 
 ---
 
+### Swap Automations
+
+Indicator-based swap automation endpoints. Users define conditional swaps that execute automatically when price conditions are met, evaluated every minute by a Trigger.dev cron task. Swaps execute on Base (chain ID 8453) via the Uniswap Trading API.
+
+#### Indicator types
+
+| Type | Condition | Description |
+|------|-----------|-------------|
+| `price_above` | `currentPrice >= threshold` | Triggers when token price rises to or above the threshold (USD) |
+| `price_below` | `currentPrice <= threshold` | Triggers when token price drops to or at the threshold (USD) |
+| `percent_change_up` | `% increase >= threshold` | Triggers when price increases by at least threshold% from reference price |
+| `percent_change_down` | `% decrease >= threshold` | Triggers when price decreases by at least threshold% from reference price |
+
+#### `GET /api/swap-automations`
+
+List the authenticated user's swap automations, ordered by creation date.
+
+```bash
+curl http://localhost:3000/api/swap-automations \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `Array<SwapAutomation>`
+
+#### `GET /api/swap-automations/:id`
+
+Get a single swap automation. Returns the automation only if the authenticated user owns it.
+
+| Parameter | Location | Type | Required |
+|-----------|----------|------|----------|
+| `id` | path | string | yes |
+
+```bash
+curl http://localhost:3000/api/swap-automations/some-uuid \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `SwapAutomation`
+
+**Errors:** `Error` if not found or not owned by the authenticated user.
+
+#### `POST /api/swap-automations`
+
+Create a new swap automation. The authenticated user must own the specified wallet. The automation will be evaluated every minute by the `process-swap-automations` cron task.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `walletId` | string | yes | Database ID of the wallet performing the swap |
+| `walletType` | `"server"` \| `"agent"` | yes | Wallet type |
+| `tokenIn` | string | yes | Address of the token to sell |
+| `tokenOut` | string | yes | Address of the token to buy |
+| `amount` | string | yes | Amount in the token's smallest unit |
+| `indicatorType` | string | yes | One of `price_above`, `price_below`, `percent_change_up`, `percent_change_down` |
+| `indicatorToken` | string | yes | Token symbol or address to monitor (e.g., `"ETH"`, `"BTC"`) |
+| `thresholdValue` | number | yes | Threshold for the indicator condition |
+| `slippageTolerance` | number | no | Slippage tolerance as a percentage (default: `0.5`) |
+| `chainId` | number | no | EVM chain ID (default: `8453`) |
+| `maxExecutions` | number | no | Maximum times the automation can trigger (default: `1`) |
+| `cooldownSeconds` | number | no | Minimum seconds between executions (default: `60`) |
+| `maxRetries` | number | no | Consecutive failures before auto-pausing (default: `3`) |
+
+```bash
+curl -X POST http://localhost:3000/api/swap-automations \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "walletId": "wallet-uuid",
+    "walletType": "server",
+    "tokenIn": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "tokenOut": "0x4200000000000000000000000000000000000006",
+    "amount": "1000000",
+    "indicatorType": "price_above",
+    "indicatorToken": "ETH",
+    "thresholdValue": 4000,
+    "slippageTolerance": 0.5,
+    "maxExecutions": 1,
+    "cooldownSeconds": 60,
+    "maxRetries": 3
+  }'
+```
+
+**Response data:** `SwapAutomation` (HTTP 201)
+
+**Errors:** `Error` if wallet not found or not owned by the user. `SwapAutomationError` if automation creation fails.
+
+#### `PATCH /api/swap-automations/:id`
+
+Update an existing swap automation. The authenticated user must own the automation. Only the fields provided will be updated.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `thresholdValue` | number | no | New threshold for the indicator condition |
+| `amount` | string | no | New amount in the token's smallest unit |
+| `slippageTolerance` | number | no | New slippage tolerance as a percentage |
+| `maxExecutions` | number | no | New maximum execution count |
+| `cooldownSeconds` | number | no | New minimum seconds between executions |
+| `maxRetries` | number | no | New consecutive failure limit |
+
+```bash
+curl -X PATCH http://localhost:3000/api/swap-automations/some-uuid \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "thresholdValue": 4500,
+    "maxExecutions": 5
+  }'
+```
+
+**Response data:** `SwapAutomation`
+
+**Errors:** `Error` if not found or not owned. `SwapAutomationError` if update fails.
+
+#### `POST /api/swap-automations/:id/pause`
+
+Pause an active swap automation. The authenticated user must own the automation.
+
+| Parameter | Location | Type | Required |
+|-----------|----------|------|----------|
+| `id` | path | string | yes |
+
+```bash
+curl -X POST http://localhost:3000/api/swap-automations/some-uuid/pause \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `SwapAutomation` (with status `"paused"`)
+
+**Errors:** `Error` if not found or not owned. `SwapAutomationError` if update fails.
+
+#### `POST /api/swap-automations/:id/resume`
+
+Resume a paused swap automation. Resets consecutive failure count.
+
+| Parameter | Location | Type | Required |
+|-----------|----------|------|----------|
+| `id` | path | string | yes |
+
+```bash
+curl -X POST http://localhost:3000/api/swap-automations/some-uuid/resume \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `SwapAutomation` (with status `"active"`)
+
+**Errors:** `Error` if not found or not owned. `SwapAutomationError` if update fails.
+
+#### `POST /api/swap-automations/:id/cancel`
+
+Cancel a swap automation permanently. The automation will not be evaluated again.
+
+| Parameter | Location | Type | Required |
+|-----------|----------|------|----------|
+| `id` | path | string | yes |
+
+```bash
+curl -X POST http://localhost:3000/api/swap-automations/some-uuid/cancel \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `SwapAutomation` (with status `"cancelled"`)
+
+**Errors:** `Error` if not found or not owned. `SwapAutomationError` if update fails.
+
+#### `GET /api/swap-automations/:id/executions`
+
+Get the execution history for a swap automation. The authenticated user must own the automation.
+
+| Parameter | Location | Type | Required | Description |
+|-----------|----------|------|----------|-------------|
+| `id` | path | string | yes | Automation ID |
+| `limit` | query | number | no | Maximum results (default: 50) |
+
+```bash
+curl "http://localhost:3000/api/swap-automations/some-uuid/executions?limit=20" \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `Array<SwapAutomationExecution>`
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "exec-uuid",
+      "automationId": "some-uuid",
+      "transactionId": "tx-uuid",
+      "status": "success",
+      "priceAtExecution": 4050.25,
+      "error": null,
+      "quoteSnapshot": {
+        "routing": "CLASSIC",
+        "input": { "token": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", "amount": "1000000" },
+        "output": { "token": "0x4200000000000000000000000000000000000006", "amount": "312500000000000" }
+      },
+      "executedAt": "2025-01-15T10:30:00.000Z"
+    }
+  ]
+}
+```
+
+**Errors:** `Error` if automation not found or not owned. `SwapAutomationError` if query fails.
+
+---
+
 ### Webhooks
 
 #### `POST /webhooks/pretium`
@@ -2344,6 +2550,7 @@ Three background processing pipelines run automatically via [Trigger.dev](https:
 | `process-due-jobs` | Every 1 minute | `JobberService.processDueJobs()` | Finds pending jobs with `nextRunAt <= now`, executes them, and reschedules. |
 | `process-due-payments` | Every 5 minutes | `RecurringPaymentService.processDuePayments()` | Finds active recurring payment schedules with `nextExecutionAt <= now`, executes each, records results, and reschedules. |
 | `snapshot-yield-positions` | Every hour (on the hour) | `YieldService.snapshotAllActivePositions()` | Reads accrued yield from on-chain for all active positions, calculates APY, and stores snapshots. |
+| `process-swap-automations` | Every 1 minute | `SwapAutomationService.processDueAutomations()` | Evaluates all active swap automations: fetches prices from CoinMarketCap, checks indicator conditions, verifies wallet balances, and executes Uniswap swaps when conditions are met. |
 
 ### Manual trigger endpoints
 
@@ -2664,5 +2871,50 @@ All three manual endpoints require the `X-Admin-Key` header. See the correspondi
   createdAt: string; // ISO timestamp
   updatedAt: string; // ISO timestamp
   completedAt: string | null; // ISO timestamp
+}
+```
+
+### SwapAutomation
+
+```typescript
+{
+  id: string;
+  userId: string;
+  walletId: string;
+  walletType: "server" | "agent";
+  tokenIn: string;
+  tokenOut: string;
+  amount: string;
+  slippageTolerance: number;
+  chainId: number;
+  indicatorType: "price_above" | "price_below" | "percent_change_up" | "percent_change_down";
+  indicatorToken: string;
+  thresholdValue: number;
+  referencePrice: number | null;
+  status: "active" | "paused" | "cancelled" | "triggered" | "failed";
+  maxExecutions: number;
+  totalExecutions: number;
+  consecutiveFailures: number;
+  maxRetries: number;
+  cooldownSeconds: number;
+  lastCheckedAt: string | null;
+  lastTriggeredAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+```
+
+### SwapAutomationExecution
+
+```typescript
+{
+  id: string;
+  automationId: string;
+  transactionId: string | null;
+  status: "success" | "failed" | "skipped";
+  priceAtExecution: number | null;
+  error: string | null;
+  quoteSnapshot: Record<string, unknown> | null;
+  executedAt: string;
 }
 ```
