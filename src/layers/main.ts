@@ -18,6 +18,7 @@ import { YieldServiceLive } from "../services/yield/yield-service.js";
 import { PretiumServiceLive } from "../services/pretium/pretium-service.js";
 import { ExchangeRateServiceLive } from "../services/pretium/exchange-rate-service.js";
 import { UniswapServiceLive } from "../services/uniswap/uniswap-service.js";
+import { SwapAutomationServiceLive } from "../services/swap-automation/swap-automation-service.js";
 
 const ConfigLayer = ConfigLive;
 
@@ -98,6 +99,15 @@ const UniswapServiceLayer = UniswapServiceLive.pipe(
   Layer.provide(ConfigLayer)
 );
 
+const SwapAutomationServiceLayer = SwapAutomationServiceLive.pipe(
+  Layer.provide(DatabaseLayer),
+  Layer.provide(TransactionServiceLayer),
+  Layer.provide(UniswapServiceLayer),
+  Layer.provide(AdapterServiceLayer),
+  Layer.provide(WalletServiceLayer),
+  Layer.provide(ConfigLayer)
+);
+
 export const MainLayer = Layer.mergeAll(
   ConfigLayer,
   DatabaseLayer,
@@ -117,5 +127,6 @@ export const MainLayer = Layer.mergeAll(
   YieldServiceLayer,
   PretiumServiceLayer,
   ExchangeRateServiceLayer,
-  UniswapServiceLayer
+  UniswapServiceLayer,
+  SwapAutomationServiceLayer
 );

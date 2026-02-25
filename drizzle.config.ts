@@ -10,6 +10,7 @@ export default defineConfig({
     "./src/db/schema/recurring-payments.ts",
     "./src/db/schema/yield.ts",
     "./src/db/schema/pretium-transactions.ts",
+    "./src/db/schema/swap-automations.ts",
     "./src/db/schema/enums.ts",
   ],
   out: "./drizzle",

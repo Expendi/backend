@@ -19,6 +19,7 @@ import {
   createPretiumWebhookRoutes,
 } from "./routes/pretium.js";
 import { createUniswapRoutes } from "./routes/uniswap.js";
+import { createSwapAutomationRoutes } from "./routes/swap-automations.js";
 
 // Resolve the Privy client and admin API key from the Effect runtime so
 // we can hand them to the Hono middleware layer without requiring Effect
@@ -48,6 +49,7 @@ app.get("/", (c) =>
       yield: "/api/yield",
       pretium: "/api/pretium",
       uniswap: "/api/uniswap",
+      swapAutomations: "/api/swap-automations",
       webhooks: "/webhooks/pretium",
     },
   })
@@ -69,6 +71,7 @@ app.route("/api/recurring-payments", createRecurringPaymentRoutes(runtime));
 app.route("/api/yield", createYieldRoutes(runtime));
 app.route("/api/pretium", createPretiumRoutes(runtime));
 app.route("/api/uniswap", createUniswapRoutes(runtime));
+app.route("/api/swap-automations", createSwapAutomationRoutes(runtime));
 
 // ── Webhook routes (no auth -- called by payment providers) ────────
 

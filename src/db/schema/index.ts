@@ -73,3 +73,17 @@ export {
   type PretiumTransaction,
   type NewPretiumTransaction,
 } from "./pretium-transactions.js";
+
+export {
+  swapAutomations,
+  swapAutomationsRelations,
+  swapAutomationExecutions,
+  swapAutomationExecutionsRelations,
+  swapAutomationStatusEnum,
+  swapIndicatorTypeEnum,
+  swapAutomationExecutionStatusEnum,
+  type SwapAutomation,
+  type NewSwapAutomation,
+  type SwapAutomationExecution,
+  type NewSwapAutomationExecution,
+} from "./swap-automations.js";
