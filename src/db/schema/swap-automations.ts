@@ -49,6 +49,8 @@ export const swapAutomations = pgTable("swap_automations", {
   // Status / lifecycle
   status: swapAutomationStatusEnum("status").default("active").notNull(),
   maxExecutions: integer("max_executions").default(1).notNull(),
+  /** Optional cap on how many times the automation can trigger per calendar day (UTC). null = no daily limit. */
+  maxExecutionsPerDay: integer("max_executions_per_day"),
   totalExecutions: integer("total_executions").default(0).notNull(),
   consecutiveFailures: integer("consecutive_failures").default(0).notNull(),
   maxRetries: integer("max_retries").default(3).notNull(),

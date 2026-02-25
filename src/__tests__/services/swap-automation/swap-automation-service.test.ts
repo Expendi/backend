@@ -47,6 +47,7 @@ function makeFakeAutomation(
     referencePrice: null,
     status: "active",
     maxExecutions: 1,
+    maxExecutionsPerDay: null,
     totalExecutions: 0,
     consecutiveFailures: 0,
     maxRetries: 3,
@@ -842,6 +843,333 @@ describe("SwapAutomationService", () => {
 
       // No executions should be recorded — condition wasn't met
       expect(result).toEqual([]);
+    });
+
+    it("should skip automation when daily execution limit is reached", async () => {
+      // Automation with maxExecutionsPerDay = 2, condition is met, but already hit 2 today
+      const dueAutomation = makeFakeAutomation({
+        status: "active",
+        indicatorType: "price_above",
+        thresholdValue: 4000,
+        maxExecutions: 100,
+        maxExecutionsPerDay: 2,
+        lastCheckedAt: null,
+      });
+
+      // Mock DB: select returns active automations, but the count query returns 2
+      const mockDb = makeMockDb({
+        selectResult: [dueAutomation],
+        insertResult: [makeFakeExecution()],
+      });
+
+      // Override select to handle both the active automations query and the count query
+      let selectCallCount = 0;
+      const originalSelect = mockDb.select;
+      mockDb.select = vi.fn().mockImplementation((...args: unknown[]) => {
+        selectCallCount++;
+        if (selectCallCount === 1) {
+          // First call: fetch active automations
+          return originalSelect(...args);
+        }
+        // Second call: count today's executions — return count = 2 (at daily limit)
+        const countResult = [{ count: 2 }];
+        return {
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue(countResult),
+          }),
+        };
+      });
+
+      const MockDbLayer = Layer.succeed(DatabaseService, {
+        db: mockDb as any,
+        pool: {} as any,
+      });
+      const MockTxServiceLayer = Layer.succeed(TransactionService, {
+        submitContractTransaction: () => Effect.succeed(makeFakeTx()),
+        submitRawTransaction: () => Effect.succeed(makeFakeTx()),
+        getTransaction: () => Effect.succeed(makeFakeTx()),
+        listTransactions: () => Effect.succeed([makeFakeTx()]),
+      });
+      const MockUniswapLayer = Layer.succeed(UniswapService, {
+        checkApproval: () => Effect.succeed({ approval: null }),
+        getQuote: () => Effect.succeed({} as any),
+        getSwapTransaction: () => Effect.succeed({} as any),
+      });
+      const MockAdapterLayer = Layer.succeed(AdapterService, {
+        getPrice: () => Effect.succeed({} as any),
+        getPrices: () =>
+          Effect.succeed([
+            {
+              symbol: "ETH",
+              price: 4100,
+              percentChange24h: 2.5,
+              marketCap: 500000000000,
+              volume24h: 20000000000,
+              lastUpdated: now.toISOString(),
+            },
+          ]),
+      });
+      const MockWalletServiceLayer = Layer.succeed(WalletService, {
+        createUserWallet: () => Effect.succeed({} as any),
+        createServerWallet: () => Effect.succeed({} as any),
+        createAgentWallet: () => Effect.succeed({} as any),
+        getWallet: () => Effect.succeed({} as any),
+      });
+      const MockConfigLayer = Layer.succeed(ConfigService, {
+        databaseUrl: "postgres://test",
+        privyAppId: "test",
+        privyAppSecret: "test",
+        coinmarketcapApiKey: "test",
+        adminApiKey: "test",
+        defaultChainId: 8453,
+        port: 3000,
+      });
+
+      const layer = SwapAutomationServiceLive.pipe(
+        Layer.provide(MockDbLayer),
+        Layer.provide(MockTxServiceLayer),
+        Layer.provide(MockUniswapLayer),
+        Layer.provide(MockAdapterLayer),
+        Layer.provide(MockWalletServiceLayer),
+        Layer.provide(MockConfigLayer)
+      );
+
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const service = yield* SwapAutomationService;
+          return yield* service.processDueAutomations();
+        }).pipe(Effect.provide(layer))
+      );
+
+      // No executions — daily limit was reached
+      expect(result).toEqual([]);
+    });
+
+    it("should execute automation when daily limit is not yet reached", async () => {
+      // Automation with maxExecutionsPerDay = 3, condition is met, only 1 execution today
+      const dueAutomation = makeFakeAutomation({
+        status: "active",
+        indicatorType: "price_above",
+        thresholdValue: 4000,
+        maxExecutions: 100,
+        maxExecutionsPerDay: 3,
+        lastCheckedAt: null,
+      });
+
+      const mockDb = makeMockDb({
+        selectResult: [dueAutomation],
+        insertResult: [makeFakeExecution()],
+      });
+
+      let selectCallCount = 0;
+      const originalSelect = mockDb.select;
+      mockDb.select = vi.fn().mockImplementation((...args: unknown[]) => {
+        selectCallCount++;
+        if (selectCallCount === 1) {
+          return originalSelect(...args);
+        }
+        // Count query returns 1 (below daily limit of 3)
+        const countResult = [{ count: 1 }];
+        return {
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue(countResult),
+          }),
+        };
+      });
+
+      const MockDbLayer = Layer.succeed(DatabaseService, {
+        db: mockDb as any,
+        pool: {} as any,
+      });
+      const MockTxServiceLayer = Layer.succeed(TransactionService, {
+        submitContractTransaction: () => Effect.succeed(makeFakeTx()),
+        submitRawTransaction: () => Effect.succeed(makeFakeTx()),
+        getTransaction: () => Effect.succeed(makeFakeTx()),
+        listTransactions: () => Effect.succeed([makeFakeTx()]),
+      });
+      const MockUniswapLayer = Layer.succeed(UniswapService, {
+        checkApproval: () => Effect.succeed({ approval: null }),
+        getQuote: () =>
+          Effect.succeed({
+            routing: "CLASSIC",
+            quote: {
+              input: { token: "0xUSC", amount: "1000000" },
+              output: { token: "0xWETH", amount: "500000000000000" },
+              slippage: 0.5,
+              gasFee: "21000",
+              gasFeeUSD: "0.05",
+              gasUseEstimate: "150000",
+            },
+          }),
+        getSwapTransaction: () =>
+          Effect.succeed({
+            to: "0xRouter",
+            from: "0xWallet",
+            data: "0xcalldata",
+            value: "0",
+            chainId: 8453,
+          }),
+      });
+      const MockAdapterLayer = Layer.succeed(AdapterService, {
+        getPrice: () => Effect.succeed({} as any),
+        getPrices: () =>
+          Effect.succeed([
+            {
+              symbol: "ETH",
+              price: 4100,
+              percentChange24h: 2.5,
+              marketCap: 500000000000,
+              volume24h: 20000000000,
+              lastUpdated: now.toISOString(),
+            },
+          ]),
+      });
+      const MockWalletServiceLayer = Layer.succeed(WalletService, {
+        createUserWallet: () => Effect.succeed({} as any),
+        createServerWallet: () => Effect.succeed({} as any),
+        createAgentWallet: () => Effect.succeed({} as any),
+        getWallet: () =>
+          Effect.succeed({
+            getAddress: () =>
+              Effect.succeed("0xWalletAddress" as `0x${string}`),
+            sign: () => Effect.succeed("0xSig" as `0x${string}`),
+            sendTransaction: () => Effect.succeed("0xTxH" as `0x${string}`),
+          }),
+      });
+      const MockConfigLayer = Layer.succeed(ConfigService, {
+        databaseUrl: "postgres://test",
+        privyAppId: "test",
+        privyAppSecret: "test",
+        coinmarketcapApiKey: "test",
+        adminApiKey: "test",
+        defaultChainId: 8453,
+        port: 3000,
+      });
+
+      const layer = SwapAutomationServiceLive.pipe(
+        Layer.provide(MockDbLayer),
+        Layer.provide(MockTxServiceLayer),
+        Layer.provide(MockUniswapLayer),
+        Layer.provide(MockAdapterLayer),
+        Layer.provide(MockWalletServiceLayer),
+        Layer.provide(MockConfigLayer)
+      );
+
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const service = yield* SwapAutomationService;
+          return yield* service.processDueAutomations();
+        }).pipe(Effect.provide(layer))
+      );
+
+      // Should execute since daily limit not reached
+      expect(result).toHaveLength(1);
+      expect(result[0]!.status).toBe("success");
+    });
+
+    it("should not check daily limit when maxExecutionsPerDay is null", async () => {
+      // Automation without daily limit (maxExecutionsPerDay = null) — should execute normally
+      const dueAutomation = makeFakeAutomation({
+        status: "active",
+        indicatorType: "price_above",
+        thresholdValue: 4000,
+        maxExecutions: 100,
+        maxExecutionsPerDay: null,
+        lastCheckedAt: null,
+      });
+      const mockDb = makeMockDb({
+        selectResult: [dueAutomation],
+        insertResult: [makeFakeExecution()],
+      });
+
+      const MockDbLayer = Layer.succeed(DatabaseService, {
+        db: mockDb as any,
+        pool: {} as any,
+      });
+      const MockTxServiceLayer = Layer.succeed(TransactionService, {
+        submitContractTransaction: () => Effect.succeed(makeFakeTx()),
+        submitRawTransaction: () => Effect.succeed(makeFakeTx()),
+        getTransaction: () => Effect.succeed(makeFakeTx()),
+        listTransactions: () => Effect.succeed([makeFakeTx()]),
+      });
+      const MockUniswapLayer = Layer.succeed(UniswapService, {
+        checkApproval: () => Effect.succeed({ approval: null }),
+        getQuote: () =>
+          Effect.succeed({
+            routing: "CLASSIC",
+            quote: {
+              input: { token: "0xUSC", amount: "1000000" },
+              output: { token: "0xWETH", amount: "500000000000000" },
+              slippage: 0.5,
+              gasFee: "21000",
+              gasFeeUSD: "0.05",
+              gasUseEstimate: "150000",
+            },
+          }),
+        getSwapTransaction: () =>
+          Effect.succeed({
+            to: "0xRouter",
+            from: "0xWallet",
+            data: "0xcalldata",
+            value: "0",
+            chainId: 8453,
+          }),
+      });
+      const MockAdapterLayer = Layer.succeed(AdapterService, {
+        getPrice: () => Effect.succeed({} as any),
+        getPrices: () =>
+          Effect.succeed([
+            {
+              symbol: "ETH",
+              price: 4100,
+              percentChange24h: 2.5,
+              marketCap: 500000000000,
+              volume24h: 20000000000,
+              lastUpdated: now.toISOString(),
+            },
+          ]),
+      });
+      const MockWalletServiceLayer = Layer.succeed(WalletService, {
+        createUserWallet: () => Effect.succeed({} as any),
+        createServerWallet: () => Effect.succeed({} as any),
+        createAgentWallet: () => Effect.succeed({} as any),
+        getWallet: () =>
+          Effect.succeed({
+            getAddress: () =>
+              Effect.succeed("0xWalletAddress" as `0x${string}`),
+            sign: () => Effect.succeed("0xSig" as `0x${string}`),
+            sendTransaction: () => Effect.succeed("0xTxH" as `0x${string}`),
+          }),
+      });
+      const MockConfigLayer = Layer.succeed(ConfigService, {
+        databaseUrl: "postgres://test",
+        privyAppId: "test",
+        privyAppSecret: "test",
+        coinmarketcapApiKey: "test",
+        adminApiKey: "test",
+        defaultChainId: 8453,
+        port: 3000,
+      });
+
+      const layer = SwapAutomationServiceLive.pipe(
+        Layer.provide(MockDbLayer),
+        Layer.provide(MockTxServiceLayer),
+        Layer.provide(MockUniswapLayer),
+        Layer.provide(MockAdapterLayer),
+        Layer.provide(MockWalletServiceLayer),
+        Layer.provide(MockConfigLayer)
+      );
+
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const service = yield* SwapAutomationService;
+          return yield* service.processDueAutomations();
+        }).pipe(Effect.provide(layer))
+      );
+
+      // Should execute normally — no daily limit set
+      expect(result).toHaveLength(1);
+      expect(result[0]!.status).toBe("success");
     });
 
     it("should skip automation still in cooldown", async () => {
