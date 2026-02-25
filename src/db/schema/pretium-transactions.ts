@@ -9,13 +9,13 @@ import { relations } from "drizzle-orm";
 import {
   pretiumTransactionStatusEnum,
   pretiumPaymentTypeEnum,
-} from "./enums";
-import { wallets } from "./wallets";
+} from "./enums.js";
+import { wallets } from "./wallets.js";
 
 export {
   pretiumTransactionStatusEnum,
   pretiumPaymentTypeEnum,
-} from "./enums";
+} from "./enums.js";
 
 export const pretiumTransactions = pgTable("pretium_transactions", {
   id: text("id")

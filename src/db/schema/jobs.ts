@@ -1,5 +1,5 @@
 import { pgTable, text, timestamp, jsonb, integer } from "drizzle-orm/pg-core";
-import { jobStatusEnum } from "./enums";
+import { jobStatusEnum } from "./enums.js";
 
 export { jobStatusEnum } from "./enums";
 
