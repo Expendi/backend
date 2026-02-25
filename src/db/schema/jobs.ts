@@ -1,7 +1,7 @@
 import { pgTable, text, timestamp, jsonb, integer } from "drizzle-orm/pg-core";
-import { jobStatusEnum } from "./enums.js";
+import { jobStatusEnum } from "./enums";
 
-export { jobStatusEnum } from "./enums.js";
+export { jobStatusEnum } from "./enums";
 
 export const jobs = pgTable("jobs", {
   id: text("id")

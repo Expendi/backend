@@ -7,11 +7,11 @@ import {
   numeric,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { yieldPositionStatusEnum } from "./enums.js";
-import { wallets } from "./wallets.js";
-import { transactions } from "./transactions.js";
+import { yieldPositionStatusEnum } from "./enums";
+import { wallets } from "./wallets";
+import { transactions } from "./transactions";
 
-export { yieldPositionStatusEnum } from "./enums.js";
+export { yieldPositionStatusEnum } from "./enums";
 
 // ── Yield Vaults ──────────────────────────────────────────────────────
 

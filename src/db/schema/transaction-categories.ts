@@ -1,6 +1,6 @@
 import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { transactions } from "./transactions.js";
+import { transactions } from "./transactions";
 
 export const transactionCategories = pgTable("transaction_categories", {
   id: text("id")

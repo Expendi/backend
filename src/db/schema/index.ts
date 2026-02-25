@@ -4,7 +4,7 @@ export {
   walletsRelations,
   type Wallet,
   type NewWallet,
-} from "./wallets.js";
+} from "./wallets";
 
 export {
   transactions,
@@ -12,28 +12,28 @@ export {
   transactionsRelations,
   type Transaction,
   type NewTransaction,
-} from "./transactions.js";
+} from "./transactions";
 
 export {
   transactionCategories,
   transactionCategoriesRelations,
   type TransactionCategory,
   type NewTransactionCategory,
-} from "./transaction-categories.js";
+} from "./transaction-categories";
 
 export {
   jobs,
   jobStatusEnum,
   type Job,
   type NewJob,
-} from "./jobs.js";
+} from "./jobs";
 
 export {
   userProfiles,
   userProfilesRelations,
   type UserProfile,
   type NewUserProfile,
-} from "./user-profiles.js";
+} from "./user-profiles";
 
 export {
   recurringPayments,

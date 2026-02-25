@@ -11,14 +11,14 @@ import {
   swapAutomationStatusEnum,
   swapIndicatorTypeEnum,
   swapAutomationExecutionStatusEnum,
-} from "./enums.js";
-import { wallets } from "./wallets.js";
+} from "./enums";
+import { wallets } from "./wallets";
 
 export {
   swapAutomationStatusEnum,
   swapIndicatorTypeEnum,
   swapAutomationExecutionStatusEnum,
-} from "./enums.js";
+} from "./enums";
 
 export const swapAutomations = pgTable("swap_automations", {
   id: text("id")
