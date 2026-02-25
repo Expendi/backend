@@ -1464,14 +1464,14 @@
 								],
 								"body": {
 									"mode": "raw",
-									"raw": "{\n  \"walletId\": \"{{walletId}}\",\n  \"walletType\": \"server\",\n  \"tokenIn\": \"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\",\n  \"tokenOut\": \"0x4200000000000000000000000000000000000006\",\n  \"amount\": \"1000000\",\n  \"indicatorType\": \"price_above\",\n  \"indicatorToken\": \"ETH\",\n  \"thresholdValue\": 4000,\n  \"slippageTolerance\": 0.5,\n  \"maxExecutions\": 1,\n  \"cooldownSeconds\": 300\n}"
+									"raw": "{\n  \"walletId\": \"{{walletId}}\",\n  \"walletType\": \"server\",\n  \"tokenIn\": \"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\",\n  \"tokenOut\": \"0x4200000000000000000000000000000000000006\",\n  \"amount\": \"1000000\",\n  \"indicatorType\": \"price_above\",\n  \"indicatorToken\": \"ETH\",\n  \"thresholdValue\": 4000,\n  \"slippageTolerance\": 0.5,\n  \"maxExecutions\": 1,\n  \"maxExecutionsPerDay\": 3,\n  \"cooldownSeconds\": 300\n}"
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/swap-automations",
 									"host": ["{{baseUrl}}"],
 									"path": ["api", "swap-automations"]
 								},
-								"description": "Creates a new swap automation that will execute a Uniswap swap when the specified indicator condition is met. The automation checks prices every minute via a Trigger.dev cron task. Supported indicator types: price_above (trigger when price >= threshold), price_below (trigger when price <= threshold), percent_change_up (trigger when price increases by threshold% from reference), percent_change_down (trigger when price decreases by threshold% from reference). For percent_change indicators, a reference price is automatically captured at creation time. Users can choose server or agent wallet for execution."
+								"description": "Creates a new swap automation that will execute a Uniswap swap when the specified indicator condition is met. The automation checks prices every minute via a Trigger.dev cron task. Supported indicator types: price_above (trigger when price >= threshold), price_below (trigger when price <= threshold), percent_change_up (trigger when price increases by threshold% from reference), percent_change_down (trigger when price decreases by threshold% from reference). For percent_change indicators, a reference price is automatically captured at creation time. Users can choose server or agent wallet for execution. Use maxExecutionsPerDay to cap how many times the automation can trigger per calendar day (UTC); set to null or omit for no daily limit."
 							},
 							"response": []
 						},
@@ -1491,7 +1491,7 @@
 								],
 								"body": {
 									"mode": "raw",
-									"raw": "{\n  \"thresholdValue\": 4500,\n  \"amount\": \"2000000\"\n}"
+									"raw": "{\n  \"thresholdValue\": 4500,\n  \"amount\": \"2000000\",\n  \"maxExecutionsPerDay\": 5\n}"
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/swap-automations/{{swapAutomationId}}",

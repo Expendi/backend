@@ -62,6 +62,7 @@ export function createSwapAutomationRoutes(runtime: AppRuntime) {
               indicatorToken: string;
               thresholdValue: number;
               maxExecutions?: number;
+              maxExecutionsPerDay?: number;
               cooldownSeconds?: number;
               maxRetries?: number;
             }>(),
@@ -91,6 +92,7 @@ export function createSwapAutomationRoutes(runtime: AppRuntime) {
               amount?: string;
               slippageTolerance?: number;
               maxExecutions?: number;
+              maxExecutionsPerDay?: number | null;
               cooldownSeconds?: number;
               maxRetries?: number;
             }>(),

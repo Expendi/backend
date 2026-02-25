@@ -1,5 +1,5 @@
 import { Effect, Context, Layer, Data } from "effect";
-import { eq } from "drizzle-orm";
+import { eq, and, gte, sql } from "drizzle-orm";
 import { DatabaseService } from "../../db/client.js";
 import {
   swapAutomations,
@@ -48,6 +48,7 @@ export interface CreateAutomationParams {
   readonly indicatorToken: string;
   readonly thresholdValue: number;
   readonly maxExecutions?: number;
+  readonly maxExecutionsPerDay?: number;
   readonly cooldownSeconds?: number;
   readonly maxRetries?: number;
 }
@@ -57,6 +58,7 @@ export interface UpdateAutomationParams {
   readonly amount?: string;
   readonly slippageTolerance?: number;
   readonly maxExecutions?: number;
+  readonly maxExecutionsPerDay?: number | null;
   readonly cooldownSeconds?: number;
   readonly maxRetries?: number;
 }
@@ -139,6 +141,13 @@ function isConditionMet(
       return pctChange >= thresholdValue;
     }
   }
+}
+
+/** Return the start of the current UTC day */
+function startOfUTCDay(): Date {
+  const d = new Date();
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
 }
 
 // ── Live implementation ──────────────────────────────────────────────
@@ -270,6 +279,29 @@ export const SwapAutomationServiceLive: Layer.Layer<
         catch: (error) =>
           new SwapAutomationError({
             message: `Transaction confirmation failed: ${error}`,
+            cause: error,
+          }),
+      });
+
+    // Count successful executions for an automation since the start of today (UTC)
+    const countTodayExecutions = (automationId: string) =>
+      Effect.tryPromise({
+        try: async () => {
+          const rows = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(swapAutomationExecutions)
+            .where(
+              and(
+                eq(swapAutomationExecutions.automationId, automationId),
+                eq(swapAutomationExecutions.status, "success"),
+                gte(swapAutomationExecutions.executedAt, startOfUTCDay())
+              )
+            );
+          return rows[0]?.count ?? 0;
+        },
+        catch: (error) =>
+          new SwapAutomationError({
+            message: `Failed to count today's executions: ${error}`,
             cause: error,
           }),
       });
@@ -559,6 +591,7 @@ export const SwapAutomationServiceLive: Layer.Layer<
             thresholdValue: params.thresholdValue,
             referencePrice,
             maxExecutions: params.maxExecutions ?? 1,
+            maxExecutionsPerDay: params.maxExecutionsPerDay ?? null,
             cooldownSeconds: params.cooldownSeconds ?? 60,
             maxRetries: params.maxRetries ?? 3,
           };
@@ -622,6 +655,8 @@ export const SwapAutomationServiceLive: Layer.Layer<
               updates.slippageTolerance = params.slippageTolerance;
             if (params.maxExecutions !== undefined)
               updates.maxExecutions = params.maxExecutions;
+            if (params.maxExecutionsPerDay !== undefined)
+              updates.maxExecutionsPerDay = params.maxExecutionsPerDay;
             if (params.cooldownSeconds !== undefined)
               updates.cooldownSeconds = params.cooldownSeconds;
             if (params.maxRetries !== undefined)
@@ -803,6 +838,26 @@ export const SwapAutomationServiceLive: Layer.Layer<
                   }),
               });
               continue;
+            }
+
+            // Check daily execution limit
+            if (automation.maxExecutionsPerDay != null) {
+              const todayCount = yield* countTodayExecutions(automation.id);
+              if (todayCount >= automation.maxExecutionsPerDay) {
+                // Daily limit reached — update lastCheckedAt and skip
+                yield* Effect.tryPromise({
+                  try: () =>
+                    db
+                      .update(swapAutomations)
+                      .set({ lastCheckedAt: new Date(), updatedAt: new Date() })
+                      .where(eq(swapAutomations.id, automation.id)),
+                  catch: () =>
+                    new SwapAutomationError({
+                      message: "Failed to update lastCheckedAt",
+                    }),
+                });
+                continue;
+              }
             }
 
             // Condition met — execute the swap
