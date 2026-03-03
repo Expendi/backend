@@ -65,7 +65,7 @@ export function createTransactionRoutes(runtime: AppRuntime) {
           try: () =>
             c.req.json<{
               walletId?: string;
-              walletType: "user" | "server" | "agent";
+              walletType?: "user" | "server" | "agent";
               contractName: string;
               chainId?: number;
               method: string;
@@ -113,10 +113,12 @@ export function createTransactionRoutes(runtime: AppRuntime) {
           );
         }
 
+        const walletType = body.walletType ?? walletRecord.type;
+
         const txService = yield* TransactionService;
         return yield* txService.submitContractTransaction({
           walletId: resolvedWalletId!,
-          walletType: body.walletType,
+          walletType,
           contractName: body.contractName,
           chainId,
           method: body.method,
@@ -144,7 +146,7 @@ export function createTransactionRoutes(runtime: AppRuntime) {
           try: () =>
             c.req.json<{
               walletId?: string;
-              walletType: "user" | "server" | "agent";
+              walletType?: "user" | "server" | "agent";
               chainId?: number;
               to: `0x${string}`;
               data?: `0x${string}`;
@@ -191,10 +193,12 @@ export function createTransactionRoutes(runtime: AppRuntime) {
           );
         }
 
+        const walletType = body.walletType ?? walletRecord.type;
+
         const txService = yield* TransactionService;
         return yield* txService.submitRawTransaction({
           walletId: resolvedWalletId!,
-          walletType: body.walletType,
+          walletType,
           chainId,
           to: body.to,
           data: body.data,

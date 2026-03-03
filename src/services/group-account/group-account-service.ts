@@ -125,15 +125,35 @@ export class GroupAccountService extends Context.Tag("GroupAccountService")<
   GroupAccountServiceApi
 >() {}
 
-// ── ERC-20 balanceOf ABI (minimal) ──────────────────────────────────
+// ── ERC-20 ABI fragments ────────────────────────────────────────────
 
-const ERC20_BALANCE_ABI = [
+const ERC20_ABI = [
   {
     type: "function" as const,
     name: "balanceOf",
     stateMutability: "view" as const,
     inputs: [{ name: "account", type: "address" }],
     outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function" as const,
+    name: "allowance",
+    stateMutability: "view" as const,
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "spender", type: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function" as const,
+    name: "approve",
+    stateMutability: "nonpayable" as const,
+    inputs: [
+      { name: "spender", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
   },
 ] as const;
 
@@ -239,6 +259,61 @@ export const GroupAccountServiceLive: Layer.Layer<
         data,
         value,
         userId,
+      });
+
+    /** Check current allowance and submit an ERC-20 approve tx if insufficient. */
+    const ensureApproval = (
+      tokenAddress: `0x${string}`,
+      ownerAddress: `0x${string}`,
+      spenderAddress: `0x${string}`,
+      amount: bigint,
+      serverWalletId: string,
+      chainId: number,
+      userId?: string
+    ) =>
+      Effect.gen(function* () {
+        const client = createPublicClient({
+          chain: base,
+          transport: http(),
+        });
+
+        const currentAllowance = yield* Effect.tryPromise({
+          try: () =>
+            client.readContract({
+              address: tokenAddress,
+              abi: ERC20_ABI,
+              functionName: "allowance",
+              args: [ownerAddress, spenderAddress],
+            }),
+          catch: (error) =>
+            new GroupAccountError({
+              message: `Failed to check allowance: ${error}`,
+              cause: error,
+            }),
+        });
+
+        if ((currentAllowance as bigint) >= amount) return;
+
+        // Approve max uint256 to avoid repeated approvals
+        const approveData = encodeFunctionData({
+          abi: ERC20_ABI,
+          functionName: "approve",
+          args: [
+            spenderAddress,
+            BigInt(
+              "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            ),
+          ],
+        });
+
+        yield* txService.submitRawTransaction({
+          walletId: serverWalletId,
+          walletType: "server",
+          chainId,
+          to: tokenAddress,
+          data: approveData,
+          userId,
+        });
       });
 
     // ── Service methods ───────────────────────────────────────────
@@ -689,6 +764,17 @@ export const GroupAccountServiceLive: Layer.Layer<
           let value: bigint | undefined;
 
           if (params.token) {
+            // Approve the group contract to spend the token on behalf of the server wallet
+            yield* ensureApproval(
+              params.token as `0x${string}`,
+              serverWallet.address as `0x${string}`,
+              group.groupAddress as `0x${string}`,
+              amount,
+              serverWallet.id,
+              group.chainId,
+              userId
+            );
+
             // depositToken(token, amount)
             data = encodeFunctionData({
               abi: GROUP_ACCOUNT_ABI,
@@ -876,7 +962,7 @@ export const GroupAccountServiceLive: Layer.Layer<
                 try: () =>
                   client.readContract({
                     address: tokenAddress as `0x${string}`,
-                    abi: ERC20_BALANCE_ABI,
+                    abi: ERC20_ABI,
                     functionName: "balanceOf",
                     args: [group.groupAddress as `0x${string}`],
                   }),
