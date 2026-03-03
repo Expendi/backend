@@ -41,6 +41,7 @@ export function createOnboardingRoutes(runtime: AppRuntime) {
             userWalletId: profileWithWallets.userWalletId,
             serverWalletId: profileWithWallets.serverWalletId,
             agentWalletId: profileWithWallets.agentWalletId,
+            username: profileWithWallets.username ?? null,
             createdAt: profileWithWallets.createdAt,
             updatedAt: profileWithWallets.updatedAt,
           },
@@ -62,7 +63,44 @@ export function createOnboardingRoutes(runtime: AppRuntime) {
       Effect.gen(function* () {
         const userId = c.get("userId");
         const onboarding = yield* OnboardingService;
-        return yield* onboarding.getProfileWithWallets(userId);
+        const profile = yield* onboarding.getProfileWithWallets(userId);
+        return { ...profile, username: profile.username ?? null };
+      }),
+      c
+    )
+  );
+
+  // PUT /api/profile/username — Claim or update username
+  app.put("/profile/username", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const userId = c.get("userId");
+        const body = yield* Effect.tryPromise({
+          try: () => c.req.json<{ username: string }>(),
+          catch: () => new Error("Invalid request body"),
+        });
+
+        const onboarding = yield* OnboardingService;
+        return yield* onboarding.setUsername(userId, body.username);
+      }),
+      c
+    )
+  );
+
+  // GET /api/profile/resolve/:username — Resolve username to address
+  app.get("/profile/resolve/:username", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const username = c.req.param("username");
+        const onboarding = yield* OnboardingService;
+        const resolved = yield* onboarding.resolveUsername(username);
+        return {
+          username: username.toLowerCase().trim(),
+          userId: resolved.privyUserId,
+          address: resolved.address,
+        };
       }),
       c
     )

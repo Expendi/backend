@@ -10,6 +10,7 @@ export interface AppConfig {
   readonly port: number;
   readonly pretiumApiKey: string;
   readonly pretiumBaseUri: string;
+  readonly serverBaseUrl: string;
   readonly uniswapApiKey: string;
 }
 
@@ -37,6 +38,11 @@ export const ConfigLive: Layer.Layer<ConfigService, ConfigError.ConfigError> =
         "https://api.xwift.africa"
       );
 
+      const serverBaseUrl = yield* Config.withDefault(
+        Config.string("SERVER_BASE_URL"),
+        `http://localhost:${port}`
+      );
+
       const uniswapApiKey = yield* Config.withDefault(Config.string("UNISWAP_API_KEY"), "");
 
       return {
@@ -49,6 +55,7 @@ export const ConfigLive: Layer.Layer<ConfigService, ConfigError.ConfigError> =
         port,
         pretiumApiKey,
         pretiumBaseUri,
+        serverBaseUrl,
         uniswapApiKey,
       };
     })

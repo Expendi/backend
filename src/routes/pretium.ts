@@ -4,6 +4,7 @@ import { eq, and, desc } from "drizzle-orm";
 import { type AppRuntime, runEffect } from "./effect-handler.js";
 import { PretiumService } from "../services/pretium/pretium-service.js";
 import { ExchangeRateService } from "../services/pretium/exchange-rate-service.js";
+import { ConfigService } from "../config.js";
 import { DatabaseService } from "../db/client.js";
 import { pretiumTransactions } from "../db/schema/index.js";
 import type { AuthVariables } from "../middleware/auth.js";
@@ -11,6 +12,12 @@ import type {
   SupportedCountry,
   FiatPaymentType,
   BankTransferCountry,
+  OnrampSupportedCountry,
+  OnrampAsset,
+} from "../services/pretium/pretium-service.js";
+import {
+  ONRAMP_SUPPORTED_COUNTRIES,
+  ONRAMP_SUPPORTED_ASSETS,
 } from "../services/pretium/pretium-service.js";
 
 // ── Public Pretium routes (behind Privy auth) ────────────────────────
@@ -241,6 +248,7 @@ export function createPretiumRoutes(runtime: AppRuntime) {
 
         const pretium = yield* PretiumService;
         const exchangeRateService = yield* ExchangeRateService;
+        const config = yield* ConfigService;
         const { db } = yield* DatabaseService;
 
         // Validate country
@@ -253,6 +261,11 @@ export function createPretiumRoutes(runtime: AppRuntime) {
         const country = body.country as SupportedCountry;
         const countries = pretium.getSupportedCountries();
         const countryConfig = countries[country];
+
+        // Auto-generate callback URL if not provided
+        const callbackUrl =
+          body.callbackUrl ||
+          `${config.serverBaseUrl}/webhooks/pretium`;
 
         // Get exchange rate for fiat amount calculation
         const conversion = yield* exchangeRateService.convertUsdcToFiat(
@@ -267,7 +280,7 @@ export function createPretiumRoutes(runtime: AppRuntime) {
           phoneNumber: body.phoneNumber,
           mobileNetwork: body.mobileNetwork,
           transactionHash: body.transactionHash,
-          callbackUrl: body.callbackUrl,
+          callbackUrl,
           fee: body.fee,
           paymentType: body.paymentType as FiatPaymentType | undefined,
           accountNumber: body.accountNumber,
@@ -309,7 +322,7 @@ export function createPretiumRoutes(runtime: AppRuntime) {
                 bankCode: body.bankCode,
                 bankName: body.bankName,
                 accountName: body.accountName,
-                callbackUrl: body.callbackUrl,
+                callbackUrl,
               })
               .returning(),
           catch: (error) =>
@@ -452,7 +465,286 @@ export function createPretiumRoutes(runtime: AppRuntime) {
             db
               .select()
               .from(pretiumTransactions)
-              .where(eq(pretiumTransactions.userId, userId))
+              .where(
+                and(
+                  eq(pretiumTransactions.userId, userId),
+                  eq(pretiumTransactions.direction, "offramp")
+                )
+              )
+              .orderBy(desc(pretiumTransactions.createdAt))
+              .limit(limit)
+              .offset(offset),
+          catch: (error) =>
+            new Error(`Failed to list pretium transactions: ${error}`),
+        });
+
+        return results;
+      }),
+      c
+    )
+  );
+
+  // ── Onramp ─────────────────────────────────────────────────────────
+
+  /** List onramp-supported countries */
+  app.get("/onramp/countries", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const pretium = yield* PretiumService;
+        const countries = pretium.getSupportedCountries();
+        return ONRAMP_SUPPORTED_COUNTRIES.map((code) => ({
+          code,
+          ...countries[code],
+          supportedAssets: [...ONRAMP_SUPPORTED_ASSETS],
+        }));
+      }),
+      c
+    )
+  );
+
+  /** Initiate an onramp (fiat → stablecoin) */
+  app.post("/onramp", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const userId = c.get("userId");
+        const body = yield* Effect.tryPromise({
+          try: () =>
+            c.req.json<{
+              country: string;
+              walletId: string;
+              fiatAmount: number;
+              phoneNumber: string;
+              mobileNetwork: string;
+              asset: string;
+              address: string;
+              fee?: number;
+              callbackUrl?: string;
+            }>(),
+          catch: () => new Error("Invalid request body"),
+        });
+
+        const pretium = yield* PretiumService;
+        const exchangeRateService = yield* ExchangeRateService;
+        const config = yield* ConfigService;
+        const { db } = yield* DatabaseService;
+
+        // Validate country supports onramp
+        if (
+          !ONRAMP_SUPPORTED_COUNTRIES.includes(
+            body.country as OnrampSupportedCountry
+          )
+        ) {
+          return yield* Effect.fail(
+            new Error(
+              `Onramp is not supported for country ${body.country}`
+            )
+          );
+        }
+
+        const country = body.country as OnrampSupportedCountry;
+        const countries = pretium.getSupportedCountries();
+        const countryConfig = countries[country];
+
+        // Auto-generate callback URL if not provided
+        const callbackUrl =
+          body.callbackUrl ||
+          `${config.serverBaseUrl}/webhooks/pretium`;
+
+        // Get exchange rate
+        const conversion = yield* exchangeRateService.convertFiatToUsdc(
+          body.fiatAmount,
+          countryConfig.currency
+        );
+
+        // Call Pretium onramp
+        const onrampResult = yield* pretium.onramp({
+          country,
+          phoneNumber: body.phoneNumber,
+          mobileNetwork: body.mobileNetwork,
+          amount: body.fiatAmount,
+          chain: "BASE",
+          fee: body.fee,
+          asset: body.asset as OnrampAsset,
+          address: body.address,
+          callbackUrl,
+        });
+
+        // Store transaction in DB
+        const [record] = yield* Effect.tryPromise({
+          try: () =>
+            db
+              .insert(pretiumTransactions)
+              .values({
+                userId,
+                walletId: body.walletId,
+                countryCode: country,
+                fiatCurrency: countryConfig.currency,
+                usdcAmount: String(conversion.amount),
+                fiatAmount: String(body.fiatAmount),
+                exchangeRate: String(conversion.exchangeRate),
+                fee: body.fee ? String(body.fee) : "0",
+                paymentType: "MOBILE",
+                status: "pending",
+                direction: "onramp",
+                asset: body.asset,
+                recipientAddress: body.address,
+                pretiumTransactionCode:
+                  onrampResult.data.transaction_code,
+                phoneNumber: body.phoneNumber,
+                mobileNetwork: body.mobileNetwork,
+                callbackUrl,
+              })
+              .returning(),
+          catch: (error) =>
+            new Error(`Failed to store pretium transaction: ${error}`),
+        });
+
+        return {
+          transaction: record,
+          pretiumResponse: onrampResult,
+        };
+      }),
+      c,
+      201
+    )
+  );
+
+  /** Get specific onramp transaction */
+  app.get("/onramp/:id", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const id = c.req.param("id");
+        const userId = c.get("userId");
+        const { db } = yield* DatabaseService;
+
+        const [record] = yield* Effect.tryPromise({
+          try: () =>
+            db
+              .select()
+              .from(pretiumTransactions)
+              .where(
+                and(
+                  eq(pretiumTransactions.id, id),
+                  eq(pretiumTransactions.userId, userId),
+                  eq(pretiumTransactions.direction, "onramp")
+                )
+              ),
+          catch: (error) =>
+            new Error(`Failed to get pretium transaction: ${error}`),
+        });
+
+        if (!record) {
+          return yield* Effect.fail(new Error("Transaction not found"));
+        }
+
+        return record;
+      }),
+      c
+    )
+  );
+
+  /** Poll onramp transaction status and update DB */
+  app.post("/onramp/:id/refresh", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const id = c.req.param("id");
+        const userId = c.get("userId");
+        const pretium = yield* PretiumService;
+        const { db } = yield* DatabaseService;
+
+        const [record] = yield* Effect.tryPromise({
+          try: () =>
+            db
+              .select()
+              .from(pretiumTransactions)
+              .where(
+                and(
+                  eq(pretiumTransactions.id, id),
+                  eq(pretiumTransactions.userId, userId),
+                  eq(pretiumTransactions.direction, "onramp")
+                )
+              ),
+          catch: (error) =>
+            new Error(`Failed to get pretium transaction: ${error}`),
+        });
+
+        if (!record) {
+          return yield* Effect.fail(new Error("Transaction not found"));
+        }
+
+        if (!record.pretiumTransactionCode) {
+          return yield* Effect.fail(
+            new Error("Transaction has no Pretium transaction code")
+          );
+        }
+
+        const statusResult = yield* pretium.getTransactionStatus(
+          record.pretiumTransactionCode,
+          record.fiatCurrency
+        );
+
+        if (statusResult.success && statusResult.status) {
+          const normalizedStatus = statusResult.status.toLowerCase() as
+            | "pending"
+            | "processing"
+            | "completed"
+            | "failed"
+            | "reversed";
+
+          const [updated] = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .update(pretiumTransactions)
+                .set({
+                  status: normalizedStatus,
+                  pretiumReceiptNumber: statusResult.receiptNumber ?? null,
+                  failureReason: statusResult.failureReason ?? null,
+                  completedAt:
+                    normalizedStatus === "completed"
+                      ? new Date()
+                      : null,
+                  updatedAt: new Date(),
+                })
+                .where(eq(pretiumTransactions.id, id))
+                .returning(),
+            catch: (error) =>
+              new Error(`Failed to update pretium transaction: ${error}`),
+          });
+
+          return { transaction: updated, pretiumStatus: statusResult };
+        }
+
+        return { transaction: record, pretiumStatus: statusResult };
+      }),
+      c
+    )
+  );
+
+  /** List user's onramp transactions */
+  app.get("/onramp", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const userId = c.get("userId");
+        const limit = Number(c.req.query("limit") ?? "50");
+        const offset = Number(c.req.query("offset") ?? "0");
+        const { db } = yield* DatabaseService;
+
+        const results = yield* Effect.tryPromise({
+          try: () =>
+            db
+              .select()
+              .from(pretiumTransactions)
+              .where(
+                and(
+                  eq(pretiumTransactions.userId, userId),
+                  eq(pretiumTransactions.direction, "onramp")
+                )
+              )
               .orderBy(desc(pretiumTransactions.createdAt))
               .limit(limit)
               .offset(offset),
@@ -476,8 +768,11 @@ export function createPretiumWebhookRoutes(runtime: AppRuntime) {
 
   /**
    * Pretium payment status callback.
-   * Pretium does not use webhook signatures, so this endpoint should be
-   * protected by IP allowlisting or a shared secret in production.
+   * Handles two callback shapes:
+   *   1. Status update (offramp + onramp payment confirmation):
+   *      { status, transaction_code, receipt_number?, ... }
+   *   2. Onramp asset release notification:
+   *      { is_released: true, transaction_code, transaction_hash }
    */
   app.post("/pretium", (c) =>
     runEffect(
@@ -487,11 +782,15 @@ export function createPretiumWebhookRoutes(runtime: AppRuntime) {
           try: () =>
             c.req.json<{
               transaction_code: string;
-              status: string;
+              status?: string;
               receipt_number?: string;
               failure_reason?: string;
               amount?: string;
               currency_code?: string;
+              is_released?: boolean;
+              transaction_hash?: string;
+              public_name?: string;
+              message?: string;
             }>(),
           catch: () => new Error("Invalid webhook payload"),
         });
@@ -517,12 +816,39 @@ export function createPretiumWebhookRoutes(runtime: AppRuntime) {
         });
 
         if (!record) {
-          // Unknown transaction -- acknowledge but log
           return { received: true, matched: false };
         }
 
-        // Normalize status
-        const rawStatus = body.status.toUpperCase();
+        // ── Onramp asset release callback ───────────────────────
+        if (body.is_released && body.transaction_hash) {
+          const [updated] = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .update(pretiumTransactions)
+                .set({
+                  status: "completed",
+                  onChainTxHash: body.transaction_hash!,
+                  completedAt: new Date(),
+                  updatedAt: new Date(),
+                })
+                .where(eq(pretiumTransactions.id, record.id))
+                .returning(),
+            catch: (error) =>
+              new Error(
+                `Failed to update pretium transaction: ${error}`
+              ),
+          });
+
+          return {
+            received: true,
+            matched: true,
+            type: "asset_release",
+            transaction: updated,
+          };
+        }
+
+        // ── Standard status callback (offramp + onramp payment) ─
+        const rawStatus = (body.status ?? "PROCESSING").toUpperCase();
         const statusMap: Record<string, string> = {
           PENDING: "pending",
           PROCESSING: "processing",
@@ -540,16 +866,25 @@ export function createPretiumWebhookRoutes(runtime: AppRuntime) {
           | "failed"
           | "reversed";
 
+        // For onramp, the first "COMPLETE" callback means payment
+        // was collected — mark as "processing" since assets aren't
+        // released yet (wait for is_released callback).
+        const effectiveStatus =
+          record.direction === "onramp" &&
+          normalizedStatus === "completed"
+            ? "processing"
+            : normalizedStatus;
+
         const [updated] = yield* Effect.tryPromise({
           try: () =>
             db
               .update(pretiumTransactions)
               .set({
-                status: normalizedStatus,
+                status: effectiveStatus,
                 pretiumReceiptNumber: body.receipt_number ?? null,
                 failureReason: body.failure_reason ?? null,
                 completedAt:
-                  normalizedStatus === "completed" ? new Date() : null,
+                  effectiveStatus === "completed" ? new Date() : null,
                 updatedAt: new Date(),
               })
               .where(eq(pretiumTransactions.id, record.id))
@@ -560,7 +895,12 @@ export function createPretiumWebhookRoutes(runtime: AppRuntime) {
             ),
         });
 
-        return { received: true, matched: true, transaction: updated };
+        return {
+          received: true,
+          matched: true,
+          type: "status_update",
+          transaction: updated,
+        };
       }),
       c
     )

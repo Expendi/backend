@@ -70,6 +70,7 @@ export {
   pretiumTransactionsRelations,
   pretiumTransactionStatusEnum,
   pretiumPaymentTypeEnum,
+  pretiumTransactionDirectionEnum,
   type PretiumTransaction,
   type NewPretiumTransaction,
 } from "./pretium-transactions.js";
@@ -87,3 +88,15 @@ export {
   type SwapAutomationExecution,
   type NewSwapAutomationExecution,
 } from "./swap-automations.js";
+
+export {
+  groupAccounts,
+  groupAccountsRelations,
+  groupAccountMembers,
+  groupAccountMembersRelations,
+  groupAccountRoleEnum,
+  type GroupAccount,
+  type NewGroupAccount,
+  type GroupAccountMember,
+  type NewGroupAccountMember,
+} from "./group-accounts.js";

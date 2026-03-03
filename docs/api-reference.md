@@ -89,6 +89,7 @@ curl http://localhost:3000/
     "recurringPayments": "/api/recurring-payments",
     "yield": "/api/yield",
     "pretium": "/api/pretium",
+    "onramp": "/api/pretium/onramp",
     "uniswap": "/api/uniswap",
     "swapAutomations": "/api/swap-automations",
     "webhooks": "/webhooks/pretium"
@@ -707,6 +708,248 @@ curl http://localhost:3000/api/profile/wallets \
 
 **Errors:** `OnboardingError` if the user has not been onboarded.
 
+#### `PUT /api/profile/username`
+
+Claim or update the authenticated user's username. Usernames must be 3-20 characters, lowercase alphanumeric with underscores only (`^[a-z0-9_]+$`).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `username` | string | yes | Desired username (3-20 chars, lowercase alphanumeric + underscores) |
+
+```bash
+curl -X PUT http://localhost:3000/api/profile/username \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "username": "alice_99" }'
+```
+
+**Response data:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "privyUserId": "did:privy:cm3x9kf2a00cl14mhbz6t7s92",
+    "username": "alice_99",
+    "userWalletId": "wallet-uuid-1",
+    "serverWalletId": "wallet-uuid-2",
+    "agentWalletId": "wallet-uuid-3",
+    "createdAt": "2025-01-01T00:00:00.000Z",
+    "updatedAt": "2025-01-01T00:00:00.000Z"
+  }
+}
+```
+
+**Errors:** `OnboardingError` if username is invalid, already taken, or user is not onboarded.
+
+#### `GET /api/profile/resolve/:username`
+
+Resolve a username to a user ID and wallet address. Useful for sending to users by name instead of raw addresses.
+
+```bash
+curl http://localhost:3000/api/profile/resolve/alice_99 \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "username": "alice_99",
+    "userId": "did:privy:cm3x9kf2a00cl14mhbz6t7s92",
+    "address": "0x1234...abcd"
+  }
+}
+```
+
+**Errors:** `OnboardingError` if the username does not exist.
+
+---
+
+### Group Accounts
+
+Group accounts are shared wallets managed by an admin, powered by on-chain `GroupAccount` and `GroupAccountFactory` smart contracts on Base. Members can deposit funds, and the admin can pay out to members. Members can be identified by username or wallet address.
+
+#### `POST /api/groups`
+
+Create a new group account. The authenticated user becomes the admin. Members can be specified by username or `0x` wallet address.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | yes | Group name |
+| `description` | string | no | Optional description |
+| `members` | string[] | yes | Member identifiers (usernames or 0x addresses) |
+
+```bash
+curl -X POST http://localhost:3000/api/groups \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "Team Fund", "members": ["bob", "0x1234...abcd"] }'
+```
+
+**Response data (HTTP 201):** `GroupAccount` object.
+
+**Errors:** `GroupAccountError` if creation fails. `OnboardingError` if a username cannot be resolved.
+
+#### `GET /api/groups`
+
+List groups the authenticated user belongs to (as admin or member).
+
+```bash
+curl http://localhost:3000/api/groups \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** Array of `GroupAccount` objects.
+
+#### `GET /api/groups/:id`
+
+Get a group with all its members, including usernames and wallet addresses.
+
+```bash
+curl http://localhost:3000/api/groups/group-uuid \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `GroupWithMembers` object (group + `members` array with `username`, `walletAddress`, `role`).
+
+**Errors:** `GroupAccountError` if group not found.
+
+#### `GET /api/groups/:id/members`
+
+List group members with usernames and wallet addresses.
+
+```bash
+curl http://localhost:3000/api/groups/group-uuid/members \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** Array of member objects with `id`, `userId`, `walletAddress`, `role`, `username`, `joinedAt`.
+
+#### `POST /api/groups/:id/members`
+
+Add a member to the group. Admin only.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `member` | string | yes | Username or `0x` wallet address |
+
+```bash
+curl -X POST http://localhost:3000/api/groups/group-uuid/members \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "member": "charlie" }'
+```
+
+**Response data (HTTP 201):** `GroupAccountMember` object.
+
+**Errors:** `GroupAccountError` if not admin or member cannot be resolved.
+
+#### `DELETE /api/groups/:id/members/:identifier`
+
+Remove a member from the group. Admin only. The `:identifier` can be a username or wallet address.
+
+```bash
+curl -X DELETE http://localhost:3000/api/groups/group-uuid/members/charlie \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `{ "removed": true }`
+
+**Errors:** `GroupAccountError` if not admin or member not found.
+
+#### `POST /api/groups/:id/pay`
+
+Admin payout from the group wallet. Supports ETH or ERC-20 token payments.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `to` | string | yes | Recipient username or `0x` address |
+| `amount` | string | yes | Amount in smallest unit (wei / token decimals) |
+| `token` | string | no | ERC-20 token address. Omit for ETH. |
+
+```bash
+curl -X POST http://localhost:3000/api/groups/group-uuid/pay \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "to": "bob", "amount": "1000000", "token": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" }'
+```
+
+**Response data:** `{ "transactionId": "tx-uuid" }`
+
+**Errors:** `GroupAccountError` if not admin or pay fails.
+
+#### `POST /api/groups/:id/deposit`
+
+Member deposit into the group wallet. Any group member can deposit.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `amount` | string | yes | Amount in smallest unit |
+| `token` | string | no | ERC-20 token address. Omit for ETH. |
+
+```bash
+curl -X POST http://localhost:3000/api/groups/group-uuid/deposit \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "amount": "500000" }'
+```
+
+**Response data:** `{ "transactionId": "tx-uuid" }`
+
+**Errors:** `GroupAccountError` if not a group member or deposit fails.
+
+#### `POST /api/groups/:id/transfer-admin`
+
+Transfer admin role to another group member. Current admin only.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `newAdmin` | string | yes | Username or `0x` address of the new admin |
+
+```bash
+curl -X POST http://localhost:3000/api/groups/group-uuid/transfer-admin \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "newAdmin": "bob" }'
+```
+
+**Response data:** `{ "transferred": true }`
+
+**Errors:** `GroupAccountError` if not admin or new admin not found.
+
+#### `GET /api/groups/:id/balance`
+
+Get the group wallet's ETH and ERC-20 token balances.
+
+| Query Param | Type | Required | Description |
+|-------------|------|----------|-------------|
+| `tokens` | string | no | Comma-separated ERC-20 token addresses |
+
+```bash
+curl "http://localhost:3000/api/groups/group-uuid/balance?tokens=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "eth": "2000000000000000000",
+    "tokens": {
+      "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913": "10000000"
+    }
+  }
+}
+```
+
+**Errors:** `GroupAccountError` if group not found.
+
 ---
 
 ### Recurring Payments
@@ -1049,9 +1292,9 @@ curl http://localhost:3000/api/yield/portfolio \
 
 ---
 
-### Pretium (Offramp)
+### Pretium (Offramp & Onramp)
 
-Pretium endpoints enable crypto-to-fiat disbursements across 7 African countries (KE, NG, GH, UG, CD, MW, ET). Supports mobile money and bank transfer payouts.
+Pretium endpoints enable crypto-to-fiat (offramp) and fiat-to-crypto (onramp) transactions across African countries. Offramp supports all 7 countries (KE, NG, GH, UG, CD, MW, ET) with mobile money and bank transfer payouts. Onramp supports 5 countries (KE, GH, UG, CD, MW) with mobile money payments for receiving stablecoins (USDC, USDT, CUSD) on Base chain.
 
 #### `GET /api/pretium/countries`
 
@@ -1440,6 +1683,151 @@ Poll the Pretium API for the latest status of an offramp transaction and update 
 
 ```bash
 curl -X POST http://localhost:3000/api/pretium/offramp/some-uuid/refresh \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `PretiumTransaction` (with updated status from Pretium)
+
+**Errors:** `Error` if not found or not owned by the authenticated user. `Error` if the Pretium API call fails.
+
+#### `GET /api/pretium/onramp/countries`
+
+List countries that support onramp (fiat → stablecoin) transactions.
+
+```bash
+curl http://localhost:3000/api/pretium/onramp/countries \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `Array<OnrampCountryConfig>`
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "code": "KE",
+      "name": "Kenya",
+      "currency": "KES",
+      "mobileNetworks": ["SAFARICOM", "AIRTEL"]
+    },
+    {
+      "code": "GH",
+      "name": "Ghana",
+      "currency": "GHS",
+      "mobileNetworks": ["MTN", "VODAFONE", "AIRTELTIGO"]
+    }
+  ]
+}
+```
+
+#### `POST /api/pretium/onramp`
+
+Initiate a fiat-to-stablecoin onramp. The user pays via mobile money and receives stablecoins at the specified wallet address on Base chain.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `country` | string | yes | ISO 3166-1 alpha-2 country code (KE, GH, UG, CD, MW) |
+| `walletId` | string | yes | Database ID of the wallet to credit |
+| `fiatAmount` | number | yes | Amount of fiat currency to pay |
+| `phoneNumber` | string | yes | Payer's phone number for mobile money |
+| `mobileNetwork` | string | yes | Mobile network identifier (e.g., `SAFARICOM`, `MTN`) |
+| `asset` | string | yes | Stablecoin to receive: `USDC`, `USDT`, or `CUSD` |
+| `address` | string | yes | Wallet address to receive stablecoins |
+| `fee` | number | no | Fee amount in fiat currency |
+| `callbackUrl` | string | no | URL to receive webhook callbacks (auto-generated from `SERVER_BASE_URL` if not provided) |
+
+```bash
+curl -X POST http://localhost:3000/api/pretium/onramp \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "country": "KE",
+    "walletId": "wallet-uuid",
+    "fiatAmount": 5000,
+    "phoneNumber": "+254712345678",
+    "mobileNetwork": "SAFARICOM",
+    "asset": "USDC",
+    "address": "0x1234567890abcdef1234567890abcdef12345678"
+  }'
+```
+
+**Response data:** `{ transaction: PretiumTransaction, pretiumResponse: object }`
+
+```json
+{
+  "success": true,
+  "data": {
+    "transaction": {
+      "id": "uuid",
+      "userId": "did:privy:cm3x9kf2a00cl14mhbz6t7s92",
+      "walletId": "wallet-uuid",
+      "countryCode": "KE",
+      "fiatCurrency": "KES",
+      "usdcAmount": "38.61",
+      "fiatAmount": "5000",
+      "exchangeRate": "129.50",
+      "fee": "0",
+      "paymentType": "MOBILE",
+      "status": "pending",
+      "direction": "onramp",
+      "asset": "USDC",
+      "recipientAddress": "0x1234567890abcdef1234567890abcdef12345678",
+      "onChainTxHash": null,
+      "pretiumTransactionCode": "PTX-789012",
+      "createdAt": "2025-01-15T10:30:00.000Z",
+      "updatedAt": "2025-01-15T10:30:00.000Z"
+    },
+    "pretiumResponse": { }
+  }
+}
+```
+
+**Errors:** `Error` if country does not support onramp, asset is not supported, or Pretium API call fails.
+
+#### `GET /api/pretium/onramp`
+
+List the authenticated user's onramp transactions with pagination.
+
+| Parameter | Location | Type | Default | Description |
+|-----------|----------|------|---------|-------------|
+| `limit` | query | number | 50 | Maximum number of results |
+| `offset` | query | number | 0 | Number of results to skip |
+
+```bash
+curl "http://localhost:3000/api/pretium/onramp?limit=10&offset=0" \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `Array<PretiumTransaction>` (filtered to `direction = "onramp"`)
+
+#### `GET /api/pretium/onramp/:id`
+
+Get a specific onramp transaction by its database ID. Returns the transaction only if the authenticated user owns it.
+
+| Parameter | Location | Type | Required |
+|-----------|----------|------|----------|
+| `id` | path | string | yes |
+
+```bash
+curl http://localhost:3000/api/pretium/onramp/some-uuid \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `PretiumTransaction`
+
+**Errors:** `Error` if not found or not owned by the authenticated user.
+
+#### `POST /api/pretium/onramp/:id/refresh`
+
+Poll the Pretium API for the latest status of an onramp transaction and update the local record.
+
+| Parameter | Location | Type | Required |
+|-----------|----------|------|----------|
+| `id` | path | string | yes |
+
+```bash
+curl -X POST http://localhost:3000/api/pretium/onramp/some-uuid/refresh \
   -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
 ```
 
@@ -1848,7 +2236,9 @@ curl "http://localhost:3000/api/swap-automations/some-uuid/executions?limit=20" 
 
 #### `POST /webhooks/pretium`
 
-Receives payment status callbacks from the Pretium payment provider. No authentication is required -- this endpoint is called directly by Pretium's servers when a payment status changes.
+Receives payment callbacks from Pretium. No authentication required. Handles two callback types:
+
+**1. Status update callback** (offramp + onramp payment collection):
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -1856,8 +2246,10 @@ Receives payment status callbacks from the Pretium payment provider. No authenti
 | `status` | string | yes | Payment status (`completed`, `failed`, `reversed`) |
 | `receipt_number` | string | no | Payment receipt number (on success) |
 | `failure_reason` | string | no | Reason for failure (on failure) |
-| `amount` | number | no | Disbursed amount |
-| `currency_code` | string | no | Currency code of the disbursement |
+| `amount` | number | no | Disbursed/collected amount |
+| `currency_code` | string | no | Currency code |
+
+For **offramp**, a `completed` status marks the transaction as done. For **onramp**, a `completed` status means the mobile money payment was collected — the transaction moves to `processing` and waits for the asset release callback.
 
 ```bash
 curl -X POST http://localhost:3000/webhooks/pretium \
@@ -1871,18 +2263,41 @@ curl -X POST http://localhost:3000/webhooks/pretium \
   }'
 ```
 
-**Response data:**
+**2. Asset release callback** (onramp only):
+
+Sent after the user's mobile money payment is confirmed and stablecoins have been released to their wallet.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `transaction_code` | string | yes | Pretium transaction identifier |
+| `is_released` | boolean | yes | Always `true` for this callback type |
+| `transaction_hash` | string | yes | On-chain transaction hash of stablecoin delivery |
+
+```bash
+curl -X POST http://localhost:3000/webhooks/pretium \
+  -H "Content-Type: application/json" \
+  -d '{
+    "is_released": true,
+    "transaction_code": "PTX-123456",
+    "transaction_hash": "0xabc123def456789012345678901234567890abcdef1234567890abcdef12345678"
+  }'
+```
+
+**Response data (both types):**
 
 ```json
 {
   "success": true,
   "data": {
-    "received": true
+    "received": true,
+    "matched": true,
+    "type": "status_update",
+    "transaction": { }
   }
 }
 ```
 
-**Errors:** Returns HTTP 200 even if the transaction code is not found, to prevent webhook retries from Pretium.
+**Errors:** Returns HTTP 200 even if the transaction code is not found (`matched: false`), to prevent webhook retries from Pretium.
 
 ---
 
@@ -2859,7 +3274,10 @@ All three manual endpoints require the `X-Admin-Key` header. See the correspondi
   fee: string | null;
   paymentType: "MOBILE" | "BUY_GOODS" | "PAYBILL" | "BANK_TRANSFER";
   status: "pending" | "processing" | "completed" | "failed" | "reversed";
-  onChainTxHash: string;
+  onChainTxHash: string | null;
+  direction: "onramp" | "offramp";
+  asset: string | null;
+  recipientAddress: string | null;
   pretiumTransactionCode: string | null;
   pretiumReceiptNumber: string | null;
   phoneNumber: string | null;
@@ -2920,5 +3338,42 @@ All three manual endpoints require the `X-Admin-Key` header. See the correspondi
   error: string | null;
   quoteSnapshot: Record<string, unknown> | null;
   executedAt: string;
+}
+```
+
+### GroupAccount
+
+```typescript
+{
+  id: string;
+  groupAddress: string;       // On-chain GroupAccount contract address
+  adminUserId: string;        // Privy user ID of admin
+  name: string;
+  description: string | null;
+  chainId: number;            // Default 8453 (Base)
+  transactionId: string | null; // createGroup tx reference
+  createdAt: string;
+  updatedAt: string;
+}
+```
+
+### GroupAccountMember
+
+```typescript
+{
+  id: string;
+  groupId: string;
+  userId: string;             // Privy user ID
+  walletAddress: string;      // Member's wallet address
+  role: "admin" | "member";
+  joinedAt: string;
+}
+```
+
+### GroupWithMembers
+
+```typescript
+GroupAccount & {
+  members: (GroupAccountMember & { username: string | null })[];
 }
 ```

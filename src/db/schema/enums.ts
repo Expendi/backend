@@ -79,3 +79,13 @@ export const swapAutomationExecutionStatusEnum = pgEnum(
   "swap_automation_execution_status",
   ["success", "failed", "skipped"]
 );
+
+export const pretiumTransactionDirectionEnum = pgEnum(
+  "pretium_transaction_direction",
+  ["onramp", "offramp"]
+);
+
+export const groupAccountRoleEnum = pgEnum("group_account_role", [
+  "admin",
+  "member",
+]);

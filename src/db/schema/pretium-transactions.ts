@@ -9,12 +9,14 @@ import { relations } from "drizzle-orm";
 import {
   pretiumTransactionStatusEnum,
   pretiumPaymentTypeEnum,
+  pretiumTransactionDirectionEnum,
 } from "./enums.js";
 import { wallets } from "./wallets.js";
 
 export {
   pretiumTransactionStatusEnum,
   pretiumPaymentTypeEnum,
+  pretiumTransactionDirectionEnum,
 } from "./enums.js";
 
 export const pretiumTransactions = pgTable("pretium_transactions", {
@@ -54,8 +56,19 @@ export const pretiumTransactions = pgTable("pretium_transactions", {
   /** Current status of the Pretium transaction */
   status: pretiumTransactionStatusEnum("status").default("pending").notNull(),
 
+  /** Direction: onramp (fiat→stablecoin) or offramp (stablecoin→fiat) */
+  direction: pretiumTransactionDirectionEnum("direction")
+    .default("offramp")
+    .notNull(),
+
+  /** Stablecoin asset for onramp: USDC, USDT, CUSD */
+  asset: text("asset"),
+
+  /** Recipient wallet address for onramp stablecoin delivery */
+  recipientAddress: text("recipient_address"),
+
   /** On-chain tx hash of USDC transfer to settlement address */
-  onChainTxHash: text("on_chain_tx_hash").notNull(),
+  onChainTxHash: text("on_chain_tx_hash"),
 
   /** Pretium's internal transaction code (returned from disburse) */
   pretiumTransactionCode: text("pretium_transaction_code"),

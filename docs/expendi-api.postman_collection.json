@@ -70,6 +70,11 @@
 			"key": "swapAutomationId",
 			"value": "a1b2c3d4-0000-0000-0000-000000000000",
 			"type": "string"
+		},
+		{
+			"key": "groupId",
+			"value": "f1e2d3c4-b5a6-7890-cdef-1234567890ab",
+			"type": "string"
 		}
 	],
 	"item": [
@@ -177,9 +182,55 @@
 								"description": "Returns just the wallet addresses for the authenticated user, keyed by type: { user: '0x...', server: '0x...', agent: '0x...' }. A convenience endpoint for clients that only need addresses. Returns 400 with OnboardingError if the user has not been onboarded."
 							},
 							"response": []
+						},
+						{
+							"name": "Set Username",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"username\": \"alice_99\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/profile/username",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "profile", "username"]
+								},
+								"description": "Claim or update the authenticated user's username. Must be 3-20 characters, lowercase alphanumeric with underscores only (^[a-z0-9_]+$). Returns the updated profile."
+							},
+							"response": []
+						},
+						{
+							"name": "Resolve Username",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/profile/resolve/alice_99",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "profile", "resolve", "alice_99"]
+								},
+								"description": "Resolve a username to its user ID and wallet address. Returns { username, userId, address }. Useful for sending to users by name."
+							},
+							"response": []
 						}
 					],
-					"description": "User onboarding and profile endpoints. Requires Privy auth. Creates a complete wallet set (user, server, agent) and a profile record linking them. The onboard operation is idempotent."
+					"description": "User onboarding, profile, and username endpoints. Requires Privy auth. Creates a complete wallet set (user, server, agent) and a profile record linking them. The onboard operation is idempotent. Username support allows members to be identified by name."
 				},
 				{
 					"name": "Wallets",
@@ -1316,9 +1367,124 @@
 								"description": "Polls the Pretium API for the latest status of an offramp transaction and updates the local record. Use this to manually check for status changes without waiting for the webhook callback."
 							},
 							"response": []
+						},
+						{
+							"name": "List Onramp Countries",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/pretium/onramp/countries",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "pretium", "onramp", "countries"]
+								},
+								"description": "Lists countries that support onramp (fiat → stablecoin) transactions. Currently: KE (Kenya), GH (Ghana), UG (Uganda), CD (DR Congo), MW (Malawi). Nigeria and Ethiopia do NOT support onramp."
+							},
+							"response": []
+						},
+						{
+							"name": "Initiate Onramp",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"country\": \"KE\",\n  \"walletId\": \"f47ac10b-58cc-4372-a567-0e02b2c3d479\",\n  \"fiatAmount\": 5000,\n  \"phoneNumber\": \"+254712345678\",\n  \"mobileNetwork\": \"SAFARICOM\",\n  \"asset\": \"USDC\",\n  \"address\": \"0x1234567890abcdef1234567890abcdef12345678\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/pretium/onramp",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "pretium", "onramp"]
+								},
+								"description": "Initiates a fiat-to-stablecoin onramp via Pretium. The user pays via mobile money and receives stablecoins (USDC, USDT, or CUSD) at the specified wallet address on Base chain. A callback URL is auto-generated from SERVER_BASE_URL if not provided."
+							},
+							"response": []
+						},
+						{
+							"name": "List My Onramp Transactions",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/pretium/onramp?limit=50&offset=0",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "pretium", "onramp"],
+									"query": [
+										{
+											"key": "limit",
+											"value": "50",
+											"description": "Maximum number of transactions to return. Defaults to 50."
+										},
+										{
+											"key": "offset",
+											"value": "0",
+											"description": "Number of transactions to skip for pagination. Defaults to 0."
+										}
+									]
+								},
+								"description": "Retrieves the authenticated user's onramp (fiat → stablecoin) transactions with pagination, ordered by creation date."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Onramp Transaction by ID",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/pretium/onramp/{{pretiumTransactionId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "pretium", "onramp", "{{pretiumTransactionId}}"]
+								},
+								"description": "Retrieves a single onramp transaction by its UUID. Only returned if the authenticated user owns the transaction."
+							},
+							"response": []
+						},
+						{
+							"name": "Refresh Onramp Status",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/pretium/onramp/{{pretiumTransactionId}}/refresh",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "pretium", "onramp", "{{pretiumTransactionId}}", "refresh"]
+								},
+								"description": "Polls the Pretium API for the latest status of an onramp transaction and updates the local record. Use this to manually check for status changes without waiting for the webhook callback."
+							},
+							"response": []
 						}
 					],
-					"description": "Pretium offramp endpoints for crypto-to-fiat disbursements across African countries. Requires Privy auth. Supports mobile money (M-Pesa, MTN, Airtel) and bank transfers in KE, NG, GH, UG, CD, MW, and ET."
+					"description": "Pretium on/offramp endpoints for fiat-to-crypto and crypto-to-fiat transactions across African countries. Requires Privy auth. Supports mobile money (M-Pesa, MTN, Airtel) and bank transfers. Offramp: KE, NG, GH, UG, CD, MW, ET. Onramp: KE, GH, UG, CD, MW."
 				},
 				{
 					"name": "Uniswap",
@@ -1586,6 +1752,249 @@
 						}
 					],
 					"description": "Indicator-based swap automation endpoints. Users can define conditional swaps that execute automatically when price conditions are met. Supports price_above, price_below, percent_change_up, and percent_change_down indicators. Automations execute on Base (chain ID 8453) via Uniswap."
+				},
+				{
+					"name": "Group Accounts",
+					"item": [
+						{
+							"name": "Create Group",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"Team Fund\",\n  \"description\": \"Shared team wallet\",\n  \"members\": [\"bob\", \"0x1234567890abcdef1234567890abcdef12345678\"]\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/groups",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "groups"]
+								},
+								"description": "Create a new group account. The authenticated user becomes admin. Members can be usernames or 0x addresses. Returns the created GroupAccount object."
+							},
+							"response": []
+						},
+						{
+							"name": "List My Groups",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/groups",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "groups"]
+								},
+								"description": "List all groups the authenticated user belongs to (as admin or member)."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Group",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/groups/{{groupId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "groups", "{{groupId}}"]
+								},
+								"description": "Get a group with all its members, including usernames and wallet addresses."
+							},
+							"response": []
+						},
+						{
+							"name": "List Group Members",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/groups/{{groupId}}/members",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "groups", "{{groupId}}", "members"]
+								},
+								"description": "List group members with usernames, wallet addresses, and roles."
+							},
+							"response": []
+						},
+						{
+							"name": "Add Member",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"member\": \"charlie\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/groups/{{groupId}}/members",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "groups", "{{groupId}}", "members"]
+								},
+								"description": "Add a member to the group. Admin only. Member can be a username or 0x address."
+							},
+							"response": []
+						},
+						{
+							"name": "Remove Member",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/groups/{{groupId}}/members/charlie",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "groups", "{{groupId}}", "members", "charlie"]
+								},
+								"description": "Remove a member from the group. Admin only. Identifier can be a username or wallet address."
+							},
+							"response": []
+						},
+						{
+							"name": "Pay (Admin Payout)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"to\": \"bob\",\n  \"amount\": \"1000000\",\n  \"token\": \"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/groups/{{groupId}}/pay",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "groups", "{{groupId}}", "pay"]
+								},
+								"description": "Admin payout from the group wallet. Supports ETH (omit token) or ERC-20 token payments. Recipient can be a username or 0x address."
+							},
+							"response": []
+						},
+						{
+							"name": "Deposit",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"amount\": \"500000\",\n  \"token\": \"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/groups/{{groupId}}/deposit",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "groups", "{{groupId}}", "deposit"]
+								},
+								"description": "Deposit into the group wallet. Any group member can deposit. Supports ETH (omit token) or ERC-20."
+							},
+							"response": []
+						},
+						{
+							"name": "Transfer Admin",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"newAdmin\": \"bob\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/groups/{{groupId}}/transfer-admin",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "groups", "{{groupId}}", "transfer-admin"]
+								},
+								"description": "Transfer admin role to another group member. Current admin only."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Group Balance",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/groups/{{groupId}}/balance?tokens=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "groups", "{{groupId}}", "balance"],
+									"query": [
+										{
+											"key": "tokens",
+											"value": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+											"description": "Comma-separated ERC-20 token addresses"
+										}
+									]
+								},
+								"description": "Get the group wallet's ETH and ERC-20 token balances."
+							},
+							"response": []
+						}
+					],
+					"description": "Group account (shared wallet) endpoints. Admin can create groups, add/remove members, and pay out. Members can deposit. Members can be identified by username or 0x address."
 				}
 			],
 			"description": "Public API routes requiring Privy authentication via Authorization: Bearer <token> header. All operations are scoped to the authenticated user."
@@ -2259,7 +2668,7 @@
 			"name": "Webhooks",
 			"item": [
 				{
-					"name": "Pretium Payment Callback",
+					"name": "Pretium Status Callback",
 					"request": {
 						"method": "POST",
 						"header": [
@@ -2277,12 +2686,35 @@
 							"host": ["{{baseUrl}}"],
 							"path": ["webhooks", "pretium"]
 						},
-						"description": "Receives payment status callbacks from the Pretium payment provider. No authentication required. Called by Pretium servers when a disbursement status changes (completed, failed, reversed). Updates the corresponding pretium_transactions record in the database."
+						"description": "Receives payment status callbacks from Pretium. Called when a transaction status changes (completed, failed, reversed). For offramp, 'completed' marks the transaction as done. For onramp, 'completed' means payment was collected but assets aren't released yet — the transaction moves to 'processing' and waits for the asset release callback."
+					},
+					"response": []
+				},
+				{
+					"name": "Pretium Asset Release Callback (Onramp)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"is_released\": true,\n  \"transaction_code\": \"PTX-123456\",\n  \"transaction_hash\": \"0xabc123def456789012345678901234567890abcdef1234567890abcdef12345678\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/webhooks/pretium",
+							"host": ["{{baseUrl}}"],
+							"path": ["webhooks", "pretium"]
+						},
+						"description": "Receives asset release callbacks from Pretium for onramp transactions. Sent after the user's mobile money payment is confirmed and stablecoins have been released to their wallet address. Contains the on-chain transaction hash. This marks the onramp transaction as 'completed'."
 					},
 					"response": []
 				}
 			],
-			"description": "Webhook endpoints for payment provider callbacks. No authentication required. These endpoints are called by external payment providers to notify Expendi of status changes."
+			"description": "Webhook endpoints for payment provider callbacks. No authentication required. Pretium sends two types of callbacks: (1) status updates for offramp and onramp payment collection, and (2) asset release notifications for onramp stablecoin delivery."
 		}
 	]
 }

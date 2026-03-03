@@ -1,5 +1,5 @@
 import { Effect, Context, Layer, Data } from "effect";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { WalletService, WalletError } from "../wallet/wallet-service.js";
 import { DatabaseService } from "../../db/client.js";
 import {
@@ -47,6 +47,20 @@ export interface OnboardingServiceApi {
   readonly isOnboarded: (
     privyUserId: string
   ) => Effect.Effect<boolean, OnboardingError>;
+
+  /** Claim or update a username for the authenticated user. */
+  readonly setUsername: (
+    privyUserId: string,
+    username: string
+  ) => Effect.Effect<UserProfile, OnboardingError>;
+
+  /** Resolve a username to its user ID and wallet address. */
+  readonly resolveUsername: (
+    username: string
+  ) => Effect.Effect<
+    { privyUserId: string; address: string },
+    OnboardingError
+  >;
 }
 
 export class OnboardingService extends Context.Tag("OnboardingService")<
@@ -304,6 +318,104 @@ export const OnboardingServiceLive: Layer.Layer<
         Effect.gen(function* () {
           const rows = yield* findProfile(privyUserId);
           return rows.length > 0;
+        }),
+
+      setUsername: (privyUserId, username) =>
+        Effect.gen(function* () {
+          const normalized = username.toLowerCase().trim();
+
+          // Validate format: 3-20 chars, lowercase alphanumeric + underscore
+          if (!/^[a-z0-9_]{3,20}$/.test(normalized)) {
+            return yield* Effect.fail(
+              new OnboardingError({
+                message:
+                  "Username must be 3-20 characters and contain only lowercase letters, numbers, and underscores",
+              })
+            );
+          }
+
+          // Check uniqueness
+          const existing = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .select()
+                .from(userProfiles)
+                .where(eq(userProfiles.username, normalized))
+                .limit(1),
+            catch: (error) =>
+              new OnboardingError({
+                message: `Failed to check username: ${error}`,
+                cause: error,
+              }),
+          });
+
+          if (existing[0] && existing[0].privyUserId !== privyUserId) {
+            return yield* Effect.fail(
+              new OnboardingError({ message: "Username is already taken" })
+            );
+          }
+
+          // Update the profile
+          const [updated] = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .update(userProfiles)
+                .set({ username: normalized, updatedAt: new Date() })
+                .where(eq(userProfiles.privyUserId, privyUserId))
+                .returning(),
+            catch: (error) =>
+              new OnboardingError({
+                message: `Failed to set username: ${error}`,
+                cause: error,
+              }),
+          });
+
+          if (!updated) {
+            return yield* Effect.fail(
+              new OnboardingError({
+                message: `Profile not found for user: ${privyUserId}`,
+              })
+            );
+          }
+
+          return updated;
+        }),
+
+      resolveUsername: (username) =>
+        Effect.gen(function* () {
+          const normalized = username.toLowerCase().trim();
+
+          const rows = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .select({
+                  privyUserId: userProfiles.privyUserId,
+                  address: wallets.address,
+                })
+                .from(userProfiles)
+                .innerJoin(
+                  wallets,
+                  eq(userProfiles.userWalletId, wallets.id)
+                )
+                .where(eq(userProfiles.username, normalized))
+                .limit(1),
+            catch: (error) =>
+              new OnboardingError({
+                message: `Failed to resolve username: ${error}`,
+                cause: error,
+              }),
+          });
+
+          const row = rows[0];
+          if (!row || !row.address) {
+            return yield* Effect.fail(
+              new OnboardingError({
+                message: `Username not found: ${normalized}`,
+              })
+            );
+          }
+
+          return { privyUserId: row.privyUserId, address: row.address };
         }),
     };
   })

@@ -9,7 +9,11 @@ Expendi is a crypto financial backend built with **Hono + Effect-TS** on Node.js
 - **Recurring payments** -- scheduled ERC-20 transfers, raw transfers, contract calls, and offramps
 - **Yield positions** -- deposit into ERC-4626 vaults with time-locked positions
 - **Offramp to African mobile money** -- via Pretium (Kenya, Nigeria, Ghana, Uganda, DR Congo, Malawi, Ethiopia)
+- **Onramp from African mobile money** -- via Pretium (Kenya, Ghana, Uganda, DR Congo, Malawi) — fiat → stablecoins (USDC, USDT, CUSD) on Base
 - **Token swaps** -- Uniswap V3 swaps on Base
+- **Swap automations** -- indicator-based conditional swaps (price above/below, percent change)
+- **Group accounts** -- shared wallets with admin/member roles, on-chain via GroupAccount contracts
+- **Usernames** -- human-readable identifiers for wallet addresses
 - **Transaction categories** -- user-defined and global categories for organizing transactions
 
 The backend base URL defaults to `http://localhost:3000` in development.
@@ -133,8 +137,10 @@ const { profile, wallets } = res.data;
 | Method | Path | Auth | Body | Response |
 |--------|------|------|------|----------|
 | POST | `/api/onboard` | Privy | `{ chainId?: number }` | `{ profile: { id, privyUserId, userWalletId, serverWalletId, agentWalletId, createdAt, updatedAt }, wallets: { user: Wallet, server: Wallet, agent: Wallet } }` |
-| GET | `/api/profile` | Privy | -- | Full profile with wallet objects (id, type, privyWalletId, ownerId, address, chainId, createdAt) |
+| GET | `/api/profile` | Privy | -- | Full profile with wallet objects (id, type, privyWalletId, ownerId, address, chainId, createdAt) + `username` |
 | GET | `/api/profile/wallets` | Privy | -- | `{ user: "0x...", server: "0x...", agent: "0x..." }` (addresses only) |
+| PUT | `/api/profile/username` | Privy | `{ username: string }` | Updated profile. Username: 3-20 chars, `^[a-z0-9_]+$`. |
+| GET | `/api/profile/resolve/:username` | Privy | -- | `{ username, userId, address }` -- resolve username to wallet address |
 
 ### 5.3 Wallets
 
@@ -325,7 +331,7 @@ interface RecurringPayment {
 }
 ```
 
-### 5.8 Pretium (Offramp to African Mobile Money / Bank)
+### 5.8 Pretium (Offramp & Onramp — African Mobile Money / Bank)
 
 #### Country and Payment Info
 
@@ -404,6 +410,49 @@ interface RecurringPayment {
 
 **Offramp transaction statuses:** `pending` | `processing` | `completed` | `failed` | `reversed`
 
+#### Onramp (Fiat → Stablecoin)
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| GET | `/api/pretium/onramp/countries` | Privy | -- | Array of onramp-supported countries with mobile networks |
+| POST | `/api/pretium/onramp` | Privy | See below | `{ transaction, pretiumResponse }` (HTTP 201) |
+| GET | `/api/pretium/onramp` | Privy | Query: `?limit=50&offset=0` | Array of user's onramp transactions |
+| GET | `/api/pretium/onramp/:id` | Privy | -- | Single onramp transaction |
+| POST | `/api/pretium/onramp/:id/refresh` | Privy | -- | `{ transaction, pretiumStatus }` (polls Pretium for latest status) |
+
+**POST `/api/pretium/onramp` body:**
+```typescript
+{
+  country: string;            // "KE", "GH", "UG", "CD", "MW" (NOT NG or ET)
+  walletId: string;           // Wallet to associate with the transaction
+  fiatAmount: number;         // Amount of fiat currency to pay
+  phoneNumber: string;        // Payer's phone number for mobile money
+  mobileNetwork: string;      // e.g., "safaricom", "mtn", "airtel"
+  asset: string;              // Stablecoin to receive: "USDC" | "USDT" | "CUSD"
+  address: string;            // Wallet address to receive stablecoins (on Base)
+  fee?: number;               // Fee amount in fiat
+  callbackUrl?: string;       // Webhook URL (auto-generated from SERVER_BASE_URL if omitted)
+}
+```
+
+**Onramp-supported countries:**
+
+| Country | Code | Currency | Mobile Networks |
+|---------|------|----------|-----------------|
+| Kenya | KE | KES | safaricom, airtel |
+| Ghana | GH | GHS | mtn, vodafone, airtel |
+| Uganda | UG | UGX | mtn, airtel |
+| DR Congo | CD | CDF | vodacom, airtel, orange |
+| Malawi | MW | MWK | airtel, tnm |
+
+**Onramp supported assets:** `USDC` | `USDT` | `CUSD`
+
+**Onramp transaction lifecycle:**
+1. `pending` — onramp initiated, waiting for user to pay via mobile money
+2. `processing` — mobile money payment confirmed (first webhook), waiting for stablecoin release
+3. `completed` — stablecoins released to wallet address (second webhook with `is_released: true` and `transaction_hash`)
+4. `failed` / `reversed` — payment failed or was reversed
+
 ### 5.9 Uniswap (Token Swaps on Base)
 
 | Method | Path | Auth | Body | Response |
@@ -428,13 +477,72 @@ interface RecurringPayment {
 
 All Uniswap operations are on **Base (chain ID 8453)**.
 
-### 5.10 Webhooks
+### 5.10 Swap Automations
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| GET | `/api/swap-automations` | Privy | -- | Array of user's swap automations |
+| GET | `/api/swap-automations/:id` | Privy | -- | Single swap automation |
+| POST | `/api/swap-automations` | Privy | See below | Created automation (HTTP 201) |
+| PATCH | `/api/swap-automations/:id` | Privy | Partial update fields | Updated automation |
+| POST | `/api/swap-automations/:id/pause` | Privy | -- | Paused automation |
+| POST | `/api/swap-automations/:id/resume` | Privy | -- | Resumed automation |
+| POST | `/api/swap-automations/:id/cancel` | Privy | -- | Cancelled automation |
+| GET | `/api/swap-automations/:id/executions` | Privy | Query: `?limit=50` | Execution history |
+
+**POST `/api/swap-automations` body:**
+```typescript
+{
+  walletId: string;
+  walletType: "user" | "server" | "agent";
+  tokenIn: string;             // Token address
+  tokenOut: string;            // Token address
+  amount: string;              // In smallest unit
+  indicatorType: "price_above" | "price_below" | "percent_change_up" | "percent_change_down";
+  indicatorToken: string;      // e.g., "ETH"
+  thresholdValue: number;      // Price threshold or percent change
+  slippageTolerance?: number;  // Default: 0.5
+  maxExecutions?: number;      // Default: 1
+  cooldownSeconds?: number;    // Default: 60
+  maxRetries?: number;         // Default: 3
+  maxExecutionsPerDay?: number; // Optional daily limit
+}
+```
+
+### 5.11 Group Accounts
+
+Group accounts are shared wallets with admin/member roles, powered by on-chain smart contracts on Base.
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| POST | `/api/groups` | Privy | `{ name, description?, members: string[] }` | Created group (HTTP 201). Members are usernames or 0x addresses. |
+| GET | `/api/groups` | Privy | -- | Array of user's groups |
+| GET | `/api/groups/:id` | Privy | -- | Group with members (includes usernames, addresses, roles) |
+| GET | `/api/groups/:id/members` | Privy | -- | Array of members |
+| POST | `/api/groups/:id/members` | Privy | `{ member: string }` | Added member (HTTP 201). Admin only. |
+| DELETE | `/api/groups/:id/members/:identifier` | Privy | -- | `{ removed: true }`. Admin only. |
+| POST | `/api/groups/:id/pay` | Privy | `{ to, amount, token? }` | `{ transactionId }`. Admin payout. |
+| POST | `/api/groups/:id/deposit` | Privy | `{ amount, token? }` | `{ transactionId }`. Any member. |
+| POST | `/api/groups/:id/transfer-admin` | Privy | `{ newAdmin: string }` | `{ transferred: true }`. Admin only. |
+| GET | `/api/groups/:id/balance` | Privy | Query: `?tokens=0xAddr1,0xAddr2` | `{ eth, tokens: { addr: balance } }` |
+
+### 5.12 Webhooks
 
 | Method | Path | Auth | Body | Description |
 |--------|------|------|------|-------------|
-| POST | `/webhooks/pretium` | None | `{ transaction_code, status, receipt_number?, failure_reason?, amount?, currency_code? }` | Pretium payment status callback |
+| POST | `/webhooks/pretium` | None | See below | Pretium payment callback (handles two shapes) |
 
-### 5.11 Internal/Admin API
+**Pretium webhook callback shapes:**
+
+1. **Status update** (offramp + onramp payment collection): `{ transaction_code, status, receipt_number?, failure_reason?, amount?, currency_code? }`
+   - For offramp: `completed` marks the transaction as done
+   - For onramp: `completed` means payment collected — transaction moves to `processing` (waits for asset release)
+
+2. **Asset release** (onramp only): `{ is_released: true, transaction_code, transaction_hash }`
+   - Sent after stablecoins are released to the user's wallet
+   - Marks the onramp transaction as `completed` and stores the on-chain tx hash
+
+### 5.13 Internal/Admin API
 
 All internal routes require `X-Admin-Key` header. These are not for frontend use in normal flows but are listed for completeness.
 
@@ -789,7 +897,46 @@ const refreshed = await request(`/api/pretium/offramp/${offramp.data.transaction
 });
 ```
 
-### 7.9 Creating a Recurring Payment
+### 7.9 Initiating an Onramp from Mobile Money
+
+```typescript
+// Step 1: Get the list of onramp-supported countries
+const countries = await request("/api/pretium/onramp/countries");
+// countries = [{ code: "KE", name: "Kenya", currency: "KES", mobileNetworks: ["SAFARICOM", "AIRTEL"] }, ...]
+
+// Step 2: Get exchange rate (reuses the same conversion endpoints)
+const conversion = await request("/api/pretium/convert/fiat-to-usdc", {
+  method: "POST",
+  body: { fiatAmount: 5000, currency: "KES" },
+});
+// conversion.data = { usdcAmount: "38.61", exchangeRate: "129.50", ... }
+
+// Step 3: Initiate the onramp (user will receive a mobile money payment prompt)
+const onramp = await request("/api/pretium/onramp", {
+  method: "POST",
+  body: {
+    country: "KE",
+    walletId: userWalletId,
+    fiatAmount: 5000,
+    phoneNumber: "254712345678",
+    mobileNetwork: "SAFARICOM",
+    asset: "USDC",                // or "USDT" or "CUSD"
+    address: userWalletAddress,   // Base chain wallet address
+  },
+});
+
+// Step 4: Poll for status updates
+// Status flow: pending → processing (payment collected) → completed (stablecoins released)
+const status = await request(`/api/pretium/onramp/${onramp.data.transaction.id}`);
+
+// Or refresh from Pretium:
+const refreshed = await request(`/api/pretium/onramp/${onramp.data.transaction.id}/refresh`, {
+  method: "POST",
+});
+// When completed, transaction.onChainTxHash will contain the stablecoin transfer hash
+```
+
+### 7.10 Creating a Recurring Payment
 
 ```typescript
 // Monthly USDC payment
@@ -841,6 +988,8 @@ Domain errors returned in `error._tag` include:
 | `OfframpError` | Fiat disbursement failure via Pretium |
 | `UniswapError` | Swap quote, approval, or execution failure |
 | `YieldError` | Vault or position operation failure |
+| `SwapAutomationError` | Swap automation operation failure |
+| `GroupAccountError` | Group account operation failure (not admin, group not found, etc.) |
 | `InternalError` | Unhandled server-side error |
 
 ### Frontend Error Handling Pattern
@@ -902,6 +1051,7 @@ Frontend applications need these environment variables:
 |----------|-------------|---------|
 | `NEXT_PUBLIC_PRIVY_APP_ID` | Privy application ID (must match backend's `PRIVY_APP_ID`) | `clxxxxxxxxxxxxxx` |
 | `NEXT_PUBLIC_API_URL` | Backend API URL | `http://localhost:3000` |
+| `SERVER_BASE_URL` (backend) | Base URL for auto-generated webhook callback URLs | `https://api.expendi.app` |
 
 For local development with the dev bypass (no Privy required), only `NEXT_PUBLIC_API_URL` is needed.
 
@@ -927,6 +1077,10 @@ NEXT_PUBLIC_PRIVY_APP_ID=your-privy-app-id
 - **CORS:** The backend enables CORS for all origins (`*`). No special configuration needed on the frontend.
 
 - **Pretium offramp flow:** The frontend must first send USDC to the settlement address on-chain, then call the offramp endpoint with the transaction hash as proof. The backend handles the fiat disbursement.
+
+- **Pretium onramp flow:** The frontend calls `POST /api/pretium/onramp` with country, fiat amount, phone number, network, asset (USDC/USDT/CUSD), and wallet address. The user receives a mobile money payment prompt. Two webhooks follow: (1) payment collected → status moves to `processing`, (2) stablecoins released → status moves to `completed` with on-chain tx hash. No on-chain transfer is needed from the frontend — Pretium handles stablecoin delivery.
+
+- **Callback URLs:** The backend auto-generates webhook callback URLs using the `SERVER_BASE_URL` environment variable (defaults to `http://localhost:{port}`). Set this to your production domain (e.g., `https://api.expendi.app`) when deployed.
 
 - **Uniswap swap flow:** The `/api/uniswap/swap` endpoint handles the full flow (check approval, submit approval tx if needed, get quote, submit swap tx) in a single call. Use `/api/uniswap/quote` for read-only price checks before committing.
 

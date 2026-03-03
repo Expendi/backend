@@ -29,13 +29,13 @@ export const SETTLEMENT_ADDRESS =
   "0x8005ee53E57aB11E11eAA4EFe07Ee3835Dc02F98";
 
 export const SUPPORTED_COUNTRIES = {
-  KE: { currency: "KES", endpoint: "/v1/pay/KES", name: "Kenya" },
-  NG: { currency: "NGN", endpoint: "/v1/pay/NGN", name: "Nigeria" },
-  GH: { currency: "GHS", endpoint: "/v1/pay/GHS", name: "Ghana" },
-  UG: { currency: "UGX", endpoint: "/v1/pay/UGX", name: "Uganda" },
-  CD: { currency: "CDF", endpoint: "/v1/pay/CDF", name: "DR Congo" },
-  MW: { currency: "MWK", endpoint: "/v1/pay/MWK", name: "Malawi" },
-  ET: { currency: "ETB", endpoint: "/v1/pay/ETB", name: "Ethiopia" },
+  KE: { currency: "KES", endpoint: "/v1/pay/KES", onrampEndpoint: "/v1/onramp/KES", name: "Kenya" },
+  NG: { currency: "NGN", endpoint: "/v1/pay/NGN", onrampEndpoint: null, name: "Nigeria" },
+  GH: { currency: "GHS", endpoint: "/v1/pay/GHS", onrampEndpoint: "/v1/onramp/GHS", name: "Ghana" },
+  UG: { currency: "UGX", endpoint: "/v1/pay/UGX", onrampEndpoint: "/v1/onramp/UGX", name: "Uganda" },
+  CD: { currency: "CDF", endpoint: "/v1/pay/CDF", onrampEndpoint: "/v1/onramp/CDF", name: "DR Congo" },
+  MW: { currency: "MWK", endpoint: "/v1/pay/MWK", onrampEndpoint: "/v1/onramp/MWK", name: "Malawi" },
+  ET: { currency: "ETB", endpoint: "/v1/pay/ETB", onrampEndpoint: null, name: "Ethiopia" },
 } as const;
 
 export type SupportedCountry = keyof typeof SUPPORTED_COUNTRIES;
@@ -54,6 +54,12 @@ export const VALIDATION_SUPPORTED_COUNTRIES = ["KE", "GH", "UG"] as const;
 export const BANK_VALIDATION_SUPPORTED_COUNTRIES = ["NG"] as const;
 export const BANK_TRANSFER_COUNTRIES = ["NG", "KE"] as const;
 export type BankTransferCountry = (typeof BANK_TRANSFER_COUNTRIES)[number];
+
+export const ONRAMP_SUPPORTED_COUNTRIES = ["KE", "GH", "UG", "CD", "MW"] as const;
+export type OnrampSupportedCountry = (typeof ONRAMP_SUPPORTED_COUNTRIES)[number];
+
+export const ONRAMP_SUPPORTED_ASSETS = ["USDC", "USDT", "CUSD"] as const;
+export type OnrampAsset = (typeof ONRAMP_SUPPORTED_ASSETS)[number];
 
 export const FIAT_PAYMENT_TYPES = [
   "MOBILE",
@@ -225,6 +231,22 @@ export interface BankValidationResult {
   };
 }
 
+// ── Onramp types ────────────────────────────────────────────────────
+
+export interface OnrampRequest {
+  readonly country: OnrampSupportedCountry;
+  readonly phoneNumber: string;
+  readonly mobileNetwork: string;
+  readonly amount: number;
+  readonly chain: string;
+  readonly fee?: number;
+  readonly asset: OnrampAsset;
+  readonly address: string;
+  readonly callbackUrl?: string;
+}
+
+export type OnrampResponse = DisburseResponse;
+
 // ── Service interface ────────────────────────────────────────────────
 
 export interface PretiumServiceApi {
@@ -273,6 +295,11 @@ export interface PretiumServiceApi {
   readonly isCountrySupported: (
     country: string
   ) => country is SupportedCountry;
+
+  /** Initiate an onramp (fiat → stablecoin) */
+  readonly onramp: (
+    request: OnrampRequest
+  ) => Effect.Effect<OnrampResponse, PretiumError>;
 }
 
 export class PretiumService extends Context.Tag("PretiumService")<
@@ -399,6 +426,19 @@ const buildDisburseRequestBody = (
     mobile_network: request.mobileNetwork,
   };
 };
+
+const buildOnrampRequestBody = (
+  request: OnrampRequest
+): Record<string, unknown> => ({
+  shortcode: request.phoneNumber,
+  amount: request.amount,
+  mobile_network: request.mobileNetwork,
+  chain: request.chain || "BASE",
+  fee: request.fee || 0,
+  asset: request.asset,
+  address: request.address,
+  callback_url: request.callbackUrl,
+});
 
 // ── Fetch helper ─────────────────────────────────────────────────────
 
@@ -733,6 +773,74 @@ export const PretiumServiceLive: Layer.Layer<
           );
 
           return response.data;
+        }),
+
+      onramp: (request: OnrampRequest) =>
+        Effect.gen(function* () {
+          if (
+            !ONRAMP_SUPPORTED_COUNTRIES.includes(
+              request.country as OnrampSupportedCountry
+            )
+          ) {
+            return yield* Effect.fail(
+              new PretiumError({
+                message: `Onramp is not supported for country ${request.country}`,
+                code: "UNSUPPORTED_COUNTRY",
+                details: {
+                  supportedCountries: [...ONRAMP_SUPPORTED_COUNTRIES],
+                },
+              })
+            );
+          }
+
+          if (
+            !ONRAMP_SUPPORTED_ASSETS.includes(
+              request.asset as OnrampAsset
+            )
+          ) {
+            return yield* Effect.fail(
+              new PretiumError({
+                message: `Asset ${request.asset} is not supported for onramp`,
+                code: "VALIDATION_ERROR",
+                details: {
+                  supportedAssets: [...ONRAMP_SUPPORTED_ASSETS],
+                },
+              })
+            );
+          }
+
+          const countryConfig = SUPPORTED_COUNTRIES[request.country];
+          const onrampEndpoint = countryConfig.onrampEndpoint as string | null;
+
+          if (!onrampEndpoint) {
+            return yield* Effect.fail(
+              new PretiumError({
+                message: `Onramp endpoint not configured for ${countryConfig.name as string}`,
+                code: "UNSUPPORTED_COUNTRY",
+              })
+            );
+          }
+
+          // Validate network
+          const supportedNetworks = SUPPORTED_NETWORKS[request.country] as readonly string[];
+          const normalizedNetwork = (
+            request.mobileNetwork || ""
+          ).toLowerCase();
+          if (
+            !normalizedNetwork ||
+            !supportedNetworks.some((n) => normalizedNetwork.includes(n))
+          ) {
+            return yield* Effect.fail(
+              new PretiumError({
+                message: `Network ${request.mobileNetwork} is not supported in ${countryConfig.name}`,
+                code: "UNSUPPORTED_NETWORK",
+                details: { supportedNetworks: [...supportedNetworks] },
+              })
+            );
+          }
+
+          const body = buildOnrampRequestBody(request);
+          return yield* callApi<OnrampResponse>(onrampEndpoint, body);
         }),
 
       getSettlementAddress: () => SETTLEMENT_ADDRESS,

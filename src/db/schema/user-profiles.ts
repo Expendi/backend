@@ -16,6 +16,7 @@ export const userProfiles = pgTable("user_profiles", {
   agentWalletId: text("agent_wallet_id")
     .notNull()
     .references(() => wallets.id),
+  username: text("username").unique(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),

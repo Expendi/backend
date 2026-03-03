@@ -22,6 +22,7 @@ import type { PretiumService } from "../services/pretium/pretium-service.js";
 import type { ExchangeRateService } from "../services/pretium/exchange-rate-service.js";
 import type { UniswapService } from "../services/uniswap/uniswap-service.js";
 import type { SwapAutomationService } from "../services/swap-automation/swap-automation-service.js";
+import type { GroupAccountService } from "../services/group-account/group-account-service.js";
 
 export type AppDeps =
   | WalletService
@@ -43,7 +44,8 @@ export type AppDeps =
   | PretiumService
   | ExchangeRateService
   | UniswapService
-  | SwapAutomationService;
+  | SwapAutomationService
+  | GroupAccountService;
 
 export type AppRuntime = ManagedRuntime.ManagedRuntime<AppDeps, ConfigError.ConfigError>;
 
