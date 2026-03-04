@@ -1,6 +1,7 @@
 import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { walletTypeEnum } from "./enums.js";
+export { walletTypeEnum } from "./enums.js";
 import { transactions } from "./transactions.js";
 
 export const wallets = pgTable("wallets", {
