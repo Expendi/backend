@@ -14,6 +14,7 @@ Expendi is a crypto financial backend that provides unified wallet management, s
 - **Scheduled jobs (Jobber)** -- Create recurring jobs that fire contract or raw transactions on a configurable schedule with automatic retry.
 - **Reactive monitoring (Heartbeat)** -- Register conditions (balance thresholds, price triggers, block events) that are checked on a polling loop and automatically execute actions when triggered.
 - **Data adapters** -- Pluggable external data sources (currently CoinMarketCap) for market prices consumed by Heartbeat and available to the rest of the system.
+- **Goal savings** -- Define savings goals with target amounts and optional recurring deposits into yield pools. Each deposit creates a yield position via the YieldTimeLock contract. Track progress toward the target; the goal is automatically marked completed when the accumulated amount reaches the target.
 - **Authentication** -- Public API routes are protected by Privy auth tokens, internal/admin routes are protected by an API key, and all operations enforce ownership.
 - **Admin dashboard** -- A Next.js admin panel in the `admin/` directory for managing wallets, transactions, jobs, contracts, categories, recurring payments, and offramp providers.
 
@@ -85,7 +86,8 @@ curl http://localhost:3000/
     "categories": "/api/categories",
     "onboard": "/api/onboard",
     "profile": "/api/profile",
-    "recurringPayments": "/api/recurring-payments"
+    "recurringPayments": "/api/recurring-payments",
+    "goalSavings": "/api/goal-savings"
   }
 }
 ```
@@ -156,6 +158,7 @@ ManagedRuntime<MainLayer>
     +-- OnboardingService        (user onboarding + profile management)
     +-- RecurringPaymentService  (recurring payment schedules + execution)
     +-- OfframpAdapterRegistry   (offramp provider adapters: Moonpay, Bridge, Transak)
+    +-- GoalSavingsService     (savings goals + automated deposits into yield)
 ```
 
 See [Architecture Deep Dive](./architecture.md) for the full dependency graph, error handling strategy, and database schema.
@@ -229,6 +232,7 @@ src/
       transaction-categories.ts     # transaction_categories table
       jobs.ts                       # jobs table
       recurring-payments.ts         # recurring_payments + recurring_payment_executions tables
+      goal-savings.ts              # goal_savings + goal_savings_deposits tables
       index.ts                      # re-exports all schema
   routes/
     effect-handler.ts               # runEffect bridge + AppRuntime type
@@ -237,6 +241,7 @@ src/
     categories.ts                   # /api/categories routes (public, user-scoped)
     onboarding.ts                   # /api/onboard + /api/profile routes (public, user-scoped)
     recurring-payments.ts           # /api/recurring-payments routes (public, user-scoped)
+    goal-savings.ts               # /api/goal-savings routes (public, user-scoped)
     internal.ts                     # /internal/* routes (admin-only, includes profile + recurring payment admin)
   services/
     wallet/
@@ -271,6 +276,9 @@ src/
         bridge.ts                   # Bridge offramp adapter
         transak.ts                  # Transak offramp adapter
         index.ts                    # Re-exports all adapters
+    goal-savings/
+      goal-savings-service.ts     # GoalSavingsService (savings goals, deposits, automation)
+      index.ts                    # Re-exports
     adapters/
       adapter-service.ts            # AdapterService interface
       coinmarketcap.ts              # CoinMarketCapAdapterLive

@@ -8,6 +8,7 @@ import { JobberService } from "../services/jobber/jobber-service.js";
 import { OnboardingService } from "../services/onboarding/onboarding-service.js";
 import { RecurringPaymentService } from "../services/recurring-payment/recurring-payment-service.js";
 import { YieldService } from "../services/yield/yield-service.js";
+import { GoalSavingsService } from "../services/goal-savings/index.js";
 import { DatabaseService } from "../db/client.js";
 import { wallets, userProfiles } from "../db/schema/index.js";
 
@@ -467,6 +468,21 @@ export function createInternalRoutes(runtime: AppRuntime) {
         const yieldService = yield* YieldService;
         const snapshots = yield* yieldService.snapshotAllActivePositions();
         return { snapshotCount: snapshots.length, snapshots };
+      }),
+      c
+    )
+  );
+
+  // ── Goal savings admin routes ──────────────────────────────────────
+
+  // Process all due goal savings deposits
+  app.post("/goal-savings/process", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const service = yield* GoalSavingsService;
+        const deposits = yield* service.processDueDeposits();
+        return { processedCount: deposits.length, deposits };
       }),
       c
     )

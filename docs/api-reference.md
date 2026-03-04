@@ -92,6 +92,7 @@ curl http://localhost:3000/
     "onramp": "/api/pretium/onramp",
     "uniswap": "/api/uniswap",
     "swapAutomations": "/api/swap-automations",
+    "goalSavings": "/api/goal-savings",
     "webhooks": "/webhooks/pretium"
   }
 }
@@ -2232,6 +2233,223 @@ curl "http://localhost:3000/api/swap-automations/some-uuid/executions?limit=20" 
 
 ---
 
+### Goal Savings
+
+#### `GET /api/goal-savings`
+
+List the authenticated user's savings goals, ordered by creation date.
+
+```bash
+curl http://localhost:3000/api/goal-savings \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `Array<GoalSaving>`
+
+#### `POST /api/goal-savings`
+
+Create a new savings goal. Automation fields (`walletId`, `vaultId`, `depositAmount`, `frequency`) are all-or-nothing: provide all of them to enable automated deposits, or omit all for manual-only savings.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | yes | Goal name (e.g. `"House Fund"`) |
+| `description` | string | no | Human-readable description |
+| `targetAmount` | string | yes | Target amount as a string bigint (e.g. `"1000000000"`) |
+| `tokenAddress` | string | yes | ERC-20 token contract address |
+| `tokenSymbol` | string | yes | Token symbol (e.g. `"USDC"`) |
+| `tokenDecimals` | number | yes | Token decimals (e.g. `6`) |
+| `walletId` | string | no | Server wallet database ID (resolved from profile if omitted) |
+| `walletType` | string | no | `"server"` or `"agent"` |
+| `vaultId` | string | no | Yield vault database ID for deposits |
+| `chainId` | number | no | EVM chain ID (defaults to `DEFAULT_CHAIN_ID`) |
+| `depositAmount` | string | no | Per-deposit amount for automation (e.g. `"50000000"`) |
+| `unlockTimeOffsetSeconds` | number | no | Seconds added to deposit time to compute lock expiry |
+| `frequency` | string | no | Deposit interval: `"1d"`, `"7d"`, etc. (`null` = manual only) |
+| `startDate` | string | no | ISO timestamp for when automated deposits begin |
+| `endDate` | string | no | ISO timestamp for when automated deposits stop |
+| `maxRetries` | number | no | Consecutive failures before auto-pausing (default: 3) |
+
+```bash
+curl -X POST http://localhost:3000/api/goal-savings \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "House Fund",
+    "targetAmount": "1000000000",
+    "tokenAddress": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "tokenSymbol": "USDC",
+    "tokenDecimals": 6,
+    "walletId": "wallet-uuid",
+    "walletType": "server",
+    "vaultId": "vault-uuid",
+    "depositAmount": "50000000",
+    "frequency": "7d"
+  }'
+```
+
+**Response data:** `GoalSaving` (HTTP 201)
+
+**Errors:** `Error` if wallet not found or not owned. `GoalSavingsError` if creation fails.
+
+#### `GET /api/goal-savings/:id`
+
+Get a single savings goal. The authenticated user must own the goal.
+
+| Parameter | Location | Type | Required |
+|-----------|----------|------|----------|
+| `id` | path | string | yes |
+
+```bash
+curl http://localhost:3000/api/goal-savings/goal-uuid \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `GoalSaving`
+
+**Errors:** `Error` if not found or not owned by the authenticated user.
+
+#### `PATCH /api/goal-savings/:id`
+
+Update goal fields. If `frequency` changes, `nextDepositAt` is automatically recalculated.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | no | Updated goal name |
+| `description` | string | no | Updated description |
+| `depositAmount` | string | no | Updated per-deposit amount |
+| `frequency` | string | no | Updated interval (triggers `nextDepositAt` recalculation) |
+| `endDate` | string | no | Updated end date |
+| `maxRetries` | number | no | Updated max retries |
+
+```bash
+curl -X PATCH http://localhost:3000/api/goal-savings/goal-uuid \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "depositAmount": "100000000",
+    "frequency": "1d"
+  }'
+```
+
+**Response data:** `GoalSaving`
+
+**Errors:** `Error` if not found or not owned. `GoalSavingsError` if update fails.
+
+#### `POST /api/goal-savings/:id/pause`
+
+Pause an active goal. Automated deposits stop until resumed.
+
+| Parameter | Location | Type | Required |
+|-----------|----------|------|----------|
+| `id` | path | string | yes |
+
+```bash
+curl -X POST http://localhost:3000/api/goal-savings/goal-uuid/pause \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `GoalSaving` (with status `"paused"`)
+
+**Errors:** `Error` if not found or not owned. `GoalSavingsError` if update fails.
+
+#### `POST /api/goal-savings/:id/resume`
+
+Resume a paused goal. Resets `consecutiveFailures` to zero and recalculates `nextDepositAt`.
+
+| Parameter | Location | Type | Required |
+|-----------|----------|------|----------|
+| `id` | path | string | yes |
+
+```bash
+curl -X POST http://localhost:3000/api/goal-savings/goal-uuid/resume \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `GoalSaving` (with status `"active"`)
+
+**Errors:** `Error` if not found or not owned. `GoalSavingsError` if update fails.
+
+#### `POST /api/goal-savings/:id/cancel`
+
+Cancel a goal permanently. Existing yield positions remain untouched; no further automated deposits will occur.
+
+| Parameter | Location | Type | Required |
+|-----------|----------|------|----------|
+| `id` | path | string | yes |
+
+```bash
+curl -X POST http://localhost:3000/api/goal-savings/goal-uuid/cancel \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `GoalSaving` (with status `"cancelled"`)
+
+**Errors:** `Error` if not found or not owned. `GoalSavingsError` if update fails.
+
+#### `POST /api/goal-savings/:id/deposit`
+
+Make a manual deposit into a savings goal. Creates a yield position in the configured (or specified) vault.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `amount` | string | yes | Deposit amount in the smallest unit (e.g. `"50000000"`) |
+| `walletId` | string | no | Wallet database ID (falls back to goal's `walletId`, then profile) |
+| `walletType` | string | no | `"server"` or `"agent"` |
+| `vaultId` | string | no | Yield vault ID (falls back to goal's `vaultId`) |
+| `chainId` | number | no | EVM chain ID (defaults to `DEFAULT_CHAIN_ID`) |
+| `unlockTimeOffsetSeconds` | number | no | Seconds added to deposit time for lock expiry |
+
+```bash
+curl -X POST http://localhost:3000/api/goal-savings/goal-uuid/deposit \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": "50000000"
+  }'
+```
+
+**Response data:** `GoalSavingsDeposit` (HTTP 201)
+
+**Errors:** `Error` if goal not found or not owned. `GoalSavingsError` if deposit fails.
+
+#### `GET /api/goal-savings/:id/deposits`
+
+List deposits for a savings goal. The authenticated user must own the goal.
+
+| Parameter | Location | Type | Required | Description |
+|-----------|----------|------|----------|-------------|
+| `id` | path | string | yes | Goal ID |
+| `limit` | query | number | no | Maximum results (default: 50) |
+
+```bash
+curl "http://localhost:3000/api/goal-savings/goal-uuid/deposits?limit=20" \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `Array<GoalSavingsDeposit>`
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "deposit-uuid",
+      "goalId": "goal-uuid",
+      "yieldPositionId": "position-uuid",
+      "amount": "50000000",
+      "depositType": "manual",
+      "status": "confirmed",
+      "error": null,
+      "depositedAt": "2025-01-15T10:30:00.000Z"
+    }
+  ]
+}
+```
+
+**Errors:** `Error` if goal not found or not owned. `GoalSavingsError` if query fails.
+
+---
+
 ### Webhooks
 
 #### `POST /webhooks/pretium`
@@ -2959,9 +3177,47 @@ curl -X POST http://localhost:3000/internal/yield/snapshots/run \
 
 ---
 
+### Goal Savings (Admin)
+
+#### `POST /internal/goal-savings/process`
+
+Process all due automated goal savings deposits. Finds active goals with `frequency` set and `nextDepositAt <= now`, executes deposits via the yield system, handles retry logic, and auto-pauses goals that exceed `maxRetries` consecutive failures.
+
+```bash
+curl -X POST http://localhost:3000/internal/goal-savings/process \
+  -H "X-Admin-Key: YOUR_ADMIN_API_KEY"
+```
+
+**Response data:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "processedCount": 3,
+    "deposits": [
+      {
+        "id": "deposit-uuid",
+        "goalId": "goal-uuid",
+        "yieldPositionId": "position-uuid",
+        "amount": "50000000",
+        "depositType": "automated",
+        "status": "confirmed",
+        "error": null,
+        "depositedAt": "2025-01-15T10:30:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+**Errors:** `GoalSavingsError` if processing fails.
+
+---
+
 ## Scheduled Tasks (Trigger.dev)
 
-Three background processing pipelines run automatically via [Trigger.dev](https://trigger.dev) scheduled tasks. These tasks call the same Effect service methods that the internal admin endpoints use, but without requiring an HTTP request.
+Five background processing pipelines run automatically via [Trigger.dev](https://trigger.dev) scheduled tasks. These tasks call the same Effect service methods that the internal admin endpoints use, but without requiring an HTTP request.
 
 | Task | Schedule | Service method | What it does |
 |------|----------|----------------|-------------|
@@ -2969,6 +3225,7 @@ Three background processing pipelines run automatically via [Trigger.dev](https:
 | `process-due-payments` | Every 5 minutes | `RecurringPaymentService.processDuePayments()` | Finds active recurring payment schedules with `nextExecutionAt <= now`, executes each, records results, and reschedules. |
 | `snapshot-yield-positions` | Every hour (on the hour) | `YieldService.snapshotAllActivePositions()` | Reads accrued yield from on-chain for all active positions, calculates APY, and stores snapshots. |
 | `process-swap-automations` | Every 1 minute | `SwapAutomationService.processDueAutomations()` | Evaluates all active swap automations: fetches prices from CoinMarketCap, checks indicator conditions, verifies wallet balances, and executes Uniswap swaps when conditions are met. |
+| `process-due-goal-deposits` | Every 5 minutes | `GoalSavingsService.processDueDeposits()` | Finds active goals with frequency set and nextDepositAt <= now, creates yield positions for each, updates accumulation, pauses on consecutive failures. |
 
 ### Manual trigger endpoints
 
@@ -2979,8 +3236,9 @@ The scheduled tasks do not replace the existing internal admin endpoints. These 
 | `process-due-jobs` | `POST /internal/jobs/process` |
 | `process-due-payments` | `POST /internal/recurring-payments/process` |
 | `snapshot-yield-positions` | `POST /internal/yield/snapshots/run` |
+| `process-due-goal-deposits` | `POST /internal/goal-savings/process` |
 
-All three manual endpoints require the `X-Admin-Key` header. See the corresponding sections under [Internal API](#internal-api) for request and response details.
+All manual endpoints require the `X-Admin-Key` header. See the corresponding sections under [Internal API](#internal-api) for request and response details.
 
 ---
 
@@ -3375,5 +3633,52 @@ All three manual endpoints require the `X-Admin-Key` header. See the correspondi
 ```typescript
 GroupAccount & {
   members: (GroupAccountMember & { username: string | null })[];
+}
+```
+
+### GoalSaving
+
+```typescript
+{
+  id: string;
+  userId: string;
+  name: string;
+  description: string | null;
+  targetAmount: string;
+  accumulatedAmount: string;
+  tokenAddress: string;
+  tokenSymbol: string;
+  tokenDecimals: number;
+  status: "active" | "paused" | "cancelled" | "completed";
+  walletId: string | null;
+  walletType: string | null;
+  vaultId: string | null;
+  chainId: number | null;
+  depositAmount: string | null;
+  unlockTimeOffsetSeconds: number | null;
+  frequency: string | null;
+  nextDepositAt: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  maxRetries: number;
+  consecutiveFailures: number;
+  totalDeposits: number;
+  createdAt: string;
+  updatedAt: string;
+}
+```
+
+### GoalSavingsDeposit
+
+```typescript
+{
+  id: string;
+  goalId: string;
+  yieldPositionId: string;
+  amount: string;
+  depositType: "automated" | "manual";
+  status: "pending" | "confirmed" | "failed";
+  error: string | null;
+  depositedAt: string;
 }
 ```

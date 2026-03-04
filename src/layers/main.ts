@@ -20,6 +20,8 @@ import { ExchangeRateServiceLive } from "../services/pretium/exchange-rate-servi
 import { UniswapServiceLive } from "../services/uniswap/uniswap-service.js";
 import { SwapAutomationServiceLive } from "../services/swap-automation/swap-automation-service.js";
 import { GroupAccountServiceLive } from "../services/group-account/group-account-service.js";
+import { SplitExpenseServiceLive } from "../services/split-expense/split-expense-service.js";
+import { GoalSavingsServiceLive } from "../services/goal-savings/goal-savings-service.js";
 
 const ConfigLayer = ConfigLive;
 
@@ -117,6 +119,19 @@ const GroupAccountServiceLayer = GroupAccountServiceLive.pipe(
   Layer.provide(ConfigLayer)
 );
 
+const SplitExpenseServiceLayer = SplitExpenseServiceLive.pipe(
+  Layer.provide(DatabaseLayer),
+  Layer.provide(TransactionServiceLayer),
+  Layer.provide(OnboardingServiceLayer)
+);
+
+const GoalSavingsServiceLayer = GoalSavingsServiceLive.pipe(
+  Layer.provide(DatabaseLayer),
+  Layer.provide(YieldServiceLayer),
+  Layer.provide(OnboardingServiceLayer),
+  Layer.provide(ConfigLayer)
+);
+
 export const MainLayer = Layer.mergeAll(
   ConfigLayer,
   DatabaseLayer,
@@ -138,5 +153,7 @@ export const MainLayer = Layer.mergeAll(
   ExchangeRateServiceLayer,
   UniswapServiceLayer,
   SwapAutomationServiceLayer,
-  GroupAccountServiceLayer
+  GroupAccountServiceLayer,
+  SplitExpenseServiceLayer,
+  GoalSavingsServiceLayer
 );

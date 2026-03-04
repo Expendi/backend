@@ -100,3 +100,36 @@ export {
   type GroupAccountMember,
   type NewGroupAccountMember,
 } from "./group-accounts.js";
+
+export {
+  splitExpenses,
+  splitExpensesRelations,
+  splitExpenseShares,
+  splitExpenseSharesRelations,
+  splitExpenseStatusEnum,
+  splitExpenseShareStatusEnum,
+  type SplitExpense,
+  type NewSplitExpense,
+  type SplitExpenseShare,
+  type NewSplitExpenseShare,
+} from "./split-expenses.js";
+
+export {
+  categoryLimits,
+  categoryLimitsRelations,
+  type CategoryLimit,
+  type NewCategoryLimit,
+} from "./category-limits.js";
+
+export {
+  goalSavings,
+  goalSavingsRelations,
+  goalSavingsDeposits,
+  goalSavingsDepositsRelations,
+  goalSavingsStatusEnum,
+  goalSavingsDepositStatusEnum,
+  type GoalSaving,
+  type NewGoalSaving,
+  type GoalSavingsDeposit,
+  type NewGoalSavingsDeposit,
+} from "./goal-savings.js";
