@@ -75,6 +75,11 @@
 			"key": "groupId",
 			"value": "f1e2d3c4-b5a6-7890-cdef-1234567890ab",
 			"type": "string"
+		},
+		{
+			"key": "goalId",
+			"value": "a1b2c3d4-goal-0000-0000-000000000000",
+			"type": "string"
 		}
 	],
 	"item": [
@@ -1995,6 +2000,214 @@
 						}
 					],
 					"description": "Group account (shared wallet) endpoints. Admin can create groups, add/remove members, and pay out. Members can deposit. Members can be identified by username or 0x address."
+				},
+				{
+					"name": "Goal Savings",
+					"item": [
+						{
+							"name": "List My Goals",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/goal-savings",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "goal-savings"]
+								},
+								"description": "List all savings goals for the authenticated user. Returns an array of goal objects with their current progress, status, and deposit schedule."
+							},
+							"response": []
+						},
+						{
+							"name": "Create Goal",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"House Fund\",\n  \"targetAmount\": \"1000000000\",\n  \"tokenAddress\": \"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\",\n  \"tokenSymbol\": \"USDC\",\n  \"tokenDecimals\": 6,\n  \"walletType\": \"server\",\n  \"vaultId\": \"{{vaultId}}\",\n  \"chainId\": 8453,\n  \"depositAmount\": \"100000000\",\n  \"unlockTimeOffsetSeconds\": 86400,\n  \"frequency\": \"7d\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/goal-savings",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "goal-savings"]
+								},
+								"description": "Create a new savings goal with automatic recurring deposits. Specify the target amount, deposit frequency, and token details. The goal will automatically deposit the specified amount on the configured schedule."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Goal by ID",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/goal-savings/{{goalId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "goal-savings", "{{goalId}}"]
+								},
+								"description": "Retrieve a specific savings goal by its ID. Returns the goal details including current progress, deposit history summary, and schedule configuration."
+							},
+							"response": []
+						},
+						{
+							"name": "Update Goal",
+							"request": {
+								"method": "PATCH",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"Updated House Fund\",\n  \"depositAmount\": \"200000000\",\n  \"frequency\": \"14d\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/goal-savings/{{goalId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "goal-savings", "{{goalId}}"]
+								},
+								"description": "Update a savings goal's mutable fields such as name, deposit amount, or frequency. Only provided fields are updated; omitted fields remain unchanged."
+							},
+							"response": []
+						},
+						{
+							"name": "Pause Goal",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/goal-savings/{{goalId}}/pause",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "goal-savings", "{{goalId}}", "pause"]
+								},
+								"description": "Pause a savings goal. Automatic deposits are suspended until the goal is resumed. The goal retains all existing deposits and progress."
+							},
+							"response": []
+						},
+						{
+							"name": "Resume Goal",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/goal-savings/{{goalId}}/resume",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "goal-savings", "{{goalId}}", "resume"]
+								},
+								"description": "Resume a previously paused savings goal. Automatic deposits will restart on the next scheduled date."
+							},
+							"response": []
+						},
+						{
+							"name": "Cancel Goal",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/goal-savings/{{goalId}}/cancel",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "goal-savings", "{{goalId}}", "cancel"]
+								},
+								"description": "Cancel a savings goal permanently. Automatic deposits are stopped. Existing deposited funds remain in the vault until the unlock time has passed."
+							},
+							"response": []
+						},
+						{
+							"name": "Manual Deposit",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"amount\": \"100000000\",\n  \"walletType\": \"server\",\n  \"vaultId\": \"{{vaultId}}\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/goal-savings/{{goalId}}/deposit",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "goal-savings", "{{goalId}}", "deposit"]
+								},
+								"description": "Make a manual one-time deposit into a savings goal outside of the automatic schedule. Useful for contributing extra funds toward the goal target."
+							},
+							"response": []
+						},
+						{
+							"name": "List Deposits",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/goal-savings/{{goalId}}/deposits?limit=50",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "goal-savings", "{{goalId}}", "deposits"],
+									"query": [
+										{
+											"key": "limit",
+											"value": "50",
+											"description": "Maximum number of deposits to return."
+										}
+									]
+								},
+								"description": "List all deposits made toward a savings goal, including both automatic scheduled deposits and manual one-time deposits. Returns deposits in reverse chronological order."
+							},
+							"response": []
+						}
+					],
+					"description": "Goal-based savings endpoints. Create savings goals with automatic recurring deposits, track progress toward a target amount, pause/resume/cancel goals, and make manual deposits. Goals deposit into yield vaults on a configurable schedule."
 				}
 			],
 			"description": "Public API routes requiring Privy authentication via Authorization: Bearer <token> header. All operations are scoped to the authenticated user."
@@ -2660,6 +2873,31 @@
 						}
 					],
 					"description": "Admin yield management. Requires X-Admin-Key header. Full access to vault management, position listing, and yield snapshot triggers."
+				},
+				{
+					"name": "Goal Savings (Admin)",
+					"item": [
+						{
+							"name": "Process Due Goal Deposits",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "X-Admin-Key",
+										"value": "{{adminApiKey}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/internal/goal-savings/process",
+									"host": ["{{baseUrl}}"],
+									"path": ["internal", "goal-savings", "process"]
+								},
+								"description": "Triggers processing of all due goal savings deposits. Finds active goals with deposits scheduled at or before the current time and executes them. Returns the count of deposits processed and any errors encountered."
+							},
+							"response": []
+						}
+					],
+					"description": "Admin goal savings management. Requires X-Admin-Key header. Trigger processing of due recurring deposits for all active savings goals."
 				}
 			],
 			"description": "Internal admin API routes requiring X-Admin-Key header. Full access to all data regardless of user ownership. Used by the admin dashboard."

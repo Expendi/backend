@@ -21,6 +21,8 @@ import {
 import { createUniswapRoutes } from "./routes/uniswap.js";
 import { createSwapAutomationRoutes } from "./routes/swap-automations.js";
 import { createGroupAccountRoutes } from "./routes/group-accounts.js";
+import { createSplitExpenseRoutes } from "./routes/split-expenses.js";
+import { createGoalSavingsRoutes } from "./routes/goal-savings.js";
 
 // Resolve the Privy client and admin API key from the Effect runtime so
 // we can hand them to the Hono middleware layer without requiring Effect
@@ -53,6 +55,8 @@ app.get("/", (c) =>
       uniswap: "/api/uniswap",
       swapAutomations: "/api/swap-automations",
       groups: "/api/groups",
+      splitExpenses: "/api/split-expenses",
+      goalSavings: "/api/goal-savings",
       webhooks: "/webhooks/pretium",
     },
   })
@@ -76,6 +80,8 @@ app.route("/api/pretium", createPretiumRoutes(runtime));
 app.route("/api/uniswap", createUniswapRoutes(runtime));
 app.route("/api/swap-automations", createSwapAutomationRoutes(runtime));
 app.route("/api/groups", createGroupAccountRoutes(runtime));
+app.route("/api/split-expenses", createSplitExpenseRoutes(runtime));
+app.route("/api/goal-savings", createGoalSavingsRoutes(runtime));
 
 // ── Webhook routes (no auth -- called by payment providers) ────────
 

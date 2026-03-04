@@ -89,3 +89,26 @@ export const groupAccountRoleEnum = pgEnum("group_account_role", [
   "admin",
   "member",
 ]);
+
+export const splitExpenseStatusEnum = pgEnum("split_expense_status", [
+  "active",
+  "settled",
+  "cancelled",
+]);
+
+export const splitExpenseShareStatusEnum = pgEnum(
+  "split_expense_share_status",
+  ["pending", "paid", "cancelled"]
+);
+
+export const goalSavingsStatusEnum = pgEnum("goal_savings_status", [
+  "active",
+  "paused",
+  "cancelled",
+  "completed",
+]);
+
+export const goalSavingsDepositStatusEnum = pgEnum(
+  "goal_savings_deposit_status",
+  ["pending", "confirmed", "failed"]
+);

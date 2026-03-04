@@ -128,6 +128,7 @@ Arrows point from a service to its dependency. For example, `WalletService` depe
 | `PretiumService` | `src/services/pretium/pretium-service.ts` | Handles crypto-to-fiat disbursement via the Pretium API for 7 African countries (KE, NG, GH, UG, CD, MW, ET). Supports mobile money and bank transfers. Provides `disburse`, `getTransactionStatus`, `validatePhoneWithMno`, `validateBankAccount`, `getBanksForCountry`, and country/payment config lookups. |
 | `ExchangeRateService` | `src/services/pretium/exchange-rate-service.ts` | Fetches live exchange rates from the Pretium API with 5-minute caching. Provides `getExchangeRate`, `convertUsdcToFiat`, `convertFiatToUsdc`, and `clearCache`. |
 | `UniswapService` | `src/services/uniswap/uniswap-service.ts` | Wraps the [Uniswap Trading API](https://trade-api.gateway.uniswap.org/v1) for token swaps on Base (chain ID 8453). Provides `checkApproval`, `getQuote`, and `getSwapTransaction`. The service only handles HTTP communication with the Uniswap API -- route handlers in `src/routes/uniswap.ts` orchestrate the full swap flow by resolving wallet addresses from the database and submitting resulting transactions through `TransactionService.submitRawTransaction`. |
+| `GoalSavingsService` | `src/services/goal-savings/goal-savings-service.ts` | Manages savings goals with target amounts, recurring automated deposits into yield pools, and progress tracking. Creates yield positions via YieldService on each deposit. Supports manual and automated deposits, pause/resume/cancel lifecycle, and automatic completion when accumulated amount reaches target. processDueDeposits polls for active goals with frequency set and nextDepositAt <= now. |
 
 ### Layer composition in MainLayer
 
@@ -700,6 +701,7 @@ Each Trigger.dev task worker process creates its own runtime instance when it bo
 | `trigger/process-due-jobs.ts` | `process-due-jobs` | `* * * * *` (every minute) | `JobberService.processDueJobs()` | Finds jobs with `status = "pending"` and `nextRunAt <= now`, executes them via `TransactionService`, then reschedules. |
 | `trigger/process-due-payments.ts` | `process-due-payments` | `*/5 * * * *` (every 5 minutes) | `RecurringPaymentService.processDuePayments()` | Finds active recurring payment schedules with `nextExecutionAt <= now`, executes each one, records the result, and reschedules. |
 | `trigger/snapshot-yield.ts` | `snapshot-yield-positions` | `0 * * * *` (every hour, on the hour) | `YieldService.snapshotAllActivePositions()` | Reads accrued yield from on-chain for all active positions, calculates APY, and stores yield snapshots. |
+| `trigger/process-due-goal-deposits.ts` | `process-due-goal-deposits` | `*/5 * * * *` (every 5 minutes) | `GoalSavingsService.processDueDeposits()` | Finds active goals with frequency and nextDepositAt <= now, creates yield positions, updates accumulation, pauses on consecutive failures. |
 
 Each task follows the same pattern:
 
@@ -733,6 +735,7 @@ The internal admin endpoints that these tasks automate still exist and can be ca
 | `process-due-jobs` | `POST /internal/jobs/process` |
 | `process-due-payments` | `POST /internal/recurring-payments/process` |
 | `snapshot-yield-positions` | `POST /internal/yield/snapshots/run` |
+| `process-due-goal-deposits` | `POST /internal/goal-savings/process` |
 
 ### Directory structure
 
@@ -966,6 +969,45 @@ erDiagram
         timestamp snapshot_at
     }
 
+    goal_savings {
+        text id PK
+        text user_id
+        text name
+        text description
+        text target_amount
+        text accumulated_amount
+        text token_address
+        text token_symbol
+        integer token_decimals
+        goal_savings_status status "active | paused | cancelled | completed"
+        text wallet_id FK
+        text wallet_type
+        text vault_id FK
+        integer chain_id
+        text deposit_amount
+        integer unlock_time_offset_seconds
+        text frequency
+        timestamp next_deposit_at
+        timestamp start_date
+        timestamp end_date
+        integer max_retries
+        integer consecutive_failures
+        integer total_deposits
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    goal_savings_deposits {
+        text id PK
+        text goal_id FK
+        text yield_position_id FK
+        text amount
+        text deposit_type "automated | manual"
+        goal_savings_deposit_status status "pending | confirmed | failed"
+        text error
+        timestamp deposited_at
+    }
+
     wallets ||--o{ transactions : "has many"
     wallets ||--o{ recurring_payments : "has many"
     wallets ||--o{ pretium_transactions : "has many"
@@ -978,11 +1020,15 @@ erDiagram
     wallets ||--o{ yield_positions : "has many"
     yield_positions ||--o{ yield_snapshots : "has many"
     transactions ||--o| yield_positions : "created by"
+    wallets ||--o{ goal_savings : "has many"
+    yield_vaults ||--o{ goal_savings : "has many"
+    goal_savings ||--o{ goal_savings_deposits : "has many"
+    yield_positions ||--o| goal_savings_deposits : "created by"
 ```
 
 ### Enums
 
-Nine PostgreSQL enums are defined in `src/db/schema/enums.ts`:
+Eleven PostgreSQL enums are defined in `src/db/schema/enums.ts`:
 
 | Enum | Values |
 |------|--------|
@@ -995,6 +1041,8 @@ Nine PostgreSQL enums are defined in `src/db/schema/enums.ts`:
 | `pretium_transaction_status` | `pending`, `processing`, `completed`, `failed`, `reversed` |
 | `pretium_payment_type` | `MOBILE`, `BUY_GOODS`, `PAYBILL`, `BANK_TRANSFER` |
 | `yield_position_status` | `active`, `matured`, `withdrawn`, `emergency` |
+| `goal_savings_status` | `active`, `paused`, `cancelled`, `completed` |
+| `goal_savings_deposit_status` | `pending`, `confirmed`, `failed` |
 
 ### Table details
 
@@ -1019,6 +1067,10 @@ Nine PostgreSQL enums are defined in `src/db/schema/enums.ts`:
 **yield_positions** -- Represents a user's deposit into a yield vault. Created when a user locks tokens via the YieldTimeLock contract. The `on_chain_lock_id` stores the lock identifier returned by the contract. The `principal_amount` and `shares` track the original deposit. The `unlock_time` determines when the lock expires and the position can be withdrawn. Status progresses from `active` to `matured` (when unlock time passes) to `withdrawn` (after successful withdrawal). The `emergency` status is reserved for forced unlocks.
 
 **yield_snapshots** -- Periodic snapshots of yield accrual for each active position. Created hourly by the `snapshot-yield-positions` scheduled task. Each snapshot records the current total assets, accrued yield since deposit, and an estimated annualized percentage yield (APY). Used to render yield history charts and portfolio summaries.
+
+**goal_savings** -- Savings goals with target amounts. Users define a name, target amount, and token details. Optional automation fields (walletId, vaultId, depositAmount, frequency) enable recurring deposits into yield pools. When accumulatedAmount reaches targetAmount, the goal is marked completed. The consecutiveFailures counter tracks failed automated deposits; when it reaches maxRetries the goal is paused.
+
+**goal_savings_deposits** -- Individual deposit records linking a goal to a yield position. Each deposit records the amount, type (automated or manual), status, and optional error message. The yieldPositionId references the yield position created by YieldService.createPosition.
 
 ### Migrations
 

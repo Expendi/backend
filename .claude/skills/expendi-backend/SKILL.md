@@ -13,6 +13,7 @@ Expendi is a crypto financial backend built with **Hono + Effect-TS** on Node.js
 - **Token swaps** -- Uniswap V3 swaps on Base
 - **Swap automations** -- indicator-based conditional swaps (price above/below, percent change)
 - **Group accounts** -- shared wallets with admin/member roles, on-chain via GroupAccount contracts
+- **Goal savings** -- savings goals with target amounts, optional recurring deposits into yield pools, and progress tracking
 - **Usernames** -- human-readable identifiers for wallet addresses
 - **Transaction categories** -- user-defined and global categories for organizing transactions
 
@@ -526,7 +527,116 @@ Group accounts are shared wallets with admin/member roles, powered by on-chain s
 | POST | `/api/groups/:id/transfer-admin` | Privy | `{ newAdmin: string }` | `{ transferred: true }`. Admin only. |
 | GET | `/api/groups/:id/balance` | Privy | Query: `?tokens=0xAddr1,0xAddr2` | `{ eth, tokens: { addr: balance } }` |
 
-### 5.12 Webhooks
+### 5.12 Goal Savings
+
+Goal savings lets users define savings goals with a target token and amount, optionally automating recurring deposits from a server wallet into a yield pool. Each deposit creates a yield position. When accumulated deposits reach the target, the goal is marked completed.
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| GET | `/api/goal-savings` | Privy | -- | Array of user's goals |
+| POST | `/api/goal-savings` | Privy | See below | Created goal (HTTP 201) |
+| GET | `/api/goal-savings/:id` | Privy | -- | Single goal (ownership enforced) |
+| PATCH | `/api/goal-savings/:id` | Privy | See below | Updated goal |
+| POST | `/api/goal-savings/:id/pause` | Privy | -- | Paused goal |
+| POST | `/api/goal-savings/:id/resume` | Privy | -- | Resumed goal (resets failures, recalculates next deposit) |
+| POST | `/api/goal-savings/:id/cancel` | Privy | -- | Cancelled goal (existing positions remain) |
+| POST | `/api/goal-savings/:id/deposit` | Privy | See below | Manual deposit (HTTP 201) |
+| GET | `/api/goal-savings/:id/deposits` | Privy | Query: `?limit=50` | Array of deposit records |
+
+**POST `/api/goal-savings` body:**
+```typescript
+{
+  name: string;                      // e.g. "House Fund"
+  description?: string;
+  targetAmount: string;              // String bigint target
+  tokenAddress: string;              // ERC-20 token address
+  tokenSymbol: string;               // e.g. "USDC"
+  tokenDecimals: number;             // e.g. 6
+  walletId?: string;                 // Server wallet for deposits (resolved from profile if omitted)
+  walletType?: "server" | "agent";
+  vaultId?: string;                  // Yield vault for deposits
+  chainId?: number;
+  depositAmount?: string;            // Per-deposit amount for automation
+  unlockTimeOffsetSeconds?: number;  // Seconds added to deposit time for lock expiry
+  frequency?: string;                // "1d", "7d" etc. (null = manual only)
+  startDate?: string;                // ISO 8601
+  endDate?: string;                  // ISO 8601
+  maxRetries?: number;               // Default: 3
+}
+```
+
+Automation fields (`walletId`/`walletType`, `vaultId`, `depositAmount`, `frequency`) are all-or-nothing.
+
+**PATCH `/api/goal-savings/:id` body (all fields optional):**
+```typescript
+{
+  name?: string;
+  description?: string;
+  depositAmount?: string;
+  frequency?: string;     // Recalculates nextDepositAt
+  endDate?: string | null;
+  maxRetries?: number;
+}
+```
+
+**POST `/api/goal-savings/:id/deposit` body:**
+```typescript
+{
+  amount: string;                    // Deposit amount
+  walletId?: string;                 // Falls back to goal's walletId, then profile
+  walletType?: "server" | "agent";
+  vaultId?: string;                  // Falls back to goal's vaultId
+  chainId?: number;
+  unlockTimeOffsetSeconds?: number;  // Falls back to goal's setting
+}
+```
+
+**GoalSaving object shape:**
+```typescript
+interface GoalSaving {
+  id: string;
+  userId: string;
+  name: string;
+  description: string | null;
+  targetAmount: string;
+  accumulatedAmount: string;
+  tokenAddress: string;
+  tokenSymbol: string;
+  tokenDecimals: number;
+  status: "active" | "paused" | "cancelled" | "completed";
+  walletId: string | null;
+  walletType: string | null;
+  vaultId: string | null;
+  chainId: number | null;
+  depositAmount: string | null;
+  unlockTimeOffsetSeconds: number | null;
+  frequency: string | null;
+  nextDepositAt: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  maxRetries: number;
+  consecutiveFailures: number;
+  totalDeposits: number;
+  createdAt: string;
+  updatedAt: string;
+}
+```
+
+**GoalSavingsDeposit object shape:**
+```typescript
+interface GoalSavingsDeposit {
+  id: string;
+  goalId: string;
+  yieldPositionId: string;
+  amount: string;
+  depositType: "automated" | "manual";
+  status: "pending" | "confirmed" | "failed";
+  error: string | null;
+  depositedAt: string;
+}
+```
+
+### 5.13 Webhooks
 
 | Method | Path | Auth | Body | Description |
 |--------|------|------|------|-------------|
@@ -542,7 +652,7 @@ Group accounts are shared wallets with admin/member roles, powered by on-chain s
    - Sent after stablecoins are released to the user's wallet
    - Marks the onramp transaction as `completed` and stores the on-chain tx hash
 
-### 5.13 Internal/Admin API
+### 5.14 Internal/Admin API
 
 All internal routes require `X-Admin-Key` header. These are not for frontend use in normal flows but are listed for completeness.
 
@@ -575,6 +685,7 @@ All internal routes require `X-Admin-Key` header. These are not for frontend use
 | POST | `/internal/yield/vaults/sync` | Sync vaults from chain |
 | GET | `/internal/yield/positions` | List all positions |
 | POST | `/internal/yield/snapshots/run` | Trigger yield snapshots |
+| POST | `/internal/goal-savings/process` | Process due goal savings deposits |
 
 ---
 
@@ -968,6 +1079,52 @@ await request(`/api/recurring-payments/${schedule.id}/cancel`, { method: "POST" 
 const executions = await request(`/api/recurring-payments/${schedule.id}/executions`);
 ```
 
+### 7.11 Creating a Savings Goal with Automated Deposits
+
+```typescript
+// Create a savings goal with weekly automated deposits
+const goal = await request<GoalSaving>("/api/goal-savings", {
+  method: "POST",
+  body: {
+    name: "House Fund",
+    targetAmount: "1000000000",         // 1000 USDC (6 decimals)
+    tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    tokenSymbol: "USDC",
+    tokenDecimals: 6,
+    walletType: "server",               // Use server wallet
+    vaultId: vaultId,                   // Yield vault UUID
+    chainId: 8453,
+    depositAmount: "50000000",          // 50 USDC per deposit
+    unlockTimeOffsetSeconds: 2592000,   // 30-day lock per deposit
+    frequency: "7d",                    // Weekly
+  },
+});
+
+// Make a manual one-time deposit
+const deposit = await request(`/api/goal-savings/${goal.id}/deposit`, {
+  method: "POST",
+  body: {
+    amount: "100000000",   // 100 USDC
+    walletType: "server",
+    vaultId: vaultId,
+  },
+});
+
+// Check progress
+const updated = await request<GoalSaving>(`/api/goal-savings/${goal.id}`);
+console.log(`Progress: ${updated.accumulatedAmount} / ${updated.targetAmount}`);
+console.log(`Status: ${updated.status}`);  // "active" or "completed"
+
+// List deposits
+const deposits = await request(`/api/goal-savings/${goal.id}/deposits`);
+
+// Pause automation
+await request(`/api/goal-savings/${goal.id}/pause`, { method: "POST" });
+
+// Resume
+await request(`/api/goal-savings/${goal.id}/resume`, { method: "POST" });
+```
+
 ---
 
 ## 8. Error Handling
@@ -990,6 +1147,7 @@ Domain errors returned in `error._tag` include:
 | `YieldError` | Vault or position operation failure |
 | `SwapAutomationError` | Swap automation operation failure |
 | `GroupAccountError` | Group account operation failure (not admin, group not found, etc.) |
+| `GoalSavingsError` | Goal savings operation failure (goal not found, cancelled/completed, missing config) |
 | `InternalError` | Unhandled server-side error |
 
 ### Frontend Error Handling Pattern
