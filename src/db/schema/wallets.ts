@@ -3,8 +3,6 @@ import { relations } from "drizzle-orm";
 import { walletTypeEnum } from "./enums.js";
 import { transactions } from "./transactions.js";
 
-export { walletTypeEnum } from "./enums.js";
-
 export const wallets = pgTable("wallets", {
   id: text("id")
     .primaryKey()
