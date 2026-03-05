@@ -31,7 +31,7 @@ export interface WalletServiceApi {
     agentId: string
   ) => Effect.Effect<WalletInstance, WalletError>;
   readonly getWallet: (
-    privyWalletId: string,
+    walletId: string,
     type: "user" | "server" | "agent"
   ) => Effect.Effect<WalletInstance, WalletError>;
 }

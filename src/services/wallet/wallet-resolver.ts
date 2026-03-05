@@ -2,7 +2,7 @@ import { Effect, Context, Layer } from "effect";
 import { WalletService, type WalletInstance, WalletError } from "./wallet-service.js";
 
 export interface WalletRef {
-  readonly privyWalletId: string;
+  readonly walletId: string;
   readonly type: "user" | "server" | "agent";
 }
 
@@ -26,7 +26,7 @@ export const WalletResolverLive: Layer.Layer<
 
     return {
       resolve: (ref: WalletRef) =>
-        walletService.getWallet(ref.privyWalletId, ref.type),
+        walletService.getWallet(ref.walletId, ref.type),
     };
   })
 );

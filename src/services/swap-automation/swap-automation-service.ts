@@ -238,7 +238,7 @@ export const SwapAutomationServiceLive: Layer.Layer<
         }
 
         const wallet = yield* walletService
-          .getWallet(walletRecord.privyWalletId, walletType)
+          .getWallet(walletId, walletType)
           .pipe(
             Effect.mapError(
               (e) =>
@@ -259,7 +259,7 @@ export const SwapAutomationServiceLive: Layer.Layer<
           )
         );
 
-        return { wallet, address, privyWalletId: walletRecord.privyWalletId };
+        return { wallet, address, walletId };
       });
 
     // Wait for transaction confirmation on chain
@@ -312,7 +312,7 @@ export const SwapAutomationServiceLive: Layer.Layer<
       currentPrice: number
     ) =>
       Effect.gen(function* () {
-        const { address: walletAddress, privyWalletId } = yield* resolveWallet(
+        const { address: walletAddress, walletId } = yield* resolveWallet(
           automation.walletId,
           automation.walletType as "server" | "agent"
         );
@@ -398,7 +398,7 @@ export const SwapAutomationServiceLive: Layer.Layer<
             if (approvalResult.approval) {
               const approvalTx = yield* txService
                 .submitRawTransaction({
-                  walletId: privyWalletId,
+                  walletId,
                   walletType: automation.walletType as "server" | "agent",
                   chainId: automation.chainId,
                   to: approvalResult.approval.to as `0x${string}`,
@@ -454,7 +454,7 @@ export const SwapAutomationServiceLive: Layer.Layer<
           // 5. Submit swap
           const tx = yield* txService
             .submitRawTransaction({
-              walletId: privyWalletId,
+              walletId,
               walletType: automation.walletType as "server" | "agent",
               chainId: automation.chainId,
               to: swapTx.to as `0x${string}`,

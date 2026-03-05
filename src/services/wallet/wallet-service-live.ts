@@ -109,25 +109,22 @@ export const WalletServiceLive: Layer.Layer<
           return createAgentWalletInstance(privy, wallet.id, agentId);
         }),
 
-      getWallet: (privyWalletId: string, type: "user" | "server" | "agent") =>
+      getWallet: (walletId: string, type: "user" | "server" | "agent") =>
         Effect.gen(function* () {
-          if (type === "user") {
-            return createUserWalletInstance(privy, privyWalletId);
-          }
-          if (type === "server") {
-            return createServerWalletInstance(privy, privyWalletId);
-          }
-
+          // Look up the wallet record to get the privyWalletId from the DB id
           const rows = yield* Effect.tryPromise({
             try: () =>
               db
-                .select({ ownerId: wallets.ownerId })
+                .select({
+                  privyWalletId: wallets.privyWalletId,
+                  ownerId: wallets.ownerId,
+                })
                 .from(wallets)
-                .where(eq(wallets.privyWalletId, privyWalletId))
+                .where(eq(wallets.id, walletId))
                 .limit(1),
             catch: (error) =>
               new WalletError({
-                message: `Failed to look up agent wallet owner: ${error}`,
+                message: `Failed to look up wallet: ${error}`,
                 cause: error,
               }),
           });
@@ -136,11 +133,19 @@ export const WalletServiceLive: Layer.Layer<
           if (!walletRecord) {
             return yield* Effect.fail(
               new WalletError({
-                message: `No wallet record found for privy wallet ID: ${privyWalletId}`,
+                message: `No wallet record found for wallet ID: ${walletId}`,
               })
             );
           }
 
+          const { privyWalletId } = walletRecord;
+
+          if (type === "user") {
+            return createUserWalletInstance(privy, privyWalletId);
+          }
+          if (type === "server") {
+            return createServerWalletInstance(privy, privyWalletId);
+          }
           return createAgentWalletInstance(privy, privyWalletId, walletRecord.ownerId);
         }),
     };

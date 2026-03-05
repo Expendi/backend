@@ -11,7 +11,7 @@ if (!appId) {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <PrivyProvider appId={appId}>
+    <PrivyProvider appId={appId} >
       <App />
     </PrivyProvider>
   </StrictMode>

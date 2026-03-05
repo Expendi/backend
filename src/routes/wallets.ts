@@ -102,7 +102,7 @@ export function createWalletRoutes(runtime: AppRuntime) {
         }
         const resolver = yield* WalletResolver;
         const wallet = yield* resolver.resolve({
-          privyWalletId: walletRecord.privyWalletId,
+          walletId: walletRecord.id,
           type: walletRecord.type,
         });
         const signature = yield* wallet.sign(body.message);
