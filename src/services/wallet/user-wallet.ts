@@ -44,8 +44,7 @@ export function createUserWalletInstance(
     sendTransaction: (tx: SendTransactionParams) =>
       Effect.tryPromise({
         try: async () => {
-          const result = await privy.wallets().rpc(privyWalletId, {
-            method: "eth_sendTransaction",
+          const result = await privy.wallets().ethereum().sendTransaction(privyWalletId, {
             caip2: `eip155:${tx.chainId}`,
             params: {
               transaction: {
@@ -56,7 +55,8 @@ export function createUserWalletInstance(
             },
             sponsor: tx.sponsor == undefined ? true : tx.sponsor,
           });
-          return result.data.hash as Hash;
+          console.log("Incoming result data::", JSON.stringify(result))
+          return result.user_operation_hash as Hash;
         },
         catch: (error) =>
           new WalletError({
