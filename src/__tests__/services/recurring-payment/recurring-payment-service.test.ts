@@ -12,6 +12,8 @@ import {
 } from "../../../services/transaction/transaction-service.js";
 import { ConfigService } from "../../../config.js";
 import { OfframpAdapterRegistryLive } from "../../../services/offramp/index.js";
+import { PretiumService } from "../../../services/pretium/pretium-service.js";
+import { ExchangeRateService } from "../../../services/pretium/exchange-rate-service.js";
 import type {
   RecurringPayment,
   RecurringPaymentExecution,
@@ -201,12 +203,28 @@ function makeTestLayers(opts?: {
     port: 3000,
   });
 
+  const MockPretiumLayer = Layer.succeed(PretiumService, {
+    disburse: () => Effect.succeed({} as any),
+    getTransactionStatus: () => Effect.succeed({} as any),
+    validatePhoneWithMno: () => Effect.succeed({} as any),
+    validateBankAccount: () => Effect.succeed({} as any),
+  } as any);
+
+  const MockExchangeRateLayer = Layer.succeed(ExchangeRateService, {
+    getExchangeRate: () => Effect.succeed({} as any),
+    convertUsdcToFiat: () => Effect.succeed({} as any),
+    convertFiatToUsdc: () => Effect.succeed({} as any),
+    clearCache: () => Effect.succeed(undefined),
+  });
+
   return {
     layer: RecurringPaymentServiceLive.pipe(
       Layer.provide(MockDbLayer),
       Layer.provide(MockTxServiceLayer),
       Layer.provide(MockConfigLayer),
-      Layer.provide(OfframpAdapterRegistryLive)
+      Layer.provide(OfframpAdapterRegistryLive),
+      Layer.provide(MockPretiumLayer),
+      Layer.provide(MockExchangeRateLayer)
     ),
   };
 }
@@ -507,7 +525,9 @@ describe("RecurringPaymentService", () => {
         Layer.provide(MockDbLayer),
         Layer.provide(MockTxServiceLayer),
         Layer.provide(MockConfigLayer),
-        Layer.provide(OfframpAdapterRegistryLive)
+        Layer.provide(OfframpAdapterRegistryLive),
+        Layer.provide(Layer.succeed(PretiumService, { disburse: () => Effect.succeed({} as any), getTransactionStatus: () => Effect.succeed({} as any), validatePhoneWithMno: () => Effect.succeed({} as any), validateBankAccount: () => Effect.succeed({} as any) } as any)),
+        Layer.provide(Layer.succeed(ExchangeRateService, { getExchangeRate: () => Effect.succeed({} as any), convertUsdcToFiat: () => Effect.succeed({} as any), convertFiatToUsdc: () => Effect.succeed({} as any), clearCache: () => Effect.succeed(undefined) }))
       );
 
       const result = await Effect.runPromise(
@@ -583,7 +603,9 @@ describe("RecurringPaymentService", () => {
         Layer.provide(MockDbLayer),
         Layer.provide(MockTxServiceLayer),
         Layer.provide(MockConfigLayer),
-        Layer.provide(OfframpAdapterRegistryLive)
+        Layer.provide(OfframpAdapterRegistryLive),
+        Layer.provide(Layer.succeed(PretiumService, { disburse: () => Effect.succeed({} as any), getTransactionStatus: () => Effect.succeed({} as any), validatePhoneWithMno: () => Effect.succeed({} as any), validateBankAccount: () => Effect.succeed({} as any) } as any)),
+        Layer.provide(Layer.succeed(ExchangeRateService, { getExchangeRate: () => Effect.succeed({} as any), convertUsdcToFiat: () => Effect.succeed({} as any), convertFiatToUsdc: () => Effect.succeed({} as any), clearCache: () => Effect.succeed(undefined) }))
       );
 
       const result = await Effect.runPromise(
@@ -633,7 +655,9 @@ describe("RecurringPaymentService", () => {
         Layer.provide(MockDbLayer),
         Layer.provide(MockTxServiceLayer),
         Layer.provide(MockConfigLayer),
-        Layer.provide(OfframpAdapterRegistryLive)
+        Layer.provide(OfframpAdapterRegistryLive),
+        Layer.provide(Layer.succeed(PretiumService, { disburse: () => Effect.succeed({} as any), getTransactionStatus: () => Effect.succeed({} as any), validatePhoneWithMno: () => Effect.succeed({} as any), validateBankAccount: () => Effect.succeed({} as any) } as any)),
+        Layer.provide(Layer.succeed(ExchangeRateService, { getExchangeRate: () => Effect.succeed({} as any), convertUsdcToFiat: () => Effect.succeed({} as any), convertFiatToUsdc: () => Effect.succeed({} as any), clearCache: () => Effect.succeed(undefined) }))
       );
 
       const result = await Effect.runPromise(
@@ -687,7 +711,9 @@ describe("RecurringPaymentService", () => {
         Layer.provide(MockDbLayer),
         Layer.provide(MockTxServiceLayer),
         Layer.provide(MockConfigLayer),
-        Layer.provide(OfframpAdapterRegistryLive)
+        Layer.provide(OfframpAdapterRegistryLive),
+        Layer.provide(Layer.succeed(PretiumService, { disburse: () => Effect.succeed({} as any), getTransactionStatus: () => Effect.succeed({} as any), validatePhoneWithMno: () => Effect.succeed({} as any), validateBankAccount: () => Effect.succeed({} as any) } as any)),
+        Layer.provide(Layer.succeed(ExchangeRateService, { getExchangeRate: () => Effect.succeed({} as any), convertUsdcToFiat: () => Effect.succeed({} as any), convertFiatToUsdc: () => Effect.succeed({} as any), clearCache: () => Effect.succeed(undefined) }))
       );
 
       const result = await Effect.runPromise(
@@ -736,7 +762,9 @@ describe("RecurringPaymentService", () => {
         Layer.provide(MockDbLayer),
         Layer.provide(MockTxServiceLayer),
         Layer.provide(MockConfigLayer),
-        Layer.provide(OfframpAdapterRegistryLive)
+        Layer.provide(OfframpAdapterRegistryLive),
+        Layer.provide(Layer.succeed(PretiumService, { disburse: () => Effect.succeed({} as any), getTransactionStatus: () => Effect.succeed({} as any), validatePhoneWithMno: () => Effect.succeed({} as any), validateBankAccount: () => Effect.succeed({} as any) } as any)),
+        Layer.provide(Layer.succeed(ExchangeRateService, { getExchangeRate: () => Effect.succeed({} as any), convertUsdcToFiat: () => Effect.succeed({} as any), convertFiatToUsdc: () => Effect.succeed({} as any), clearCache: () => Effect.succeed(undefined) }))
       );
 
       const result = await Effect.runPromise(

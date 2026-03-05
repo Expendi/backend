@@ -76,25 +76,27 @@ const OnboardingServiceLayer = OnboardingServiceLive.pipe(
 
 const OfframpAdapterRegistryLayer = OfframpAdapterRegistryLive;
 
+const PretiumServiceLayer = PretiumServiceLive.pipe(
+  Layer.provide(ConfigLayer)
+);
+
+const ExchangeRateServiceLayer = ExchangeRateServiceLive.pipe(
+  Layer.provide(ConfigLayer)
+);
+
 const RecurringPaymentServiceLayer = RecurringPaymentServiceLive.pipe(
   Layer.provide(DatabaseLayer),
   Layer.provide(TransactionServiceLayer),
   Layer.provide(ConfigLayer),
-  Layer.provide(OfframpAdapterRegistryLayer)
+  Layer.provide(OfframpAdapterRegistryLayer),
+  Layer.provide(PretiumServiceLayer),
+  Layer.provide(ExchangeRateServiceLayer)
 );
 
 const YieldServiceLayer = YieldServiceLive.pipe(
   Layer.provide(DatabaseLayer),
   Layer.provide(TransactionServiceLayer),
   Layer.provide(ContractExecutorLayer),
-  Layer.provide(ConfigLayer)
-);
-
-const PretiumServiceLayer = PretiumServiceLive.pipe(
-  Layer.provide(ConfigLayer)
-);
-
-const ExchangeRateServiceLayer = ExchangeRateServiceLive.pipe(
   Layer.provide(ConfigLayer)
 );
 
