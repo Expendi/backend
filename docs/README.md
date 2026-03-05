@@ -4,7 +4,7 @@ Expendi is a crypto financial backend that provides unified wallet management, s
 
 ## What Expendi Does
 
-- **Wallet abstraction** -- Create and manage user, server, and agent wallets through [Privy](https://www.privy.io/), with a single interface for signing and sending transactions regardless of wallet type.
+- **Wallet abstraction** -- Create and manage user, server, and agent wallets through [Privy](https://www.privy.io/), with a single interface for signing and sending transactions regardless of wallet type. Sponsored transactions automatically resolve their on-chain transaction hash by polling Privy's transactions API.
 - **Contract registry** -- Code-defined smart contract connectors (with ABI and method shortcuts) loaded at startup from the `src/connectors/` directory. Execute read/write calls against them on any supported EVM chain.
 - **Transaction ledger** -- Every on-chain action is recorded as an intent, then tracked through pending, submitted, confirmed, and failed states.
 - **User onboarding** -- A single API call (`POST /api/onboard`) creates a complete wallet set (user, server, agent) and a `user_profiles` record linking them. The operation is idempotent -- calling it again for the same user returns the existing profile. Profiles can also be created by admins via `POST /internal/profiles/:privyUserId/onboard`.
@@ -252,6 +252,7 @@ src/
       user-wallet.ts                # createUserWalletInstance
       server-wallet.ts              # createServerWalletInstance
       agent-wallet.ts               # createAgentWalletInstance
+      resolve-tx-hash.ts            # Resolves sponsored tx transaction_id to on-chain hash via Privy
     contract/
       types.ts                      # ContractConnector, MultiChainConnectorDef, expandMultiChain
       contract-registry.ts          # ContractRegistry (in-memory store)

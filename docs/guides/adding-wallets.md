@@ -93,12 +93,13 @@ export interface SendTransactionParams {
   readonly value?: bigint;
   readonly data?: string;
   readonly chainId: number;
+  readonly sponsor?: boolean; // defaults to true -- gas-sponsored via Privy smart accounts
 }
 ```
 
 - **`getAddress()`** -- Fetches the wallet's Ethereum address from Privy.
 - **`sign(message)`** -- Signs a message using `personal_sign` (EIP-191).
-- **`sendTransaction(tx)`** -- Sends an on-chain transaction using `eth_sendTransaction`. The `chainId` is passed as a CAIP-2 identifier (`eip155:{chainId}`) to Privy's RPC method.
+- **`sendTransaction(tx)`** -- Sends an on-chain transaction via `privy.wallets().ethereum().sendTransaction()`. The `chainId` is passed as a CAIP-2 identifier (`eip155:{chainId}`). Transactions are gas-sponsored by default (`sponsor: true`) through Privy's smart account system. Sponsored transactions do not return an on-chain hash immediately -- the wallet automatically polls Privy's `transactions().get()` API (via the shared `resolveTransactionHash` utility in `src/services/wallet/resolve-tx-hash.ts`) to resolve the `transaction_id` to an actual on-chain `transaction_hash` before returning. Non-sponsored transactions return the hash directly.
 
 ## How Wallet Creation Works
 
@@ -303,6 +304,19 @@ curl -X POST http://localhost:3000/api/transactions/raw \
 
 If both `walletId` and `walletType` are provided, `walletId` takes precedence. See the [API Reference](../api-reference.md) for full details.
 
+### How sponsored transactions are resolved
+
+When a transaction is sent with `sponsor: true` (the default), Privy routes it through its smart account infrastructure. The initial response contains a `transaction_id` but an empty `hash` because the transaction has not yet been included on-chain. To provide a seamless experience, every `WalletInstance.sendTransaction` implementation handles this transparently:
+
+1. Call `privy.wallets().ethereum().sendTransaction(privyWalletId, { caip2, params, sponsor })`.
+2. If `result.hash` is non-empty (non-sponsored path), return it immediately.
+3. If `result.hash` is empty but `result.transaction_id` is present (sponsored path), call the shared `resolveTransactionHash(privy, transaction_id)` utility.
+4. The utility polls `privy.transactions().get(transactionId)` every 1 second, up to 30 attempts, waiting for the on-chain hash to appear.
+5. If the transaction reaches a terminal failure status (`failed` or `execution_reverted`), the utility throws a `WalletError` immediately instead of continuing to poll.
+6. If neither `hash` nor `transaction_id` is present in the initial response, a `WalletError` is thrown.
+
+The resolution logic lives in `src/services/wallet/resolve-tx-hash.ts` and is shared by all three wallet types.
+
 ### Directly through the wallet (sign endpoint only)
 
 The wallet routes only expose signing, not direct transaction sending. This is by design: all transactions should go through `TransactionService` so they are properly ledgered and tracked.
@@ -392,8 +406,8 @@ Each wallet type has its own factory function that creates a `WalletInstance`. A
 | `createServerWalletInstance(privy, privyWalletId)` | `src/services/wallet/server-wallet.ts` | System-owned wallet |
 | `createAgentWalletInstance(privy, privyWalletId, agentId)` | `src/services/wallet/agent-wallet.ts` | Takes an extra `agentId` parameter (currently unused but available for future authorization logic) |
 
-All three use the same Privy RPC calls:
+All three use the same Privy SDK calls:
 
 - `privy.wallets().get(privyWalletId)` for `getAddress`
 - `privy.wallets().rpc(privyWalletId, { method: "personal_sign", ... })` for `sign`
-- `privy.wallets().rpc(privyWalletId, { method: "eth_sendTransaction", caip2: "eip155:{chainId}", ... })` for `sendTransaction`
+- `privy.wallets().ethereum().sendTransaction(privyWalletId, { caip2: "eip155:{chainId}", params, sponsor })` for `sendTransaction` -- sponsored by default; when sponsored, polls `privy.transactions().get(transaction_id)` via `resolveTransactionHash()` to obtain the on-chain hash

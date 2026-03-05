@@ -6,6 +6,7 @@ import {
   type SendTransactionParams,
   WalletError,
 } from "./wallet-service.js";
+import { resolveTransactionHash } from "./resolve-tx-hash.js";
 
 export function createAgentWalletInstance(
   privy: PrivyClient,
@@ -56,7 +57,16 @@ export function createAgentWalletInstance(
             },
             sponsor: tx.sponsor == undefined ? true : tx.sponsor,
           });
-          return result.user_operation_hash as Hash;
+
+          if (result.hash) {
+            return result.hash as Hash;
+          }
+
+          if (!result.transaction_id) {
+            throw new Error("No hash or transaction_id returned from Privy");
+          }
+
+          return await resolveTransactionHash(privy, result.transaction_id);
         },
         catch: (error) =>
           new WalletError({

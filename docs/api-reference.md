@@ -1575,9 +1575,9 @@ Initiate an offramp disbursement. Sends USDC to the Pretium settlement address a
 |-------|------|----------|-------------|
 | `country` | string | yes | ISO 3166-1 alpha-2 country code |
 | `walletId` | string | yes | Database ID of the wallet to debit |
-| `usdcAmount` | number | yes | Amount of USDC to offramp |
+| `usdcAmount` | number | yes | Amount of USDC to offramp. The amount sent to Pretium is floored to an integer. |
 | `phoneNumber` | string | yes | Recipient phone number for mobile money payouts |
-| `mobileNetwork` | string | yes | Mobile network identifier (e.g., `SAFARICOM`, `MTN`) |
+| `mobileNetwork` | string | yes | Mobile network identifier (e.g., `SAFARICOM`, `MTN`). Sent to Pretium for all Kenya payment types (`MOBILE`, `BUY_GOODS`, `PAYBILL`), not only `MOBILE`. |
 | `transactionHash` | string | yes | On-chain transaction hash of the USDC transfer to the settlement address |
 | `paymentType` | string | no | Payment method: `MOBILE`, `BUY_GOODS`, `PAYBILL`, or `BANK_TRANSFER` (defaults to `MOBILE`) |
 | `accountNumber` | string | no | Bank account number (required for `BANK_TRANSFER`) |
@@ -3260,6 +3260,8 @@ All manual endpoints require the `X-Admin-Key` header. See the corresponding sec
 
 ### Transaction
 
+> **Note:** The `txHash` field always contains a real on-chain transaction hash. For sponsored (gasless) transactions, the system automatically resolves the user operation hash to the actual on-chain transaction hash by polling the Privy API. This is transparent to the API consumer.
+
 ```typescript
 {
   id: string;
@@ -3270,7 +3272,7 @@ All manual endpoints require the `X-Admin-Key` header. See the corresponding sec
   method: string;
   payload: Record<string, unknown>;
   status: "pending" | "submitted" | "confirmed" | "failed";
-  txHash: string | null;
+  txHash: string | null; // always an on-chain tx hash, never a user operation hash
   gasUsed: string | null; // bigint serialized as string
   categoryId: string | null;
   userId: string | null;
