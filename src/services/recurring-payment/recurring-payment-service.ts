@@ -17,6 +17,13 @@ import {
 import { ConfigService } from "../../config.js";
 import type { LedgerError } from "../ledger/ledger-service.js";
 import { OfframpAdapterRegistry } from "../offramp/index.js";
+import {
+  PretiumService,
+  SETTLEMENT_ADDRESS,
+  type SupportedCountry,
+  type FiatPaymentType,
+} from "../pretium/pretium-service.js";
+import { ExchangeRateService } from "../pretium/exchange-rate-service.js";
 
 // ── Error type ───────────────────────────────────────────────────────
 
@@ -151,7 +158,7 @@ function parseFrequencyToMs(frequency: string): number {
 export const RecurringPaymentServiceLive: Layer.Layer<
   RecurringPaymentService,
   never,
-  DatabaseService | TransactionService | ConfigService | OfframpAdapterRegistry
+  DatabaseService | TransactionService | ConfigService | OfframpAdapterRegistry | PretiumService | ExchangeRateService
 > = Layer.effect(
   RecurringPaymentService,
   Effect.gen(function* () {
@@ -159,6 +166,8 @@ export const RecurringPaymentServiceLive: Layer.Layer<
     const txService = yield* TransactionService;
     const config = yield* ConfigService;
     const offrampRegistry = yield* OfframpAdapterRegistry;
+    const pretium = yield* PretiumService;
+    const exchangeRateService = yield* ExchangeRateService;
 
     // Execute a single schedule and record the execution
     const executeOne = (schedule: RecurringPayment) =>
@@ -214,6 +223,134 @@ export const RecurringPaymentServiceLive: Layer.Layer<
                 })
               );
             }
+
+            // ── Pretium offramp: send USDC then disburse fiat ──
+            if (providerName === "pretium") {
+              const meta = (schedule.offrampMetadata ?? {}) as Record<string, unknown>;
+              const country = meta.country as string;
+              const phoneNumber = meta.phoneNumber as string;
+              const mobileNetwork = meta.mobileNetwork as string;
+
+              if (!country || !phoneNumber || !mobileNetwork) {
+                return yield* Effect.fail(
+                  new RecurringPaymentError({
+                    message: `Pretium offramp schedule ${schedule.id} is missing required metadata (country, phoneNumber, mobileNetwork)`,
+                  })
+                );
+              }
+
+              const countries = pretium.getSupportedCountries();
+              const countryConfig = countries[country as SupportedCountry];
+              if (!countryConfig) {
+                return yield* Effect.fail(
+                  new RecurringPaymentError({
+                    message: `Country ${country} is not supported by Pretium`,
+                  })
+                );
+              }
+
+              // 1. Send USDC to Pretium settlement address
+              const usdcAmount = parseFloat(schedule.amount);
+              const transferTx = yield* txService
+                .submitContractTransaction({
+                  walletId: schedule.walletId,
+                  walletType: schedule.walletType,
+                  contractName: schedule.tokenContractName || "usdc",
+                  chainId: schedule.chainId,
+                  method: "send",
+                  args: [
+                    SETTLEMENT_ADDRESS,
+                    parseInt(
+                      (BigInt(Math.floor(usdcAmount * 1e6))).toString()
+                    ),
+                  ],
+                  userId: schedule.userId,
+                })
+                .pipe(
+                  Effect.catchAll((txErr) =>
+                    Effect.fail(
+                      new RecurringPaymentError({
+                        message: `USDC transfer to Pretium settlement failed: ${txErr}`,
+                        cause: txErr,
+                      })
+                    )
+                  )
+                );
+
+              // 2. Convert USDC to fiat amount
+              const conversion = yield* exchangeRateService
+                .convertUsdcToFiat(usdcAmount, countryConfig.currency)
+                .pipe(
+                  Effect.catchAll((err) =>
+                    Effect.fail(
+                      new RecurringPaymentError({
+                        message: `Exchange rate conversion failed: ${err}`,
+                        cause: err,
+                      })
+                    )
+                  )
+                );
+
+              // 3. Call Pretium disburse with the on-chain tx hash
+              const callbackUrl =
+                (meta.callbackUrl as string) ||
+                `${config.serverBaseUrl}/webhooks/pretium`;
+
+              const disburseResult = yield* pretium
+                .disburse({
+                  country: country as SupportedCountry,
+                  amount: conversion.amount,
+                  phoneNumber,
+                  mobileNetwork,
+                  transactionHash: transferTx.txHash!,
+                  callbackUrl,
+                  fee: (meta.fee as number) || undefined,
+                  paymentType: (meta.paymentType as FiatPaymentType) || undefined,
+                  accountNumber: meta.accountNumber as string | undefined,
+                  accountName: meta.accountName as string | undefined,
+                  accountNumber_bank: meta.bankAccount as string | undefined,
+                  bankCode: meta.bankCode as string | undefined,
+                  bankName: meta.bankName as string | undefined,
+                })
+                .pipe(
+                  Effect.catchAll((err) =>
+                    Effect.fail(
+                      new RecurringPaymentError({
+                        message: `Pretium disburse failed for schedule ${schedule.id}: ${err.message}`,
+                        cause: err,
+                      })
+                    )
+                  )
+                );
+
+              // 4. Store disburse result in offrampMetadata
+              yield* Effect.tryPromise({
+                try: () =>
+                  db
+                    .update(recurringPayments)
+                    .set({
+                      offrampMetadata: {
+                        ...meta,
+                        lastTransactionCode:
+                          disburseResult.data.transaction_code,
+                        lastDisburseStatus: disburseResult.data.status,
+                        onChainTxHash: transferTx.txHash,
+                        onChainTxId: transferTx.id,
+                      },
+                      updatedAt: new Date(),
+                    })
+                    .where(eq(recurringPayments.id, schedule.id)),
+                catch: (error) =>
+                  new RecurringPaymentError({
+                    message: `Failed to update Pretium offramp metadata: ${error}`,
+                    cause: error,
+                  }),
+              });
+
+              return transferTx;
+            }
+
+            // ── Generic offramp: other providers (Moonpay, Bridge, Transak) ──
 
             // 1. Resolve the adapter for this provider
             const adapter = yield* offrampRegistry.getAdapter(providerName).pipe(

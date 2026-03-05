@@ -381,11 +381,10 @@ interface RecurringPayment {
 ```typescript
 {
   country: string;            // "KE", "NG", "GH", "UG", "CD", "MW", "ET"
-  walletId: string;           // Wallet that sent the USDC
+  walletId: string;           // Wallet to debit USDC from
   usdcAmount: number;         // USDC amount (not wei, e.g., 10.5)
   phoneNumber: string;        // Recipient phone number
   mobileNetwork: string;      // e.g., "safaricom", "mtn", "airtel"
-  transactionHash: string;    // On-chain tx hash of USDC transfer to settlement
   paymentType?: string;       // "MOBILE" | "BUY_GOODS" | "PAYBILL" | "BANK_TRANSFER"
   accountNumber?: string;     // For PAYBILL payments
   accountName?: string;       // For NG bank transfers
@@ -944,49 +943,17 @@ const swapResult = await request("/api/uniswap/swap", {
 
 ### 7.8 Initiating an Offramp to Mobile Money
 
+The backend handles the entire offramp flow automatically — it sends USDC to the settlement address, converts amounts, and triggers fiat disbursement. The frontend only needs one API call:
+
 ```typescript
-import { encodeFunctionData, parseUnits } from "viem";
-
-const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-
-// Step 1: Get the settlement address
-const { address: settlementAddress } = await request<{ address: string; chain: string }>(
-  "/api/pretium/settlement-address"
-);
-
-// Step 2: Get exchange rate
+// Step 1 (optional): Preview exchange rate
 const conversion = await request("/api/pretium/convert/usdc-to-fiat", {
   method: "POST",
   body: { usdcAmount: 10, currency: "KES" },
 });
-// conversion.data = { amount: 1290.50, exchangeRate: 129.05, ... }
+// conversion.data = { amount: 1290, exchangeRate: 129.05, ... }
 
-// Step 3: Send USDC to settlement address on-chain
-const transferData = encodeFunctionData({
-  abi: [{
-    name: "transfer",
-    type: "function",
-    inputs: [
-      { name: "to", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    outputs: [{ type: "bool" }],
-  }],
-  functionName: "transfer",
-  args: [settlementAddress, parseUnits("10", 6)],
-});
-
-const transferTx = await request<Transaction>("/api/transactions/raw", {
-  method: "POST",
-  body: {
-    walletType: "server",
-    to: USDC_ADDRESS,
-    data: transferData,
-    chainId: 8453,
-  },
-});
-
-// Step 4: Initiate the offramp (disburse fiat)
+// Step 2: Initiate the offramp (backend sends USDC + disburses fiat automatically)
 const offramp = await request("/api/pretium/offramp", {
   method: "POST",
   body: {
@@ -995,12 +962,11 @@ const offramp = await request("/api/pretium/offramp", {
     usdcAmount: 10,
     phoneNumber: "254712345678",
     mobileNetwork: "safaricom",
-    transactionHash: transferTx.txHash,
     paymentType: "MOBILE",
   },
 });
 
-// Step 5: Poll for status updates
+// Step 3: Poll for status updates
 const status = await request(`/api/pretium/offramp/${offramp.data.transaction.id}`);
 // Or refresh from Pretium:
 const refreshed = await request(`/api/pretium/offramp/${offramp.data.transaction.id}/refresh`, {
@@ -1234,7 +1200,7 @@ NEXT_PUBLIC_PRIVY_APP_ID=your-privy-app-id
 
 - **CORS:** The backend enables CORS for all origins (`*`). No special configuration needed on the frontend.
 
-- **Pretium offramp flow:** The frontend must first send USDC to the settlement address on-chain, then call the offramp endpoint with the transaction hash as proof. The backend handles the fiat disbursement. For Kenya disbursements, `mobile_network` is sent for all payment types (MOBILE, BUY_GOODS, PAYBILL) using the actual network from the request (not hardcoded). Fiat amounts are always floored to integers per the Pretium API spec.
+- **Pretium offramp flow:** The backend handles the entire offramp automatically — the frontend does NOT need to send USDC separately. When calling `POST /api/pretium/offramp`, the backend: (1) sends USDC from the specified wallet to the settlement address on-chain, (2) converts the USDC amount to fiat using the exchange rate, and (3) calls the Pretium disburse API. The frontend only needs to provide `country`, `walletId`, `usdcAmount`, `phoneNumber`, `mobileNetwork`, and optionally `paymentType`. No `transactionHash` is needed — it's generated internally. For Kenya disbursements, `mobile_network` is sent for all payment types (MOBILE, BUY_GOODS, PAYBILL) using the actual network from the request. Fiat amounts are always floored to integers per the Pretium API spec.
 
 - **Pretium onramp flow:** The frontend calls `POST /api/pretium/onramp` with country, fiat amount, phone number, network, asset (USDC/USDT/CUSD), and wallet address. The user receives a mobile money payment prompt. Two webhooks follow: (1) payment collected → status moves to `processing`, (2) stablecoins released → status moves to `completed` with on-chain tx hash. No on-chain transfer is needed from the frontend — Pretium handles stablecoin delivery.
 
