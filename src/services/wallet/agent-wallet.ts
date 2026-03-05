@@ -55,7 +55,7 @@ export function createAgentWalletInstance(
                 data: tx.data ?? "0x",
               },
             },
-            sponsor: tx.sponsor,
+            sponsor: tx.sponsor == undefined ? true : tx.sponsor,
           });
           return result.data.hash as Hash;
         },

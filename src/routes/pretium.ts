@@ -1,13 +1,14 @@
 import { Hono } from "hono";
 import { Effect } from "effect";
 import { eq, and, desc } from "drizzle-orm";
+import { parseUnits } from "viem";
 import { type AppRuntime, runEffect } from "./effect-handler.js";
-import { PretiumService } from "../services/pretium/pretium-service.js";
+import { PretiumService, SETTLEMENT_ADDRESS } from "../services/pretium/pretium-service.js";
 import { ExchangeRateService } from "../services/pretium/exchange-rate-service.js";
+import { TransactionService } from "../services/transaction/transaction-service.js";
 import { ConfigService } from "../config.js";
 import { DatabaseService } from "../db/client.js";
-import { pretiumTransactions } from "../db/schema/index.js";
-import { wallets } from "../db/schema/index.js";
+import { pretiumTransactions, wallets } from "../db/schema/index.js";
 import type { AuthVariables } from "../middleware/auth.js";
 import type {
   SupportedCountry,
@@ -220,7 +221,7 @@ export function createPretiumRoutes(runtime: AppRuntime) {
 
   // ── Offramp ────────────────────────────────────────────────────────
 
-  /** Initiate an offramp (disburse fiat after USDC is sent to settlement) */
+  /** Initiate an offramp: transfer USDC to settlement, then disburse fiat */
   app.post("/offramp", (c) =>
     runEffect(
       runtime,
@@ -234,7 +235,6 @@ export function createPretiumRoutes(runtime: AppRuntime) {
               usdcAmount: number;
               phoneNumber: string;
               mobileNetwork: string;
-              transactionHash: string;
               paymentType?: string;
               accountNumber?: string;
               accountName?: string;
@@ -249,6 +249,7 @@ export function createPretiumRoutes(runtime: AppRuntime) {
 
         const pretium = yield* PretiumService;
         const exchangeRateService = yield* ExchangeRateService;
+        const txService = yield* TransactionService;
         const config = yield* ConfigService;
         const { db } = yield* DatabaseService;
 
@@ -263,6 +264,33 @@ export function createPretiumRoutes(runtime: AppRuntime) {
         const countries = pretium.getSupportedCountries();
         const countryConfig = countries[country];
 
+        // Resolve wallet type from walletId
+        const [walletRecord] = yield* Effect.tryPromise({
+          try: () =>
+            db.select().from(wallets).where(eq(wallets.id, body.walletId)),
+          catch: (error) => new Error(`Failed to resolve wallet: ${error}`),
+        });
+
+        if (!walletRecord) {
+          return yield* Effect.fail(
+            new Error(`Wallet not found: ${body.walletId}`)
+          );
+        }
+
+        // Transfer USDC to Pretium settlement address via the usdc connector
+        const transferTx = yield* txService.submitContractTransaction({
+          walletId: body.walletId,
+          walletType: walletRecord.type as "user" | "server" | "agent",
+          contractName: "usdc",
+          chainId: config.defaultChainId,
+          method: "send",
+          args: [
+            SETTLEMENT_ADDRESS,
+            parseUnits(String(body.usdcAmount), 6),
+          ],
+          userId,
+        });
+
         // Auto-generate callback URL if not provided
         const callbackUrl =
           body.callbackUrl ||
@@ -274,13 +302,13 @@ export function createPretiumRoutes(runtime: AppRuntime) {
           countryConfig.currency
         );
 
-        // Call Pretium disburse
+        // Call Pretium disburse with the on-chain tx hash
         const disburseResult = yield* pretium.disburse({
           country,
           amount: conversion.amount,
           phoneNumber: body.phoneNumber,
           mobileNetwork: body.mobileNetwork,
-          transactionHash: body.transactionHash,
+          transactionHash: transferTx.txHash!,
           callbackUrl,
           fee: body.fee,
           paymentType: body.paymentType as FiatPaymentType | undefined,
@@ -314,7 +342,7 @@ export function createPretiumRoutes(runtime: AppRuntime) {
                 fee: body.fee ? String(body.fee) : "0",
                 paymentType,
                 status: "pending",
-                onChainTxHash: body.transactionHash,
+                onChainTxHash: transferTx.txHash!,
                 pretiumTransactionCode:
                   disburseResult.data.transaction_code,
                 phoneNumber: body.phoneNumber,
