@@ -6,6 +6,7 @@ import {
   type SendTransactionParams,
   WalletError,
 } from "./wallet-service.js";
+import { resolveTransactionHash } from "./resolve-tx-hash.js";
 
 export function createUserWalletInstance(
   privy: PrivyClient,
@@ -55,8 +56,16 @@ export function createUserWalletInstance(
             },
             sponsor: tx.sponsor == undefined ? true : tx.sponsor,
           });
-          console.log("Incoming result data::", JSON.stringify(result))
-          return result.user_operation_hash as Hash;
+
+          if (result.hash) {
+            return result.hash as Hash;
+          }
+
+          if (!result.transaction_id) {
+            throw new Error("No hash or transaction_id returned from Privy");
+          }
+
+          return await resolveTransactionHash(privy, result.transaction_id);
         },
         catch: (error) =>
           new WalletError({

@@ -361,7 +361,7 @@ const buildDisburseRequestBody = (
 ): Record<string, unknown> => {
   const baseBody = {
     shortcode: request.phoneNumber,
-    amount: request.amount,
+    amount: Math.floor(request.amount),
     fee: request.fee || 0,
     chain: "BASE",
     transaction_hash: request.transactionHash,
@@ -377,7 +377,7 @@ const buildDisburseRequestBody = (
         type: "BANK_TRANSFER",
         account_number: request.accountNumber_bank,
         bank_code: request.bankCode,
-        amount: request.amount,
+        amount: Math.floor(request.amount),
         fee: request.fee || 0,
         chain: "BASE",
         transaction_hash: request.transactionHash,
@@ -388,7 +388,7 @@ const buildDisburseRequestBody = (
     return {
       ...baseBody,
       type: paymentType,
-      ...(paymentType === "MOBILE" && { mobile_network: "Safaricom" }),
+      mobile_network: normalizeNetworkForValidation(request.mobileNetwork, "KE"),
       ...(paymentType === "PAYBILL" && {
         account_number: request.accountNumber,
       }),
@@ -403,7 +403,7 @@ const buildDisburseRequestBody = (
       account_number: request.accountNumber_bank,
       bank_name: request.bankName,
       bank_code: request.bankCode,
-      amount: request.amount,
+      amount: Math.floor(request.amount),
       fee: request.fee || 0,
       chain: "BASE",
       transaction_hash: request.transactionHash,
@@ -431,13 +431,14 @@ const buildOnrampRequestBody = (
   request: OnrampRequest
 ): Record<string, unknown> => ({
   shortcode: request.phoneNumber,
-  amount: request.amount,
+  // this exists as a big int and needs to be converted back to an int for Pretium
+  amount: parseInt(request.amount.toString()),
   mobile_network: request.mobileNetwork,
   chain: request.chain || "BASE",
   fee: request.fee || 0,
   asset: request.asset,
   address: request.address,
-  callback_url: request.callbackUrl,
+  callback_url: request.callbackUrl
 });
 
 // ── Fetch helper ─────────────────────────────────────────────────────
@@ -450,6 +451,7 @@ const pretiumFetch = <T>(
 ): Effect.Effect<T, PretiumError> =>
   Effect.tryPromise({
     try: async () => {
+      console.log("Transaction body:", body)
       const response = await fetch(`${baseUri}${path}`, {
         method: "POST",
         headers: {
@@ -459,6 +461,7 @@ const pretiumFetch = <T>(
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(30_000),
       });
+      console.log("Done submitting transaction", response)
 
       if (!response.ok) {
         const data = (await response.json().catch(() => ({}))) as Record<
@@ -476,6 +479,7 @@ const pretiumFetch = <T>(
         }
 
         if (status === 400) {
+          console.log("Rejected with status 400", data)
           throw new PretiumError({
             message:
               (data?.message as string) || "Invalid request parameters",

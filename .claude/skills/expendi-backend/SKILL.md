@@ -198,7 +198,7 @@ interface Wallet {
   data?: `0x${string}`;    // Calldata (optional)
   value?: string;           // Wei value as string (optional)
   categoryId?: string;
-  sponsor?: boolean;        // Enable Privy gas sponsorship (optional)
+  sponsor?: boolean;        // Enable Privy gas sponsorship (defaults to true)
 }
 ```
 
@@ -1234,7 +1234,7 @@ NEXT_PUBLIC_PRIVY_APP_ID=your-privy-app-id
 
 - **CORS:** The backend enables CORS for all origins (`*`). No special configuration needed on the frontend.
 
-- **Pretium offramp flow:** The frontend must first send USDC to the settlement address on-chain, then call the offramp endpoint with the transaction hash as proof. The backend handles the fiat disbursement.
+- **Pretium offramp flow:** The frontend must first send USDC to the settlement address on-chain, then call the offramp endpoint with the transaction hash as proof. The backend handles the fiat disbursement. For Kenya disbursements, `mobile_network` is sent for all payment types (MOBILE, BUY_GOODS, PAYBILL) using the actual network from the request (not hardcoded). Fiat amounts are always floored to integers per the Pretium API spec.
 
 - **Pretium onramp flow:** The frontend calls `POST /api/pretium/onramp` with country, fiat amount, phone number, network, asset (USDC/USDT/CUSD), and wallet address. The user receives a mobile money payment prompt. Two webhooks follow: (1) payment collected → status moves to `processing`, (2) stablecoins released → status moves to `completed` with on-chain tx hash. No on-chain transfer is needed from the frontend — Pretium handles stablecoin delivery.
 
@@ -1242,4 +1242,4 @@ NEXT_PUBLIC_PRIVY_APP_ID=your-privy-app-id
 
 - **Uniswap swap flow:** The `/api/uniswap/swap` endpoint handles the full flow (check approval, submit approval tx if needed, get quote, submit swap tx) in a single call. Use `/api/uniswap/quote` for read-only price checks before committing.
 
-- **Gas sponsorship:** All wallet `sendTransaction` calls support Privy gas sponsorship. Set `sponsor: true` in the transaction params to have Privy pay the gas fees. This requires gas sponsorship policies to be configured in the Privy dashboard for the target chains.
+- **Gas sponsorship and transaction hash resolution:** All wallet `sendTransaction` calls use Privy gas sponsorship by default (`sponsor: true` in `SendTransactionParams`). When sponsoring is enabled, Privy returns a `transaction_id` instead of a direct on-chain hash. The backend automatically resolves the actual on-chain hash by polling `privy.transactions().get(transaction_id)` via a shared `resolveTransactionHash()` utility (`src/services/wallet/resolve-tx-hash.ts`). This applies to all wallet types (user, server, agent). Non-sponsored transactions (`sponsor: false`) return the hash directly without polling. Gas sponsorship policies must be configured in the Privy dashboard for the target chains.

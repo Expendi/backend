@@ -276,6 +276,8 @@ export function createPretiumRoutes(runtime: AppRuntime) {
             new Error(`Wallet not found: ${body.walletId}`)
           );
         }
+        
+        console.log("Amount ::", parseInt(parseUnits(String(body.usdcAmount), 6).toString()))
 
         // Transfer USDC to Pretium settlement address via the usdc connector
         const transferTx = yield* txService.submitContractTransaction({
@@ -286,7 +288,7 @@ export function createPretiumRoutes(runtime: AppRuntime) {
           method: "send",
           args: [
             SETTLEMENT_ADDRESS,
-            parseUnits(String(body.usdcAmount), 6),
+            parseInt(parseUnits(String(body.usdcAmount), 6).toString()),
           ],
           userId,
         });
@@ -318,6 +320,8 @@ export function createPretiumRoutes(runtime: AppRuntime) {
           bankCode: body.bankCode,
           bankName: body.bankName,
         });
+        
+        console.log("Disburse result:", disburseResult)
 
         // Store transaction in DB
         const paymentType = (body.paymentType ||
