@@ -117,7 +117,7 @@ export function createTransactionRoutes(runtime: AppRuntime) {
 
         const txService = yield* TransactionService;
         return yield* txService.submitContractTransaction({
-          walletId: resolvedWalletId!,
+          walletId: walletRecord.privyWalletId,
           walletType,
           contractName: body.contractName,
           chainId,
@@ -197,7 +197,7 @@ export function createTransactionRoutes(runtime: AppRuntime) {
 
         const txService = yield* TransactionService;
         return yield* txService.submitRawTransaction({
-          walletId: resolvedWalletId!,
+          walletId: walletRecord.privyWalletId,
           walletType,
           chainId,
           to: body.to,
