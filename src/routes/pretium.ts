@@ -7,6 +7,7 @@ import { ExchangeRateService } from "../services/pretium/exchange-rate-service.j
 import { ConfigService } from "../config.js";
 import { DatabaseService } from "../db/client.js";
 import { pretiumTransactions } from "../db/schema/index.js";
+import { wallets } from "../db/schema/index.js";
 import type { AuthVariables } from "../middleware/auth.js";
 import type {
   SupportedCountry,
@@ -518,7 +519,6 @@ export function createPretiumRoutes(runtime: AppRuntime) {
               phoneNumber: string;
               mobileNetwork: string;
               asset: string;
-              address: string;
               fee?: number;
               callbackUrl?: string;
             }>(),
@@ -547,6 +547,21 @@ export function createPretiumRoutes(runtime: AppRuntime) {
         const countries = pretium.getSupportedCountries();
         const countryConfig = countries[country];
 
+        // Resolve wallet address from walletId
+        const [walletRecord] = yield* Effect.tryPromise({
+          try: () =>
+            db.select().from(wallets).where(eq(wallets.id, body.walletId)),
+          catch: (error) => new Error(`Failed to resolve wallet: ${error}`),
+        });
+
+        if (!walletRecord?.address) {
+          return yield* Effect.fail(
+            new Error(`Wallet not found or has no address: ${body.walletId}`)
+          );
+        }
+
+        const address = walletRecord.address as `0x${string}`;
+
         // Auto-generate callback URL if not provided
         const callbackUrl =
           body.callbackUrl ||
@@ -567,7 +582,7 @@ export function createPretiumRoutes(runtime: AppRuntime) {
           chain: "BASE",
           fee: body.fee,
           asset: body.asset as OnrampAsset,
-          address: body.address,
+          address,
           callbackUrl,
         });
 
@@ -589,7 +604,7 @@ export function createPretiumRoutes(runtime: AppRuntime) {
                 status: "pending",
                 direction: "onramp",
                 asset: body.asset,
-                recipientAddress: body.address,
+                recipientAddress: address,
                 pretiumTransactionCode:
                   onrampResult.data.transaction_code,
                 phoneNumber: body.phoneNumber,
