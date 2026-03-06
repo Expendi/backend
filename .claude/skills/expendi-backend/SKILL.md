@@ -233,6 +233,47 @@ interface Transaction {
 | PUT | `/api/categories/:id` | Privy | `{ name?: string, description?: string }` | Updated category (user-owned only) |
 | DELETE | `/api/categories/:id` | Privy | -- | `{ deleted: true, id: "..." }` (user-owned only) |
 
+#### Category Limits
+
+Limits are **per-user, per-category, per-token**. The unique constraint is `(userId, categoryId, tokenAddress)`, so a single category can have different limits for different tokens.
+
+| Method | Path | Auth | Query Params | Response |
+|--------|------|------|--------------|----------|
+| GET | `/api/categories/limits` | Privy | -- | Array of all user's limits (includes `categoryName`) |
+| GET | `/api/categories/:id/limit` | Privy | `?tokenAddress=0x...` (optional) | Array of limits for category; single object if `tokenAddress` provided |
+| PUT | `/api/categories/:id/limit` | Privy | -- | Upserted `CategoryLimit` object |
+| DELETE | `/api/categories/:id/limit` | Privy | `?tokenAddress=0x...` (optional) | `{ deleted: true, count: N }` |
+
+**PUT `/api/categories/:id/limit` body (upsert — creates or updates):**
+```typescript
+{
+  monthlyLimit: string;    // Raw token amount as string (e.g. "500000000" for 500 USDC)
+  tokenAddress: string;    // ERC-20 contract address
+  tokenSymbol: string;     // e.g. "USDC"
+  tokenDecimals: number;   // e.g. 6
+}
+```
+
+**`CategoryLimit` object shape:**
+```typescript
+{
+  id: string;
+  userId: string;
+  categoryId: string;
+  monthlyLimit: string;
+  tokenAddress: string;
+  tokenSymbol: string;
+  tokenDecimals: number;
+  createdAt: string;
+  updatedAt: string;
+}
+```
+
+> **Notes:**
+> - `GET /:id/limit` without `?tokenAddress` returns an **array** of all limits for that category. With `?tokenAddress` it returns a **single object** or 400 if not found.
+> - `DELETE /:id/limit` without `?tokenAddress` deletes **all** limits for that category. With `?tokenAddress` it deletes only the matching limit.
+> - Schema: `src/db/schema/category-limits.ts`
+
 ### 5.6 Recurring Payments
 
 | Method | Path | Auth | Body | Response |
@@ -557,7 +598,7 @@ Goal savings lets users define savings goals with a target token and amount, opt
   chainId?: number;
   depositAmount?: string;            // Per-deposit amount for automation
   unlockTimeOffsetSeconds?: number;  // Seconds added to deposit time for lock expiry
-  frequency?: string;                // "1d", "7d" etc. (null = manual only)
+  frequency?: string;                // Format: "<number><unit>" where unit is s|m|h|d|w (e.g. "30s", "5m", "2h", "1d", "1w"). null = manual only
   startDate?: string;                // ISO 8601
   endDate?: string;                  // ISO 8601
   maxRetries?: number;               // Default: 3
@@ -566,13 +607,15 @@ Goal savings lets users define savings goals with a target token and amount, opt
 
 Automation fields (`walletId`/`walletType`, `vaultId`, `depositAmount`, `frequency`) are all-or-nothing.
 
+**Frequency format:** `"<number><unit>"` where unit is one of `s` (seconds), `m` (minutes), `h` (hours), `d` (days), `w` (weeks). Examples: `"30s"`, `"5m"`, `"2h"`, `"1d"`, `"1w"`. Invalid formats default to 1 day.
+
 **PATCH `/api/goal-savings/:id` body (all fields optional):**
 ```typescript
 {
   name?: string;
   description?: string;
   depositAmount?: string;
-  frequency?: string;     // Recalculates nextDepositAt
+  frequency?: string;     // Format: "<number><unit>" (s|m|h|d|w). Recalculates nextDepositAt
   endDate?: string | null;
   maxRetries?: number;
 }
@@ -634,6 +677,18 @@ interface GoalSavingsDeposit {
   depositedAt: string;
 }
 ```
+
+**Business logic & edge cases:**
+- **Deposit rejection:** Deposits to goals with status `cancelled` or `completed` are rejected with an error.
+- **Deposit requirements:** Both `walletId` and `vaultId` must be resolvable (from request body, goal, or user profile) for a deposit to succeed. Missing either causes a failure.
+- **Auto-completion:** When `accumulatedAmount >= targetAmount` after a deposit, the goal status is automatically set to `completed`.
+- **Automated deposit processing** (`processDueDeposits`, triggered via `POST /internal/goal-savings/process`):
+  - Picks up all `active` goals where `frequency` is set and `nextDepositAt <= now`.
+  - On success: resets `consecutiveFailures` to 0 and advances `nextDepositAt` by the frequency interval.
+  - On failure: increments `consecutiveFailures`. If `consecutiveFailures >= maxRetries`, the goal is auto-paused.
+  - If the next scheduled deposit would fall after `endDate`, the goal is auto-completed.
+- **Resume behavior:** Resuming a paused goal resets `consecutiveFailures` to 0 and recalculates `nextDepositAt` from the current time plus the frequency interval.
+- **Manual deposit wallet fallback chain:** `request body walletId` -> `goal.walletId` -> user profile (`serverWalletId` or `agentWalletId` based on `walletType`).
 
 ### 5.13 Webhooks
 
@@ -1089,6 +1144,18 @@ await request(`/api/goal-savings/${goal.id}/pause`, { method: "POST" });
 
 // Resume
 await request(`/api/goal-savings/${goal.id}/resume`, { method: "POST" });
+
+// Update automation settings (e.g. change to daily deposits, increase amount)
+await request(`/api/goal-savings/${goal.id}`, {
+  method: "PATCH",
+  body: {
+    frequency: "1d",
+    depositAmount: "75000000",   // 75 USDC
+  },
+});
+
+// Cancel the goal (existing yield positions remain untouched)
+await request(`/api/goal-savings/${goal.id}/cancel`, { method: "POST" });
 ```
 
 ---
