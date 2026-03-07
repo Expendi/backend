@@ -67,6 +67,12 @@ export const pretiumTransactions = pgTable("pretium_transactions", {
   /** Recipient wallet address for onramp stablecoin delivery */
   recipientAddress: text("recipient_address"),
 
+  /** Optional category for the transaction */
+  categoryId: text("category_id"),
+
+  /** Recipient name (from Pretium webhook public_name) */
+  recipientName: text("recipient_name"),
+
   /** On-chain tx hash of USDC transfer to settlement address */
   onChainTxHash: text("on_chain_tx_hash"),
 

@@ -243,6 +243,7 @@ export function createPretiumRoutes(runtime: AppRuntime) {
               bankName?: string;
               callbackUrl?: string;
               fee?: number;
+              categoryId?: string;
             }>(),
           catch: () => new Error("Invalid request body"),
         });
@@ -355,6 +356,7 @@ export function createPretiumRoutes(runtime: AppRuntime) {
                 bankCode: body.bankCode,
                 bankName: body.bankName,
                 accountName: body.accountName,
+                categoryId: body.categoryId,
                 callbackUrl,
               })
               .returning(),
@@ -875,6 +877,7 @@ export function createPretiumWebhookRoutes(runtime: AppRuntime) {
                 .set({
                   status: "completed",
                   onChainTxHash: body.transaction_hash!,
+                  ...(body.public_name && { recipientName: body.public_name }),
                   completedAt: new Date(),
                   updatedAt: new Date(),
                 })
@@ -930,6 +933,7 @@ export function createPretiumWebhookRoutes(runtime: AppRuntime) {
                 status: effectiveStatus,
                 pretiumReceiptNumber: body.receipt_number ?? null,
                 failureReason: body.failure_reason ?? null,
+                ...(body.public_name && { recipientName: body.public_name }),
                 completedAt:
                   effectiveStatus === "completed" ? new Date() : null,
                 updatedAt: new Date(),
