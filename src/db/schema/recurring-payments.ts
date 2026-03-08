@@ -55,6 +55,8 @@ export const recurringPayments = pgTable("recurring_payments", {
   offrampDestinationId: text("offramp_destination_id"),
   /** Arbitrary provider-specific metadata for the offramp */
   offrampMetadata: jsonb("offramp_metadata").$type<Record<string, unknown>>(),
+  /** Optional category for the payment */
+  categoryId: text("category_id"),
   /** Schedule interval using the same format as jobs: e.g. "5m", "1h", "1d", "7d" */
   frequency: text("frequency").notNull(),
   status: recurringPaymentStatusEnum("status").default("active").notNull(),
