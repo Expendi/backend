@@ -61,6 +61,7 @@ export interface CreateScheduleParams {
   readonly endDate?: Date;
   readonly maxRetries?: number;
   readonly offramp?: OfframpDetails;
+  readonly categoryId?: string;
 }
 
 export interface UpdateScheduleParams {
@@ -574,6 +575,7 @@ export const RecurringPaymentServiceLive: Layer.Layer<
               offrampProvider: params.offramp?.provider ?? null,
               offrampDestinationId: params.offramp?.destinationId ?? null,
               offrampMetadata: params.offramp?.metadata ?? null,
+              categoryId: params.categoryId ?? null,
             };
 
             const [result] = await db
