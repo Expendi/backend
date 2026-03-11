@@ -82,6 +82,7 @@ export function createRecurringPaymentRoutes(runtime: AppRuntime) {
                 metadata?: Record<string, unknown>;
               };
               categoryId?: string;
+              executeImmediately?: boolean;
             }>(),
           catch: () => new Error("Invalid request body"),
         });
@@ -143,6 +144,7 @@ export function createRecurringPaymentRoutes(runtime: AppRuntime) {
           maxRetries: body.maxRetries,
           offramp: body.offramp,
           categoryId: body.categoryId,
+          executeImmediately: body.executeImmediately,
         });
       }),
       c,

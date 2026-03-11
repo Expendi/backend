@@ -62,6 +62,8 @@ export interface CreateScheduleParams {
   readonly maxRetries?: number;
   readonly offramp?: OfframpDetails;
   readonly categoryId?: string;
+  /** If true, execute the first payment immediately at startDate; otherwise first payment is at startDate + frequency */
+  readonly executeImmediately?: boolean;
 }
 
 export interface UpdateScheduleParams {
@@ -152,6 +154,27 @@ function parseFrequencyToMs(frequency: string): number {
     default:
       return 86400000;
   }
+}
+
+/**
+ * Compute the next execution time anchored to startDate so recurring
+ * payments always fire at the same time-of-day on the correct cycle.
+ *
+ * E.g. startDate = March 11 10:00, frequency = "7d"
+ *   → March 18 10:00, March 25 10:00, April 1 10:00, …
+ */
+function computeNextExecution(startDate: Date, frequency: string): Date {
+  const intervalMs = parseFrequencyToMs(frequency);
+  const now = Date.now();
+  const start = startDate.getTime();
+
+  if (now < start) {
+    return new Date(start);
+  }
+
+  const elapsed = now - start;
+  const cyclesPassed = Math.floor(elapsed / intervalMs);
+  return new Date(start + (cyclesPassed + 1) * intervalMs);
 }
 
 // ── Live implementation ──────────────────────────────────────────────
@@ -498,9 +521,8 @@ export const RecurringPaymentServiceLive: Layer.Layer<
             }),
         });
 
-        // Update schedule state
-        const intervalMs = parseFrequencyToMs(schedule.frequency);
-        const nextExecution = new Date(Date.now() + intervalMs);
+        // Update schedule state — anchor to startDate so time-of-day stays consistent
+        const nextExecution = computeNextExecution(schedule.startDate, schedule.frequency);
         const newConsecutiveFailures = paymentResult.success
           ? 0
           : schedule.consecutiveFailures + 1;
@@ -547,9 +569,10 @@ export const RecurringPaymentServiceLive: Layer.Layer<
         Effect.tryPromise({
           try: async () => {
             const chainId = params.chainId ?? config.defaultChainId;
-            const intervalMs = parseFrequencyToMs(params.frequency);
             const startDate = params.startDate ?? new Date();
-            const nextExecutionAt = new Date(startDate.getTime() + intervalMs);
+            const nextExecutionAt = params.executeImmediately
+              ? startDate
+              : computeNextExecution(startDate, params.frequency);
 
             const values: NewRecurringPayment = {
               userId: params.userId,
@@ -653,9 +676,14 @@ export const RecurringPaymentServiceLive: Layer.Layer<
               updates.recipientAddress = params.recipientAddress;
             if (params.frequency !== undefined) {
               updates.frequency = params.frequency;
-              // Recalculate next execution based on new frequency
-              const intervalMs = parseFrequencyToMs(params.frequency);
-              updates.nextExecutionAt = new Date(Date.now() + intervalMs);
+              // Fetch current schedule to anchor next execution to startDate
+              const [current] = await db
+                .select()
+                .from(recurringPayments)
+                .where(eq(recurringPayments.id, id));
+              if (current) {
+                updates.nextExecutionAt = computeNextExecution(current.startDate, params.frequency);
+              }
             }
             if (params.endDate !== undefined) updates.endDate = params.endDate;
             if (params.maxRetries !== undefined)
@@ -718,8 +746,7 @@ export const RecurringPaymentServiceLive: Layer.Layer<
             );
           }
 
-          const intervalMs = parseFrequencyToMs(schedule.frequency);
-          const nextExecution = new Date(Date.now() + intervalMs);
+          const nextExecution = computeNextExecution(schedule.startDate, schedule.frequency);
 
           const [result] = yield* Effect.tryPromise({
             try: () =>
