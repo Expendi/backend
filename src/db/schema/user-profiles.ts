@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uuid, boolean } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { wallets } from "./wallets.js";
 
@@ -17,6 +17,13 @@ export const userProfiles = pgTable("user_profiles", {
     .notNull()
     .references(() => wallets.id),
   username: text("username").unique(),
+  requireTransactionApproval: boolean("require_transaction_approval")
+    .default(false)
+    .notNull(),
+  transactionApprovalMethod: text("transaction_approval_method").$type<
+    "pin" | "passkey"
+  >(),
+  transactionPinHash: text("transaction_pin_hash"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),

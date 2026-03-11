@@ -23,6 +23,8 @@ import { createSwapAutomationRoutes } from "./routes/swap-automations.js";
 import { createGroupAccountRoutes } from "./routes/group-accounts.js";
 import { createSplitExpenseRoutes } from "./routes/split-expenses.js";
 import { createGoalSavingsRoutes } from "./routes/goal-savings.js";
+import { createTransactionApprovalRoutes } from "./routes/transaction-approval.js";
+import { transactionApprovalMiddleware } from "./middleware/transaction-approval.js";
 
 // Resolve the Privy client and admin API key from the Effect runtime so
 // we can hand them to the Hono middleware layer without requiring Effect
@@ -57,6 +59,7 @@ app.get("/", (c) =>
       groups: "/api/groups",
       splitExpenses: "/api/split-expenses",
       goalSavings: "/api/goal-savings",
+      security: "/api/security/approval",
       webhooks: "/webhooks/pretium",
     },
   })
@@ -70,6 +73,19 @@ app.get("/health", (c) =>
 
 app.use("/api/*", privyAuthMiddleware(privyClient));
 
+// ── Transaction approval middleware (gates mutating requests) ──────
+const txApproval = transactionApprovalMiddleware(runtime);
+app.use("/api/transactions/*", txApproval);
+app.use("/api/wallets/transfer", txApproval);
+app.use("/api/pretium/offramp", txApproval);
+app.use("/api/pretium/onramp", txApproval);
+app.use("/api/yield/positions", txApproval);
+app.use("/api/yield/positions/*", txApproval);
+app.use("/api/uniswap/swap", txApproval);
+app.use("/api/groups/*/pay", txApproval);
+app.use("/api/groups/*/deposit", txApproval);
+
+app.route("/api/security/approval", createTransactionApprovalRoutes(runtime));
 app.route("/api/wallets", createWalletRoutes(runtime));
 app.route("/api/transactions", createTransactionRoutes(runtime));
 app.route("/api/categories", createCategoryRoutes(runtime));

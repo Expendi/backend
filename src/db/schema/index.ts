@@ -122,6 +122,13 @@ export {
 } from "./category-limits.js";
 
 export {
+  userPasskeys,
+  userPasskeysRelations,
+  type UserPasskey,
+  type NewUserPasskey,
+} from "./user-passkeys.js";
+
+export {
   goalSavings,
   goalSavingsRelations,
   goalSavingsDeposits,

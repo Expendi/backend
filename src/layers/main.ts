@@ -22,6 +22,7 @@ import { SwapAutomationServiceLive } from "../services/swap-automation/swap-auto
 import { GroupAccountServiceLive } from "../services/group-account/group-account-service.js";
 import { SplitExpenseServiceLive } from "../services/split-expense/split-expense-service.js";
 import { GoalSavingsServiceLive } from "../services/goal-savings/goal-savings-service.js";
+import { TransactionApprovalServiceLive } from "../services/transaction-approval/transaction-approval-service.js";
 
 const ConfigLayer = ConfigLive;
 
@@ -134,6 +135,11 @@ const GoalSavingsServiceLayer = GoalSavingsServiceLive.pipe(
   Layer.provide(ConfigLayer)
 );
 
+const TransactionApprovalServiceLayer = TransactionApprovalServiceLive.pipe(
+  Layer.provide(DatabaseLayer),
+  Layer.provide(ConfigLayer)
+);
+
 export const MainLayer = Layer.mergeAll(
   ConfigLayer,
   DatabaseLayer,
@@ -157,5 +163,6 @@ export const MainLayer = Layer.mergeAll(
   SwapAutomationServiceLayer,
   GroupAccountServiceLayer,
   SplitExpenseServiceLayer,
-  GoalSavingsServiceLayer
+  GoalSavingsServiceLayer,
+  TransactionApprovalServiceLayer
 );

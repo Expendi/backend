@@ -25,6 +25,7 @@ import type { SwapAutomationService } from "../services/swap-automation/swap-aut
 import type { GroupAccountService } from "../services/group-account/group-account-service.js";
 import type { SplitExpenseService } from "../services/split-expense/split-expense-service.js";
 import type { GoalSavingsService } from "../services/goal-savings/goal-savings-service.js";
+import type { TransactionApprovalService } from "../services/transaction-approval/transaction-approval-service.js";
 
 export type AppDeps =
   | WalletService
@@ -49,7 +50,8 @@ export type AppDeps =
   | SwapAutomationService
   | GroupAccountService
   | SplitExpenseService
-  | GoalSavingsService;
+  | GoalSavingsService
+  | TransactionApprovalService;
 
 export type AppRuntime = ManagedRuntime.ManagedRuntime<AppDeps, ConfigError.ConfigError>;
 
