@@ -331,6 +331,33 @@
 								"description": "Signs an arbitrary message using the wallet's private key resolved through Privy. The authenticated user must own the wallet. Returns the hex-encoded signature."
 							},
 							"response": []
+						},
+						{
+							"name": "Transfer Between Own Wallets",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"from\": \"user\",\n  \"to\": \"server\",\n  \"amount\": \"1000000\",\n  \"token\": \"usdc\",\n  \"chainId\": 8453\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/wallets/transfer",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "wallets", "transfer"]
+								},
+								"description": "Transfers tokens between the authenticated user's own wallets (user, server, agent). The backend resolves wallet IDs and addresses from the user's profile. Amount is in token units (e.g. 1 USDC = 1000000). Token defaults to 'usdc' if omitted."
+							},
+							"response": []
 						}
 					],
 					"description": "Public wallet endpoints. Requires Privy auth. Users can only access their own wallets. User wallet creation uses the userId from the auth context."
@@ -732,7 +759,7 @@
 								],
 								"body": {
 									"mode": "raw",
-									"raw": "{\n  \"walletType\": \"server\",\n  \"recipientAddress\": \"0xdAC17F958D2ee523a2206206994597C13D831ec7\",\n  \"paymentType\": \"erc20_transfer\",\n  \"amount\": \"1000000\",\n  \"tokenContractName\": \"usdc\",\n  \"chainId\": 1,\n  \"frequency\": \"1d\",\n  \"maxRetries\": 5\n}"
+									"raw": "{\n  \"walletType\": \"server\",\n  \"recipientAddress\": \"0xdAC17F958D2ee523a2206206994597C13D831ec7\",\n  \"paymentType\": \"erc20_transfer\",\n  \"amount\": \"1000000\",\n  \"tokenContractName\": \"usdc\",\n  \"chainId\": 1,\n  \"frequency\": \"1d\",\n  \"startDate\": \"2026-03-11T10:00:00.000Z\",\n  \"executeImmediately\": true,\n  \"maxRetries\": 5\n}"
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/recurring-payments",

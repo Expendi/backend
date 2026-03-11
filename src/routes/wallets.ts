@@ -4,6 +4,9 @@ import { eq, and } from "drizzle-orm";
 import { type AppRuntime, runEffect } from "./effect-handler.js";
 import { WalletService } from "../services/wallet/wallet-service.js";
 import { WalletResolver } from "../services/wallet/wallet-resolver.js";
+import { TransactionService } from "../services/transaction/transaction-service.js";
+import { OnboardingService } from "../services/onboarding/onboarding-service.js";
+import { ConfigService } from "../config.js";
 import { DatabaseService } from "../db/client.js";
 import { wallets } from "../db/schema/index.js";
 import type { AuthVariables } from "../middleware/auth.js";
@@ -107,6 +110,94 @@ export function createWalletRoutes(runtime: AppRuntime) {
         });
         const signature = yield* wallet.sign(body.message);
         return { signature };
+      }),
+      c
+    )
+  );
+
+  // Transfer tokens between the authenticated user's own wallets.
+  // Frontend just specifies from/to wallet types and amount — backend handles the rest.
+  app.post("/transfer", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const userId = c.get("userId");
+        const config = yield* ConfigService;
+        const body = yield* Effect.tryPromise({
+          try: () =>
+            c.req.json<{
+              from: "user" | "server" | "agent";
+              to: "user" | "server" | "agent";
+              amount: string;
+              token?: string;
+              chainId?: number;
+              categoryId?: string;
+            }>(),
+          catch: () => new Error("Invalid request body"),
+        });
+
+        if (body.from === body.to) {
+          return yield* Effect.fail(
+            new Error("Source and destination wallets must be different")
+          );
+        }
+
+        // Resolve wallet IDs from profile
+        const onboarding = yield* OnboardingService;
+        const profile = yield* onboarding.getProfile(userId);
+
+        const walletMap = {
+          user: profile.userWalletId,
+          server: profile.serverWalletId,
+          agent: profile.agentWalletId,
+        } as const;
+
+        const fromWalletId = walletMap[body.from];
+        const toWalletId = walletMap[body.to];
+
+        if (!fromWalletId || !toWalletId) {
+          return yield* Effect.fail(
+            new Error("One or both wallet types not found on profile")
+          );
+        }
+
+        // Look up the destination wallet address
+        const { db } = yield* DatabaseService;
+        const [toWallet] = yield* Effect.tryPromise({
+          try: () =>
+            db
+              .select()
+              .from(wallets)
+              .where(
+                and(
+                  eq(wallets.id, toWalletId),
+                  eq(wallets.ownerId, userId)
+                )
+              ),
+          catch: (error) =>
+            new Error(`Failed to find destination wallet: ${error}`),
+        });
+
+        if (!toWallet?.address) {
+          return yield* Effect.fail(
+            new Error("Destination wallet not found or has no address")
+          );
+        }
+
+        const chainId = body.chainId ?? config.defaultChainId;
+        const token = body.token ?? "usdc";
+
+        const txService = yield* TransactionService;
+        return yield* txService.submitContractTransaction({
+          walletId: fromWalletId,
+          walletType: body.from,
+          contractName: token,
+          chainId,
+          method: "transfer",
+          args: [toWallet.address, BigInt(body.amount)],
+          categoryId: body.categoryId,
+          userId,
+        });
       }),
       c
     )

@@ -151,6 +151,7 @@ const { profile, wallets } = res.data;
 | GET | `/api/wallets/:id` | Privy | -- | Single wallet object (must be owned by the authenticated user) |
 | POST | `/api/wallets/user` | Privy | -- | `{ address: "0x...", type: "user" }` |
 | POST | `/api/wallets/:id/sign` | Privy | `{ message: string }` | `{ signature: "0x..." }` |
+| POST | `/api/wallets/transfer` | Privy | `{ from, to, amount, token?, chainId?, categoryId? }` | Transaction result |
 
 **Wallet object shape:**
 ```typescript
@@ -162,6 +163,18 @@ interface Wallet {
   address: string | null; // 0x address
   chainId: string | null;
   createdAt: string;     // ISO 8601
+}
+```
+
+**POST `/api/wallets/transfer` body:**
+```typescript
+{
+  from: "user" | "server" | "agent";   // Source wallet type
+  to: "user" | "server" | "agent";     // Destination wallet type (must differ from 'from')
+  amount: string;                       // Token units (e.g. "1000000" = 1 USDC)
+  token?: string;                       // Contract name, defaults to "usdc"
+  chainId?: number;                     // Defaults to backend default chain
+  categoryId?: string;                  // Optional category
 }
 ```
 
@@ -302,6 +315,7 @@ Limits are **per-user, per-category, per-token**. The unique constraint is `(use
   frequency: string;           // Interval: "5m", "1h", "1d", "7d", "30d"
   startDate?: string;          // ISO 8601 (defaults to now)
   endDate?: string;            // ISO 8601 (optional)
+  executeImmediately?: boolean; // If true, first payment runs at startDate; otherwise first payment is at startDate + frequency (default: false)
   maxRetries?: number;         // Default: 3
   offramp?: {                  // For offramp payment type
     currency: string;
@@ -915,6 +929,17 @@ const transactions = await request<Transaction[]>("/api/transactions");
 
 // Fetch single transaction
 const tx = await request<Transaction>(`/api/transactions/${txId}`);
+
+// Transfer between own wallets (e.g. user → server)
+const transfer = await request<Transaction>("/api/wallets/transfer", {
+  method: "POST",
+  body: {
+    from: "user",
+    to: "server",
+    amount: "5000000",     // 5 USDC
+    token: "usdc",         // optional, defaults to "usdc"
+  },
+});
 ```
 
 ### 7.6 Submitting a USDC Transfer
@@ -1071,7 +1096,7 @@ const refreshed = await request(`/api/pretium/onramp/${onramp.data.transaction.i
 ### 7.10 Creating a Recurring Payment
 
 ```typescript
-// Monthly USDC payment
+// Monthly USDC payment -- pay now, then every 30 days at the same time
 const schedule = await request("/api/recurring-payments", {
   method: "POST",
   body: {
@@ -1083,6 +1108,7 @@ const schedule = await request("/api/recurring-payments", {
     chainId: 8453,
     frequency: "30d",               // Every 30 days
     startDate: new Date().toISOString(),
+    executeImmediately: true,       // First payment runs immediately; false = first payment at startDate + 30d
     maxRetries: 3,
   },
 });
