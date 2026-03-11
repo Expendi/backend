@@ -16,6 +16,7 @@ Expendi is a crypto financial backend built with **Hono + Effect-TS** on Node.js
 - **Goal savings** -- savings goals with target amounts, optional recurring deposits into yield pools, and progress tracking
 - **Usernames** -- human-readable identifiers for wallet addresses
 - **Transaction categories** -- user-defined and global categories for organizing transactions
+- **Transaction approval** -- optional per-user PIN or passkey verification for mutating financial operations
 
 The backend base URL defaults to `http://localhost:3000` in development.
 
@@ -704,7 +705,41 @@ interface GoalSavingsDeposit {
 - **Resume behavior:** Resuming a paused goal resets `consecutiveFailures` to 0 and recalculates `nextDepositAt` from the current time plus the frequency interval.
 - **Manual deposit wallet fallback chain:** `request body walletId` -> `goal.walletId` -> user profile (`serverWalletId` or `agentWalletId` based on `walletType`).
 
-### 5.13 Webhooks
+### 5.13 Transaction Approval / Security
+
+Transaction approval is an optional per-user security feature. When enabled, mutating API requests to financial endpoints require an `X-Approval-Token` header. The token is obtained by verifying the user's PIN or passkey via `POST /api/security/approval/verify` and is valid for 5 minutes.
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| GET | `/api/security/approval` | Privy | -- | Approval settings: `{ enabled, method, passkeyCount }` |
+| POST | `/api/security/approval/pin/setup` | Privy | `{ pin: string }` | `{ success: true }` -- PIN must be 4-6 digits |
+| POST | `/api/security/approval/pin/change` | Privy | `{ currentPin: string, newPin: string }` | `{ success: true }` |
+| DELETE | `/api/security/approval/pin` | Privy | `{ pin: string }` | `{ success: true }` -- removes PIN |
+| POST | `/api/security/approval/passkey/register` | Privy | -- | WebAuthn registration options |
+| POST | `/api/security/approval/passkey/register/verify` | Privy | `{ credential: RegistrationResponseJSON, label?: string }` | `{ success: true }` -- completes passkey registration |
+| GET | `/api/security/approval/passkeys` | Privy | -- | Array of registered passkeys |
+| DELETE | `/api/security/approval/passkeys/:id` | Privy | -- | `{ success: true }` -- removes a passkey |
+| POST | `/api/security/approval/verify` | Privy | `{ method: "pin" \| "passkey", pin?: string, credential?: AuthenticationResponseJSON }` | `{ token: string }` -- approval token valid for 5 minutes |
+| DELETE | `/api/security/approval` | Privy | `{ pin?: string, credential?: AuthenticationResponseJSON }` | `{ success: true }` -- disables transaction approval entirely |
+
+**Gated routes (require `X-Approval-Token` when approval is enabled):**
+
+These routes require the approval token header for mutating (POST) requests only. GET requests on these paths are NOT gated:
+
+- `POST /api/transactions/*`
+- `POST /api/wallets/transfer`
+- `POST /api/pretium/offramp`
+- `POST /api/pretium/onramp`
+- `POST /api/yield/positions`
+- `POST /api/uniswap/swap`
+- `POST /api/groups/*/pay`
+- `POST /api/groups/*/deposit`
+
+**Brute-force protection:** 5 failed verification attempts result in a 15-minute lockout.
+
+**Backend-automated flows bypass:** Recurring payments, goal savings deposits, and swap automations call services directly and do not require an approval token.
+
+### 5.14 Webhooks
 
 | Method | Path | Auth | Body | Description |
 |--------|------|------|------|-------------|
@@ -720,7 +755,7 @@ interface GoalSavingsDeposit {
    - Sent after stablecoins are released to the user's wallet
    - Marks the onramp transaction as `completed` and stores the on-chain tx hash
 
-### 5.14 Internal/Admin API
+### 5.15 Internal/Admin API
 
 All internal routes require `X-Admin-Key` header. These are not for frontend use in normal flows but are listed for completeness.
 
@@ -1184,6 +1219,75 @@ await request(`/api/goal-savings/${goal.id}`, {
 await request(`/api/goal-savings/${goal.id}/cancel`, { method: "POST" });
 ```
 
+### 7.12 Setting Up Transaction Approval and Using It
+
+```typescript
+// Step 1: Set up a transaction PIN
+await request("/api/security/approval/pin/setup", {
+  method: "POST",
+  body: { pin: "1234" },  // 4-6 digits
+});
+
+// Step 2: Check approval settings
+const settings = await request("/api/security/approval");
+// settings = { enabled: true, method: "pin", passkeyCount: 0 }
+
+// Step 3: Before a gated request, verify and get an approval token
+const { token } = await request<{ token: string }>("/api/security/approval/verify", {
+  method: "POST",
+  body: { method: "pin", pin: "1234" },
+});
+
+// Step 4: Use the approval token in the X-Approval-Token header for gated requests
+const transferResult = await fetch(`${BASE_URL}/api/wallets/transfer`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${accessToken}`,
+    "X-Approval-Token": token,  // Valid for 5 minutes
+  },
+  body: JSON.stringify({
+    from: "user",
+    to: "server",
+    amount: "5000000",
+    token: "usdc",
+  }),
+});
+
+// The same token can be reused for multiple requests within the 5-minute window.
+// After expiry, call /api/security/approval/verify again.
+```
+
+**Changing or removing PIN:**
+
+```typescript
+// Change PIN
+await request("/api/security/approval/pin/change", {
+  method: "POST",
+  body: { currentPin: "1234", newPin: "5678" },
+});
+
+// Remove PIN (disables approval if no passkeys are registered)
+await request("/api/security/approval/pin", {
+  method: "DELETE",
+  body: { pin: "5678" },
+});
+
+// Disable transaction approval entirely
+const { token } = await request<{ token: string }>("/api/security/approval/verify", {
+  method: "POST",
+  body: { method: "pin", pin: "5678" },
+});
+await fetch(`${BASE_URL}/api/security/approval`, {
+  method: "DELETE",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${accessToken}`,
+  },
+  body: JSON.stringify({ pin: "5678" }),
+});
+```
+
 ---
 
 ## 8. Error Handling
@@ -1207,6 +1311,7 @@ Domain errors returned in `error._tag` include:
 | `SwapAutomationError` | Swap automation operation failure |
 | `GroupAccountError` | Group account operation failure (not admin, group not found, etc.) |
 | `GoalSavingsError` | Goal savings operation failure (goal not found, cancelled/completed, missing config) |
+| `ApprovalError` | Transaction approval failure (invalid PIN, locked out, expired token, passkey verification failed) |
 | `InternalError` | Unhandled server-side error |
 
 ### Frontend Error Handling Pattern
@@ -1269,6 +1374,7 @@ Frontend applications need these environment variables:
 | `NEXT_PUBLIC_PRIVY_APP_ID` | Privy application ID (must match backend's `PRIVY_APP_ID`) | `clxxxxxxxxxxxxxx` |
 | `NEXT_PUBLIC_API_URL` | Backend API URL | `http://localhost:3000` |
 | `SERVER_BASE_URL` (backend) | Base URL for auto-generated webhook callback URLs | `https://api.expendi.app` |
+| `APPROVAL_TOKEN_SECRET` (backend) | Secret for signing approval tokens (defaults to dev value) | `your-secret-key` |
 
 For local development with the dev bypass (no Privy required), only `NEXT_PUBLIC_API_URL` is needed.
 
@@ -1300,5 +1406,7 @@ NEXT_PUBLIC_PRIVY_APP_ID=your-privy-app-id
 - **Callback URLs:** The backend auto-generates webhook callback URLs using the `SERVER_BASE_URL` environment variable (defaults to `http://localhost:{port}`). Set this to your production domain (e.g., `https://api.expendi.app`) when deployed.
 
 - **Uniswap swap flow:** The `/api/uniswap/swap` endpoint handles the full flow (check approval, submit approval tx if needed, get quote, submit swap tx) in a single call. Use `/api/uniswap/quote` for read-only price checks before committing.
+
+- **Transaction approval:** Optional per-user security layer. When enabled, mutating requests to financial endpoints (`/api/transactions/*`, `/api/wallets/transfer`, `/api/pretium/offramp`, `/api/pretium/onramp`, `/api/yield/positions`, `/api/uniswap/swap`, `/api/groups/*/pay`, `/api/groups/*/deposit`) require an `X-Approval-Token` header. The token is obtained via `POST /api/security/approval/verify` with PIN or passkey credentials and is valid for 5 minutes. GET requests are never gated. Backend-automated flows (recurring payments, goal savings, swap automations) bypass approval entirely since they call services directly without going through the HTTP middleware.
 
 - **Gas sponsorship and transaction hash resolution:** All wallet `sendTransaction` calls use Privy gas sponsorship by default (`sponsor: true` in `SendTransactionParams`). When sponsoring is enabled, Privy returns a `transaction_id` instead of a direct on-chain hash. The backend automatically resolves the actual on-chain hash by polling `privy.transactions().get(transaction_id)` via a shared `resolveTransactionHash()` utility (`src/services/wallet/resolve-tx-hash.ts`). This applies to all wallet types (user, server, agent). Non-sponsored transactions (`sponsor: false`) return the hash directly without polling. Gas sponsorship policies must be configured in the Privy dashboard for the target chains.

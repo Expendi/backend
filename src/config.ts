@@ -12,6 +12,7 @@ export interface AppConfig {
   readonly pretiumBaseUri: string;
   readonly serverBaseUrl: string;
   readonly uniswapApiKey: string;
+  readonly approvalTokenSecret: string;
 }
 
 export class ConfigService extends Context.Tag("ConfigService")<
@@ -45,6 +46,11 @@ export const ConfigLive: Layer.Layer<ConfigService, ConfigError.ConfigError> =
 
       const uniswapApiKey = yield* Config.withDefault(Config.string("UNISWAP_API_KEY"), "");
 
+      const approvalTokenSecret = yield* Config.withDefault(
+        Config.string("APPROVAL_TOKEN_SECRET"),
+        "dev-approval-secret-change-in-production"
+      );
+
       return {
         databaseUrl,
         privyAppId,
@@ -57,6 +63,7 @@ export const ConfigLive: Layer.Layer<ConfigService, ConfigError.ConfigError> =
         pretiumBaseUri,
         serverBaseUrl,
         uniswapApiKey,
+        approvalTokenSecret,
       };
     })
   );

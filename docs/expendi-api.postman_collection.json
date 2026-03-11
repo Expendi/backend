@@ -80,6 +80,11 @@
 			"key": "goalId",
 			"value": "a1b2c3d4-goal-0000-0000-000000000000",
 			"type": "string"
+		},
+		{
+			"key": "passkeyId",
+			"value": "a1b2c3d4-pkey-0000-0000-000000000000",
+			"type": "string"
 		}
 	],
 	"item": [
@@ -2235,6 +2240,250 @@
 						}
 					],
 					"description": "Goal-based savings endpoints. Create savings goals with automatic recurring deposits, track progress toward a target amount, pause/resume/cancel goals, and make manual deposits. Goals deposit into yield vaults on a configurable schedule."
+				},
+				{
+					"name": "Security / Transaction Approval",
+					"item": [
+						{
+							"name": "Get Approval Settings",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/security/approval",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "security", "approval"]
+								},
+								"description": "Retrieves the authenticated user's transaction approval settings, including which approval methods are enabled (PIN, passkey) and registered passkeys."
+							},
+							"response": []
+						},
+						{
+							"name": "Setup PIN",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"pin\": \"1234\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/security/approval/pin/setup",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "security", "approval", "pin", "setup"]
+								},
+								"description": "Sets up a new PIN for transaction approval. The PIN is used to authorize sensitive operations such as transfers and swaps."
+							},
+							"response": []
+						},
+						{
+							"name": "Change PIN",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"currentPin\": \"1234\",\n  \"newPin\": \"5678\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/security/approval/pin/change",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "security", "approval", "pin", "change"]
+								},
+								"description": "Changes the authenticated user's existing PIN. Requires the current PIN for verification before setting the new one."
+							},
+							"response": []
+						},
+						{
+							"name": "Remove PIN",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"pin\": \"1234\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/security/approval/pin",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "security", "approval", "pin"]
+								},
+								"description": "Removes the authenticated user's PIN. Requires the current PIN for verification. If no other approval method is configured, transaction approval will be disabled."
+							},
+							"response": []
+						},
+						{
+							"name": "Register Passkey (Get Options)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/security/approval/passkey/register",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "security", "approval", "passkey", "register"]
+								},
+								"description": "Initiates passkey registration by returning WebAuthn credential creation options. The client uses these options to prompt the user's authenticator (biometrics, security key, etc.) to create a new credential."
+							},
+							"response": []
+						},
+						{
+							"name": "Verify Passkey Registration",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"credential\": {},\n  \"label\": \"My Phone\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/security/approval/passkey/register/verify",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "security", "approval", "passkey", "register", "verify"]
+								},
+								"description": "Completes passkey registration by verifying the credential created by the authenticator. The credential object contains the WebAuthn attestation response. An optional label can be provided to identify the passkey."
+							},
+							"response": []
+						},
+						{
+							"name": "List Passkeys",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/security/approval/passkeys",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "security", "approval", "passkeys"]
+								},
+								"description": "Lists all passkeys registered by the authenticated user for transaction approval. Returns passkey metadata including labels and creation dates."
+							},
+							"response": []
+						},
+						{
+							"name": "Remove Passkey",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/security/approval/passkeys/{{passkeyId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "security", "approval", "passkeys", "{{passkeyId}}"]
+								},
+								"description": "Removes a registered passkey by its ID. If no other approval method remains configured, transaction approval will be disabled."
+							},
+							"response": []
+						},
+						{
+							"name": "Verify (Get Approval Token)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"method\": \"pin\",\n  \"pin\": \"1234\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/security/approval/verify",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "security", "approval", "verify"]
+								},
+								"description": "Verifies the user's identity using the specified approval method (PIN or passkey) and returns a short-lived approval token. This token is then attached to sensitive operations (transfers, swaps, etc.) to authorize them."
+							},
+							"response": []
+						},
+						{
+							"name": "Disable Approval",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"pin\": \"1234\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/security/approval",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "security", "approval"]
+								},
+								"description": "Disables transaction approval entirely for the authenticated user. Requires PIN verification to confirm the action. All registered approval methods (PIN, passkeys) will be removed."
+							},
+							"response": []
+						}
+					],
+					"description": "Security and transaction approval endpoints. Configure PIN or passkey-based approval for sensitive operations like transfers and swaps. Users can set up, change, or remove a PIN, register and manage passkeys, and obtain short-lived approval tokens to authorize transactions."
 				}
 			],
 			"description": "Public API routes requiring Privy authentication via Authorization: Bearer <token> header. All operations are scoped to the authenticated user."
