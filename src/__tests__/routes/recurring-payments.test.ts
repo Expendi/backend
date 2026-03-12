@@ -320,6 +320,53 @@ describe("Recurring Payment Routes (Public)", () => {
       await runtime.dispose();
     });
 
+    it("should create a schedule using new transfer format", async () => {
+      const runtime = makePublicTestRuntime();
+      const app = makePublicApp(runtime);
+
+      const res = await app.request("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "transfer",
+          wallet: "server",
+          to: "0x0000000000000000000000000000000000000001",
+          amount: "1000000",
+          token: "usdc",
+          frequency: "1d",
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+
+      await runtime.dispose();
+    });
+
+    it("should create a schedule using new raw_transfer format", async () => {
+      const runtime = makePublicTestRuntime();
+      const app = makePublicApp(runtime);
+
+      const res = await app.request("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "raw_transfer",
+          wallet: "user",
+          to: "0x0000000000000000000000000000000000000001",
+          amount: "1000000000000000000",
+          frequency: "7d",
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+
+      await runtime.dispose();
+    });
+
     it("should return 400 when creation fails", async () => {
       const runtime = makePublicTestRuntime({ createFail: true });
       const app = makePublicApp(runtime);
@@ -334,6 +381,26 @@ describe("Recurring Payment Routes (Public)", () => {
           paymentType: "raw_transfer",
           amount: "1000000000000000000",
           frequency: "1d",
+        }),
+      });
+
+      expect(res.status).toBe(400);
+
+      await runtime.dispose();
+    });
+
+    it("should return 400 for new format missing required fields", async () => {
+      const runtime = makePublicTestRuntime();
+      const app = makePublicApp(runtime);
+
+      const res = await app.request("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "transfer",
+          amount: "1000000",
+          frequency: "1d",
+          // missing 'to'
         }),
       });
 
