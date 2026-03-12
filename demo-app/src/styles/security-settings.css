@@ -1,0 +1,492 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Security Settings Styles
+   ═══════════════════════════════════════════════════════════════════ */
+
+.security-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 0;
+}
+
+/* ─── Back Button ────────────────────────────────────────────────── */
+
+.security-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 2px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 13px;
+  cursor: pointer;
+  transition: color var(--transition);
+  align-self: flex-start;
+}
+
+.security-back-btn:hover {
+  color: var(--text-primary);
+}
+
+/* ─── Sections ───────────────────────────────────────────────────── */
+
+.security-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: border-color var(--transition);
+}
+
+.security-section:hover {
+  border-color: color-mix(in srgb, var(--accent) 20%, var(--border));
+}
+
+.security-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.security-section-header svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.security-section-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.security-section-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* ─── Status Row ─────────────────────────────────────────────────── */
+
+.security-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.security-status-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.security-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.security-status-badge.enabled {
+  color: var(--exo-lime);
+  background: color-mix(in srgb, var(--exo-lime) 10%, transparent);
+}
+
+.security-status-badge.disabled {
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+}
+
+.security-count-badge {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+}
+
+/* ─── Action Row ─────────────────────────────────────────────────── */
+
+.security-action-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ─── Buttons ────────────────────────────────────────────────────── */
+
+.security-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border-radius: var(--radius);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  border: 1px solid transparent;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.security-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.security-btn.primary {
+  background: var(--exo-lime);
+  color: #0a0a0a;
+  border-color: var(--exo-lime);
+}
+
+.security-btn.primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--exo-lime) 85%, white);
+}
+
+.security-btn.secondary {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+.security-btn.secondary:hover:not(:disabled) {
+  border-color: var(--text-muted);
+  background: color-mix(in srgb, var(--bg-elevated) 50%, var(--bg-card));
+}
+
+.security-btn.danger {
+  background: var(--exo-coral);
+  color: white;
+  border-color: var(--exo-coral);
+}
+
+.security-btn.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--exo-coral) 85%, black);
+}
+
+.security-btn.danger-outline {
+  background: transparent;
+  color: var(--exo-coral);
+  border-color: color-mix(in srgb, var(--exo-coral) 40%, transparent);
+}
+
+.security-btn.danger-outline:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--exo-coral) 8%, transparent);
+  border-color: var(--exo-coral);
+}
+
+/* ─── Icon Button ────────────────────────────────────────────────── */
+
+.security-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition);
+  flex-shrink: 0;
+}
+
+.security-icon-btn:hover:not(:disabled) {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.security-icon-btn.danger:hover:not(:disabled) {
+  color: var(--exo-coral);
+  border-color: color-mix(in srgb, var(--exo-coral) 40%, transparent);
+  background: color-mix(in srgb, var(--exo-coral) 8%, transparent);
+}
+
+.security-icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─── Forms ──────────────────────────────────────────────────────── */
+
+.security-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.security-form-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.security-form-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.security-form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.security-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+/* ─── PIN Input ──────────────────────────────────────────────────── */
+
+.security-pin-input {
+  width: 100%;
+  padding: 12px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 8px;
+  text-align: center;
+  transition: border-color var(--transition), box-shadow var(--transition);
+  box-sizing: border-box;
+}
+
+.security-pin-input::placeholder {
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.security-pin-input:focus {
+  outline: none;
+  border-color: var(--exo-lime);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--exo-lime) 15%, transparent);
+}
+
+/* ─── Passkey List ───────────────────────────────────────────────── */
+
+.security-passkey-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.security-passkey-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-elevated);
+  transition: background 0.15s ease;
+}
+
+.security-passkey-item:not(:last-child) {
+  border-bottom: 1px solid var(--border);
+}
+
+.security-passkey-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.security-passkey-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.security-passkey-date {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* ─── Feedback ───────────────────────────────────────────────────── */
+
+.security-error {
+  font-size: 12px;
+  color: var(--exo-coral);
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--exo-coral) 8%, transparent);
+  border-radius: var(--radius);
+  line-height: 1.4;
+}
+
+.security-success {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--exo-lime);
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--exo-lime) 8%, transparent);
+  border-radius: var(--radius);
+  line-height: 1.4;
+  animation: fadeIn 0.2s ease;
+}
+
+.security-success svg {
+  flex-shrink: 0;
+}
+
+.security-error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--exo-coral);
+  font-size: 13px;
+}
+
+/* ─── Loading ────────────────────────────────────────────────────── */
+
+.security-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 32px 16px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.security-loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--border);
+  border-top-color: var(--exo-lime);
+  border-radius: 50%;
+  animation: securitySpin 0.7s linear infinite;
+}
+
+.security-loading-spinner.small {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+}
+
+@keyframes securitySpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ─── Security Modal (Desktop) ───────────────────────────────────── */
+
+.security-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s ease;
+}
+
+.security-modal {
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 64px);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  overflow-y: auto;
+  padding: 20px;
+  animation: modalIn 0.25s ease;
+}
+
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.security-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.security-modal-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.security-modal-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.security-modal-close:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}

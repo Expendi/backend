@@ -127,7 +127,8 @@ const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 const CHALLENGE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 const RP_NAME = "Expendi";
-const RP_ID = "expendi.app";
+const RP_ID = process.env.WEBAUTHN_RP_ID ?? "expendi.app";
+const RP_ORIGIN = process.env.WEBAUTHN_ORIGIN ?? `https://${RP_ID}`;
 
 // ── Live implementation ──────────────────────────────────────────────
 
@@ -224,11 +225,18 @@ export const TransactionApprovalServiceLive: Layer.Layer<
     const verifyHmacToken = (
       token: string
     ): { valid: boolean; userId?: string } => {
-      const parts = token.split(":");
-      if (parts.length !== 3) return { valid: false };
-      const [userId, expiryStr, providedHmac] = parts;
+      // Token format: userId:expiry:hmac
+      // userId may contain colons (e.g. did:privy:xxx), so extract from the right
+      const lastColon = token.lastIndexOf(":");
+      if (lastColon === -1) return { valid: false };
+      const providedHmac = token.slice(lastColon + 1);
+      const beforeHmac = token.slice(0, lastColon);
+      const secondLastColon = beforeHmac.lastIndexOf(":");
+      if (secondLastColon === -1) return { valid: false };
+      const userId = beforeHmac.slice(0, secondLastColon);
+      const expiryStr = beforeHmac.slice(secondLastColon + 1);
       const expiry = Number(expiryStr);
-      if (isNaN(expiry) || expiry < Date.now()) return { valid: false };
+      if (!userId || isNaN(expiry) || expiry < Date.now()) return { valid: false };
       const payload = `${userId}:${expiryStr}`;
       const expectedHmac = crypto
         .createHmac("sha256", config.approvalTokenSecret)
@@ -236,7 +244,7 @@ export const TransactionApprovalServiceLive: Layer.Layer<
         .digest("hex");
       if (
         !crypto.timingSafeEqual(
-          Buffer.from(providedHmac!),
+          Buffer.from(providedHmac),
           Buffer.from(expectedHmac)
         )
       ) {
@@ -525,7 +533,7 @@ export const TransactionApprovalServiceLive: Layer.Layer<
               verifyRegistrationResponse({
                 response: credential,
                 expectedChallenge,
-                expectedOrigin: `https://${RP_ID}`,
+                expectedOrigin: RP_ORIGIN,
                 expectedRPID: RP_ID,
               }),
             catch: (error) =>
@@ -676,7 +684,7 @@ export const TransactionApprovalServiceLive: Layer.Layer<
               verifyAuthenticationResponse({
                 response: credential,
                 expectedChallenge,
-                expectedOrigin: `https://${RP_ID}`,
+                expectedOrigin: RP_ORIGIN,
                 expectedRPID: RP_ID,
                 credential: {
                   id: passkey.credentialId,
@@ -845,6 +853,7 @@ export const TransactionApprovalServiceLive: Layer.Layer<
           return {
             enabled: rows[0].requireTransactionApproval,
             method: rows[0].transactionApprovalMethod,
+            hasPin: rows[0].transactionPinHash !== null,
             passkeyCount: passkeys.length,
           };
         }),

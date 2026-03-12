@@ -11,7 +11,18 @@ if (!appId) {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <PrivyProvider appId={appId} >
+    <PrivyProvider
+      appId={appId}
+      config={{
+        loginMethods: ["email", "wallet", "google", "apple"],
+        appearance: {
+          theme: "dark",
+        },
+        embeddedWallets: {
+          createOnLogin: "off",
+        },
+      }}
+    >
       <App />
     </PrivyProvider>
   </StrictMode>

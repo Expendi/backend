@@ -3,6 +3,9 @@ import { Effect } from "effect";
 import { type AppRuntime, runEffect } from "./effect-handler.js";
 import { OnboardingService } from "../services/onboarding/onboarding-service.js";
 import { ConfigService } from "../config.js";
+import { DatabaseService } from "../db/client.js";
+import { userProfiles, type UserPreferences } from "../db/schema/user-profiles.js";
+import { eq } from "drizzle-orm";
 import type { AuthVariables } from "../middleware/auth.js";
 
 /**
@@ -64,7 +67,29 @@ export function createOnboardingRoutes(runtime: AppRuntime) {
         const userId = c.get("userId");
         const onboarding = yield* OnboardingService;
         const profile = yield* onboarding.getProfileWithWallets(userId);
-        return { ...profile, username: profile.username ?? null };
+
+        // Fetch preferences separately (not part of the relation query)
+        const { db } = yield* DatabaseService;
+        const rows = yield* Effect.tryPromise({
+          try: () =>
+            db
+              .select({ preferences: userProfiles.preferences })
+              .from(userProfiles)
+              .where(eq(userProfiles.privyUserId, userId))
+              .limit(1),
+          catch: () => new Error("Failed to fetch preferences"),
+        });
+
+        return {
+          ...profile,
+          username: profile.username ?? null,
+          preferences: rows[0]?.preferences ?? {},
+          wallets: {
+            user: profile.userWallet,
+            server: profile.serverWallet,
+            agent: profile.agentWallet,
+          },
+        };
       }),
       c
     )
@@ -101,6 +126,70 @@ export function createOnboardingRoutes(runtime: AppRuntime) {
           userId: resolved.privyUserId,
           address: resolved.address,
         };
+      }),
+      c
+    )
+  );
+
+  // GET /api/profile/preferences — Get user preferences
+  app.get("/profile/preferences", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const userId = c.get("userId");
+        const { db } = yield* DatabaseService;
+        const rows = yield* Effect.tryPromise({
+          try: () =>
+            db
+              .select({ preferences: userProfiles.preferences })
+              .from(userProfiles)
+              .where(eq(userProfiles.privyUserId, userId))
+              .limit(1),
+          catch: (e) => new Error(`Failed to fetch preferences: ${e}`),
+        });
+        return rows[0]?.preferences ?? {};
+      }),
+      c
+    )
+  );
+
+  // PATCH /api/profile/preferences — Update user preferences (merge)
+  app.patch("/profile/preferences", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const userId = c.get("userId");
+        const body = yield* Effect.tryPromise({
+          try: () => c.req.json<Partial<UserPreferences>>(),
+          catch: () => new Error("Invalid request body"),
+        });
+
+        const { db } = yield* DatabaseService;
+
+        // Fetch existing preferences
+        const rows = yield* Effect.tryPromise({
+          try: () =>
+            db
+              .select({ preferences: userProfiles.preferences })
+              .from(userProfiles)
+              .where(eq(userProfiles.privyUserId, userId))
+              .limit(1),
+          catch: (e) => new Error(`Failed to fetch preferences: ${e}`),
+        });
+
+        const existing = (rows[0]?.preferences ?? {}) as UserPreferences;
+        const merged: UserPreferences = { ...existing, ...body };
+
+        yield* Effect.tryPromise({
+          try: () =>
+            db
+              .update(userProfiles)
+              .set({ preferences: merged, updatedAt: new Date() })
+              .where(eq(userProfiles.privyUserId, userId)),
+          catch: (e) => new Error(`Failed to update preferences: ${e}`),
+        });
+
+        return merged;
       }),
       c
     )

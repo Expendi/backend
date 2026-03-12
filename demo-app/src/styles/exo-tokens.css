@@ -1,0 +1,68 @@
+/* Exo Brand Design Tokens */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;0,9..40,900;1,9..40,400&family=Space+Mono:wght@400;700&family=Anybody:wght@400;700;900&display=swap');
+
+:root {
+  --exo-lime:       #BFFF00;
+  --exo-lime-dim:   #8FBF00;
+  --exo-coral:      #FF6B6B;
+  --exo-sky:        #6BE0FF;
+  --exo-violet:     #C77DFF;
+  --exo-peach:      #FFB86C;
+
+  --radius:         12px;
+  --radius-lg:      20px;
+  --radius-pill:    999px;
+  --font-display:   'Anybody', sans-serif;
+  --font-body:      'DM Sans', sans-serif;
+  --font-mono:      'Space Mono', monospace;
+  --transition:     0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  --bounce:         cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+[data-theme="dark"] {
+  --bg-primary:     #0A0A0A;
+  --bg-secondary:   #141414;
+  --bg-card:        #1A1A1A;
+  --bg-elevated:    #222222;
+  --text-primary:   #FFFFFF;
+  --text-secondary: #999999;
+  --text-muted:     #555555;
+  --border:         #2A2A2A;
+  --accent:         var(--exo-lime);
+  --accent-text:    #0A0A0A;
+}
+
+[data-theme="light"] {
+  --bg-primary:     #F5F3EE;
+  --bg-secondary:   #ECEAE4;
+  --bg-card:        #FFFFFF;
+  --bg-elevated:    #E8E6E0;
+  --text-primary:   #0A0A0A;
+  --text-secondary: #666666;
+  --text-muted:     #AAAAAA;
+  --border:         #D8D6D0;
+  --accent:         #8FBF00;
+  --accent-text:    #FFFFFF;
+}
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
+  transition: background var(--transition), color var(--transition);
+  overflow-x: hidden;
+}
+
+::selection {
+  background: var(--exo-lime);
+  color: #000;
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-secondary); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }

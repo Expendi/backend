@@ -42,6 +42,7 @@ export interface SubmitRawTxParams {
   readonly value?: bigint;
   readonly categoryId?: string;
   readonly userId?: string;
+  readonly sponsor?: boolean;
 }
 
 export interface TransactionServiceApi {
@@ -86,6 +87,9 @@ export const TransactionServiceLive: Layer.Layer<
     return {
       submitContractTransaction: (params: SubmitContractTxParams) =>
         Effect.gen(function* () {
+          const serializeArg = (v: unknown): unknown =>
+            typeof v === "bigint" ? v.toString() : v;
+
           const intentParams: CreateIntentParams = {
             walletId: params.walletId,
             walletType: params.walletType,
@@ -93,7 +97,7 @@ export const TransactionServiceLive: Layer.Layer<
             contractId: params.contractName,
             method: params.method,
             payload: {
-              args: params.args as unknown[],
+              args: (params.args as unknown[]).map(serializeArg),
               value: params.value ? String(params.value) : undefined,
             },
             categoryId: params.categoryId,
@@ -155,6 +159,7 @@ export const TransactionServiceLive: Layer.Layer<
               data: params.data,
               value: params.value,
               chainId: params.chainId,
+              sponsor: params.sponsor ?? true,
             })
             .pipe(
               Effect.tapError((error) =>

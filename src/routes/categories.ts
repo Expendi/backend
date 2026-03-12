@@ -1,11 +1,12 @@
 import { Hono } from "hono";
 import { Effect } from "effect";
-import { eq, or, isNull, and } from "drizzle-orm";
+import { eq, or, isNull, and, gte, sql } from "drizzle-orm";
 import { type AppRuntime, runEffect } from "./effect-handler.js";
 import { DatabaseService } from "../db/client.js";
 import {
   transactionCategories,
   categoryLimits,
+  transactions,
 } from "../db/schema/index.js";
 import type { AuthVariables } from "../middleware/auth.js";
 
@@ -179,6 +180,131 @@ export function createCategoryRoutes(runtime: AppRuntime) {
           return yield* Effect.fail(new Error("Category limit not found"));
         }
         return { deleted: true, count: results.length };
+      }),
+      c
+    )
+  );
+
+  // ── Spending Analytics ───────────────────────────────────────────
+
+  // Get spending per category for a given period (default: current month)
+  app.get("/spending", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const userId = c.get("userId");
+        const { db } = yield* DatabaseService;
+
+        // Period: default to start of current month
+        const sinceParam = c.req.query("since");
+        const since = sinceParam ? new Date(sinceParam) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+
+        // Get all confirmed transactions with a category for this user since the period
+        const rows = yield* Effect.tryPromise({
+          try: () =>
+            db
+              .select({
+                categoryId: transactions.categoryId,
+                categoryName: transactionCategories.name,
+                txCount: sql<number>`count(*)::int`,
+                // Extract amount from payload->'args'->>1 (the transfer amount for USDC transfers)
+                totalAmount: sql<string>`coalesce(sum(
+                  case when ${transactions.method} in ('transfer', 'raw_transfer')
+                    then (${transactions.payload}->>'amount')::numeric
+                    else coalesce((${transactions.payload}->'args'->>1)::numeric, 0)
+                  end
+                ), 0)::text`,
+              })
+              .from(transactions)
+              .innerJoin(transactionCategories, eq(transactions.categoryId, transactionCategories.id))
+              .where(
+                and(
+                  eq(transactions.userId, userId),
+                  gte(transactions.createdAt, since),
+                  sql`${transactions.categoryId} is not null`
+                )
+              )
+              .groupBy(transactions.categoryId, transactionCategories.name),
+          catch: (error) => new Error(`Failed to get spending data: ${error}`),
+        });
+
+        // Also fetch limits so the frontend can compare
+        const userLimits = yield* Effect.tryPromise({
+          try: () =>
+            db
+              .select()
+              .from(categoryLimits)
+              .where(eq(categoryLimits.userId, userId)),
+          catch: (error) => new Error(`Failed to get limits: ${error}`),
+        });
+
+        const limitsMap = new Map(
+          userLimits.map(l => [l.categoryId, l])
+        );
+
+        return rows.map(r => ({
+          categoryId: r.categoryId,
+          categoryName: r.categoryName,
+          txCount: r.txCount,
+          totalSpent: r.totalAmount,
+          limit: limitsMap.get(r.categoryId!) ? {
+            monthlyLimit: limitsMap.get(r.categoryId!)!.monthlyLimit,
+            tokenSymbol: limitsMap.get(r.categoryId!)!.tokenSymbol,
+            tokenDecimals: limitsMap.get(r.categoryId!)!.tokenDecimals,
+          } : null,
+        }));
+      }),
+      c
+    )
+  );
+
+  // Get daily spending breakdown for charts
+  app.get("/spending/daily", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const userId = c.get("userId");
+        const { db } = yield* DatabaseService;
+
+        const daysParam = c.req.query("days");
+        const days = daysParam ? Number(daysParam) : 30;
+        const since = new Date();
+        since.setDate(since.getDate() - days);
+
+        const rows = yield* Effect.tryPromise({
+          try: () =>
+            db
+              .select({
+                date: sql<string>`to_char(${transactions.createdAt}, 'YYYY-MM-DD')`,
+                categoryId: transactions.categoryId,
+                categoryName: transactionCategories.name,
+                totalAmount: sql<string>`coalesce(sum(
+                  case when ${transactions.method} in ('transfer', 'raw_transfer')
+                    then (${transactions.payload}->>'amount')::numeric
+                    else coalesce((${transactions.payload}->'args'->>1)::numeric, 0)
+                  end
+                ), 0)::text`,
+                txCount: sql<number>`count(*)::int`,
+              })
+              .from(transactions)
+              .innerJoin(transactionCategories, eq(transactions.categoryId, transactionCategories.id))
+              .where(
+                and(
+                  eq(transactions.userId, userId),
+                  gte(transactions.createdAt, since),
+                  sql`${transactions.categoryId} is not null`
+                )
+              )
+              .groupBy(
+                sql`to_char(${transactions.createdAt}, 'YYYY-MM-DD')`,
+                transactions.categoryId,
+                transactionCategories.name
+              )
+              .orderBy(sql`to_char(${transactions.createdAt}, 'YYYY-MM-DD')`),
+          catch: (error) => new Error(`Failed to get daily spending: ${error}`),
+        });
+
+        return rows;
       }),
       c
     )

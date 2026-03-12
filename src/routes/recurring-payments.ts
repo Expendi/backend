@@ -6,7 +6,8 @@ import { RecurringPaymentService } from "../services/recurring-payment/recurring
 import { OnboardingService } from "../services/onboarding/onboarding-service.js";
 import { ConfigService } from "../config.js";
 import { DatabaseService } from "../db/client.js";
-import { wallets } from "../db/schema/index.js";
+import { wallets, userProfiles } from "../db/schema/index.js";
+import type { UserPreferences } from "../db/schema/user-profiles.js";
 import type { AuthVariables } from "../middleware/auth.js";
 
 /**
@@ -81,6 +82,16 @@ export function createRecurringPaymentRoutes(runtime: AppRuntime) {
                 destinationId: string;
                 metadata?: Record<string, unknown>;
               };
+              // Pretium offramp shorthand — used when provider is "pretium"
+              country?: string;
+              phoneNumber?: string;
+              mobileNetwork?: string;
+              paymentMethod?: string;
+              accountNumber?: string;
+              accountName?: string;
+              bankAccount?: string;
+              bankCode?: string;
+              bankName?: string;
               categoryId?: string;
               executeImmediately?: boolean;
             }>(),
@@ -125,6 +136,57 @@ export function createRecurringPaymentRoutes(runtime: AppRuntime) {
           );
         }
 
+        // Build offramp details — support Pretium shorthand fields
+        let offramp = body.offramp;
+        if (body.paymentType === "offramp" && !offramp) {
+          // Auto-fill from saved preferences if fields are missing
+          let country = body.country;
+          let phoneNumber = body.phoneNumber;
+          let mobileNetwork = body.mobileNetwork;
+
+          if (!country || !phoneNumber || !mobileNetwork) {
+            const rows = yield* Effect.tryPromise({
+              try: () =>
+                db
+                  .select({ preferences: userProfiles.preferences })
+                  .from(userProfiles)
+                  .where(eq(userProfiles.privyUserId, userId))
+                  .limit(1),
+              catch: () => new Error("Failed to fetch preferences"),
+            });
+            const prefs = (rows[0]?.preferences ?? {}) as UserPreferences;
+            country = country || prefs.country;
+            phoneNumber = phoneNumber || prefs.phoneNumber;
+            mobileNetwork = mobileNetwork || prefs.mobileNetwork;
+          }
+
+          if (!country || !phoneNumber || !mobileNetwork) {
+            return yield* Effect.fail(
+              new Error(
+                "Pretium offramp requires country, phoneNumber, and mobileNetwork"
+              )
+            );
+          }
+
+          offramp = {
+            currency: country, // will be resolved to actual currency by service
+            fiatAmount: body.amount,
+            provider: "pretium",
+            destinationId: phoneNumber,
+            metadata: {
+              country,
+              phoneNumber,
+              mobileNetwork,
+              paymentType: body.paymentMethod,
+              accountNumber: body.accountNumber,
+              accountName: body.accountName,
+              bankAccount: body.bankAccount,
+              bankCode: body.bankCode,
+              bankName: body.bankName,
+            },
+          };
+        }
+
         const rpService = yield* RecurringPaymentService;
         return yield* rpService.createSchedule({
           userId,
@@ -142,7 +204,7 @@ export function createRecurringPaymentRoutes(runtime: AppRuntime) {
           startDate: body.startDate ? new Date(body.startDate) : undefined,
           endDate: body.endDate ? new Date(body.endDate) : undefined,
           maxRetries: body.maxRetries,
-          offramp: body.offramp,
+          offramp,
           categoryId: body.categoryId,
           executeImmediately: body.executeImmediately,
         });

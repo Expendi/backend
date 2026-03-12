@@ -10,7 +10,14 @@ Expendi is a crypto financial backend built with **Hono + Effect-TS** on Node.js
 - **Yield positions** -- deposit into ERC-4626 vaults with time-locked positions
 - **Offramp to African mobile money** -- via Pretium (Kenya, Nigeria, Ghana, Uganda, DR Congo, Malawi, Ethiopia)
 - **Token swaps** -- Uniswap V3 swaps on Base
-- **Transaction categories** -- user-defined and global categories for organizing transactions
+- **Transaction categories** -- user-defined and global categories with spending limits and analytics
+- **Swap automations** -- scheduled recurring Uniswap swaps (DCA)
+- **Group accounts** -- shared expense groups with member deposits, payouts, and admin controls
+- **Split expenses** -- create and track shared expense splits within groups
+- **Goal savings** -- savings goals with manual and automated deposits
+- **Transaction approval** -- optional PIN or passkey (WebAuthn) gating on sensitive mutations
+- **AI chat agent** -- SSE streaming chat endpoint powered by Glove Core (supports Anthropic, OpenAI, OpenRouter, Gemini, etc.)
+- **Onramp from fiat** -- via Pretium (receive crypto by paying with mobile money or bank transfer)
 
 The backend base URL defaults to `http://localhost:3000` in development.
 
@@ -134,6 +141,10 @@ const { profile, wallets } = res.data;
 |--------|------|------|------|----------|
 | POST | `/api/onboard` | Privy | `{ chainId?: number }` | `{ profile: { id, privyUserId, userWalletId, serverWalletId, agentWalletId, createdAt, updatedAt }, wallets: { user: Wallet, server: Wallet, agent: Wallet } }` |
 | GET | `/api/profile` | Privy | -- | Full profile with wallet objects (id, type, privyWalletId, ownerId, address, chainId, createdAt) |
+| PUT | `/api/profile/username` | Privy | `{ username: string }` | Claim or update username |
+| GET | `/api/profile/resolve/:username` | Privy | -- | Resolve username to wallet address |
+| GET | `/api/profile/preferences` | Privy | -- | Get user preferences (theme, defaults, notifications) |
+| PATCH | `/api/profile/preferences` | Privy | `{ theme?: string, ... }` | Merge-update user preferences |
 | GET | `/api/profile/wallets` | Privy | -- | `{ user: "0x...", server: "0x...", agent: "0x..." }` (addresses only) |
 
 ### 5.3 Wallets
@@ -141,6 +152,7 @@ const { profile, wallets } = res.data;
 | Method | Path | Auth | Body | Response |
 |--------|------|------|------|----------|
 | GET | `/api/wallets` | Privy | -- | Array of user's wallets: `[{ id, type, privyWalletId, ownerId, address, chainId, createdAt }]` |
+| GET | `/api/wallets/balances` | Privy | -- | On-chain token balances for all user's wallets (symbol, decimals, raw balance, formatted) |
 | GET | `/api/wallets/:id` | Privy | -- | Single wallet object (must be owned by the authenticated user) |
 | POST | `/api/wallets/user` | Privy | -- | `{ address: "0x...", type: "user" }` |
 | POST | `/api/wallets/:id/sign` | Privy | `{ message: string }` | `{ signature: "0x..." }` |
@@ -225,6 +237,12 @@ interface Transaction {
 | POST | `/api/categories` | Privy | `{ name: string, description?: string }` | Created category |
 | PUT | `/api/categories/:id` | Privy | `{ name?: string, description?: string }` | Updated category (user-owned only) |
 | DELETE | `/api/categories/:id` | Privy | -- | `{ deleted: true, id: "..." }` (user-owned only) |
+| GET | `/api/categories/limits` | Privy | -- | All spending limits for the user |
+| GET | `/api/categories/:id/limit` | Privy | -- | Limit for a specific category |
+| PUT | `/api/categories/:id/limit` | Privy | `{ amount: string }` | Set/update spending limit (upsert) |
+| DELETE | `/api/categories/:id/limit` | Privy | -- | Remove spending limit |
+| GET | `/api/categories/spending` | Privy | Query: `?from=&to=` | Spending per category for period (default: current month) |
+| GET | `/api/categories/spending/daily` | Privy | Query: `?from=&to=` | Daily spending breakdown for charts |
 
 ### 5.6 Recurring Payments
 
@@ -325,7 +343,7 @@ interface RecurringPayment {
 }
 ```
 
-### 5.8 Pretium (Offramp to African Mobile Money / Bank)
+### 5.8 Pretium (On/Offramp — African Mobile Money / Bank)
 
 #### Country and Payment Info
 
@@ -404,6 +422,18 @@ interface RecurringPayment {
 
 **Offramp transaction statuses:** `pending` | `processing` | `completed` | `failed` | `reversed`
 
+#### Onramp (Fiat to Crypto)
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| GET | `/api/pretium/onramp/countries` | Privy | -- | List onramp-supported countries |
+| POST | `/api/pretium/onramp` | Privy | `{ country, walletId, fiatAmount, currency, ... }` | Initiate onramp (HTTP 201) |
+| GET | `/api/pretium/onramp` | Privy | Query: `?limit=50&offset=0` | List user's onramp transactions |
+| GET | `/api/pretium/onramp/:id` | Privy | -- | Get onramp transaction |
+| POST | `/api/pretium/onramp/:id/refresh` | Privy | -- | Poll Pretium for latest status |
+
+> **Note:** Pretium expects local phone numbers without the country code prefix for mobile network payments.
+
 ### 5.9 Uniswap (Token Swaps on Base)
 
 | Method | Path | Auth | Body | Response |
@@ -428,13 +458,151 @@ interface RecurringPayment {
 
 All Uniswap operations are on **Base (chain ID 8453)**.
 
-### 5.10 Webhooks
+### 5.10 Swap Automations (DCA)
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| GET | `/api/swap-automations` | Privy | -- | Array of user's automations |
+| GET | `/api/swap-automations/:id` | Privy | -- | Single automation |
+| POST | `/api/swap-automations` | Privy | See below | Created automation (HTTP 201) |
+| PATCH | `/api/swap-automations/:id` | Privy | Partial update | Updated automation |
+| POST | `/api/swap-automations/:id/pause` | Privy | -- | Paused |
+| POST | `/api/swap-automations/:id/resume` | Privy | -- | Resumed |
+| POST | `/api/swap-automations/:id/cancel` | Privy | -- | Cancelled |
+| GET | `/api/swap-automations/:id/executions` | Privy | Query: `?limit=50` | Execution history |
+
+### 5.11 Group Accounts
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| POST | `/api/groups` | Privy | `{ name: string, tokenAddress: string, ... }` | Created group (HTTP 201) |
+| GET | `/api/groups` | Privy | -- | Array of user's groups |
+| GET | `/api/groups/:id` | Privy | -- | Group with members |
+| GET | `/api/groups/:id/members` | Privy | -- | Members with usernames + addresses |
+| POST | `/api/groups/:id/members` | Privy | `{ userId: string }` | Add member (admin only, HTTP 201) |
+| DELETE | `/api/groups/:id/members/:identifier` | Privy | -- | Remove member (admin only) |
+| POST | `/api/groups/:id/pay` | Privy | `{ walletId, amount, recipientAddress, ... }` | Admin payout (approval required) |
+| POST | `/api/groups/:id/deposit` | Privy | `{ walletId, amount, ... }` | Member deposit (approval required) |
+| POST | `/api/groups/:id/transfer-admin` | Privy | `{ newAdminId: string }` | Transfer admin role |
+| GET | `/api/groups/:id/balance` | Privy | Query: `?tokens=0x...` | Group balance for specified tokens |
+
+### 5.12 Split Expenses
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| POST | `/api/split-expenses` | Privy | See below | Created expense (HTTP 201) |
+| GET | `/api/split-expenses` | Privy | -- | Array of user's split expenses |
+| GET | `/api/split-expenses/:id` | Privy | -- | Expense with shares |
+| POST | `/api/split-expenses/:id/pay` | Privy | `{ walletId: string, walletType: "user" \| "server" \| "agent" }` | Pay your share |
+| DELETE | `/api/split-expenses/:id` | Privy | -- | Cancel expense (creator only) |
+
+**POST `/api/split-expenses` body:**
+```typescript
+{
+  title: string;
+  tokenAddress: string;        // ERC-20 token address
+  tokenSymbol: string;
+  tokenDecimals: number;
+  totalAmount: string;         // Total amount in smallest unit
+  chainId: number;
+  transactionId?: string;      // Optional linked transaction
+  shares: { userId: string; amount: string }[];
+}
+```
+
+### 5.13 Goal Savings
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| GET | `/api/goal-savings` | Privy | -- | Array of user's goals |
+| POST | `/api/goal-savings` | Privy | `{ name, targetAmount, tokenAddress, ... }` | Created goal (HTTP 201) |
+| GET | `/api/goal-savings/:id` | Privy | -- | Goal details (ownership check) |
+| PATCH | `/api/goal-savings/:id` | Privy | Partial update | Updated goal |
+| POST | `/api/goal-savings/:id/pause` | Privy | -- | Paused |
+| POST | `/api/goal-savings/:id/resume` | Privy | -- | Resumed |
+| POST | `/api/goal-savings/:id/cancel` | Privy | -- | Cancelled |
+| POST | `/api/goal-savings/:id/deposit` | Privy | `{ walletId, amount, ... }` | Manual deposit (HTTP 201) |
+| GET | `/api/goal-savings/:id/deposits` | Privy | Query: `?limit=50` | Deposit history |
+
+### 5.14 Transaction Approval / Security
+
+Users can optionally protect sensitive mutations (transfers, swaps, on/offramp, yield) with a PIN or passkey (WebAuthn). When enabled, the frontend must obtain an approval token before calling protected routes.
+
+**Flow:**
+1. User enables approval via `POST /api/security/approval/pin/setup` or passkey registration
+2. Before a protected mutation, call `POST /api/security/approval/verify` with PIN or passkey assertion
+3. Receive an `X-Approval-Token` (HMAC-SHA256 signed, 5-minute TTL)
+4. Include the token in the `X-Approval-Token` header on the protected request
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| GET | `/api/security/approval` | Privy | -- | `{ enabled, method, passkeyCount }` |
+| POST | `/api/security/approval/pin/setup` | Privy | `{ pin: string }` | Set up PIN (4-6 digits) |
+| POST | `/api/security/approval/pin/change` | Privy | `{ currentPin, newPin }` | Change PIN |
+| DELETE | `/api/security/approval/pin` | Privy | `{ pin: string }` | Remove PIN (requires verification) |
+| POST | `/api/security/approval/passkey/register` | Privy | -- | WebAuthn registration options |
+| POST | `/api/security/approval/passkey/register/verify` | Privy | WebAuthn attestation response | Complete registration |
+| GET | `/api/security/approval/passkeys` | Privy | -- | List registered passkeys |
+| DELETE | `/api/security/approval/passkeys/:id` | Privy | -- | Remove passkey |
+| POST | `/api/security/approval/verify` | Privy | `{ method: "pin" \| "passkey", pin?: string, assertion?: object }` | Returns `{ token: "..." }` (5-min TTL) |
+| DELETE | `/api/security/approval` | Privy | -- | Disable approval entirely |
+
+**Protected routes (require `X-Approval-Token` header when approval is enabled):**
+- `POST /api/transactions/*`
+- `POST /api/wallets/transfer`
+- `POST /api/pretium/onramp`, `POST /api/pretium/offramp`
+- `POST /api/yield/positions`, `POST /api/yield/positions/:id/withdraw`
+- `POST /api/uniswap/swap`
+- `POST /api/groups/:id/pay`, `POST /api/groups/:id/deposit`
+
+**Security details:**
+- PIN: 4-6 digits, bcrypt-hashed (12 rounds), rate-limited (5 attempts → 15-minute lockout)
+- Passkey: WebAuthn standard with counter-based replay protection
+- Approval tokens: HMAC-SHA256 with 5-minute expiry
+
+### 5.15 Chat / AI Agent
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| POST | `/api/chat` | Privy | See below | SSE stream |
+
+**Request body:**
+```typescript
+{
+  systemPrompt: string;
+  messages: { sender: "user" | "agent"; text: string; tool_calls?: ToolCall[] }[];
+  tools?: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;  // JSON Schema
+  }[];
+}
+```
+
+**SSE events:**
+- `text_delta` — `{ type: "text_delta", text: "..." }` — streaming text chunk from the model
+- `tool_use` — `{ type: "tool_use", id: "...", name: "...", input: {...} }` — tool invocation (tools execute client-side, NOT on the server)
+- `done` — `{ type: "done", message: {...}, tokens_in: N, tokens_out: N }` — stream complete
+
+**LLM configuration (backend env vars):**
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLM_PROVIDER` | `anthropic` | Provider: `anthropic`, `openai`, `openrouter`, `gemini`, etc. |
+| `LLM_MODEL` | Provider default | Model ID |
+| `LLM_API_KEY` | Provider env var | API key (falls back to e.g. `ANTHROPIC_API_KEY`) |
+| `LLM_BASE_URL` | Provider default | Custom base URL for OpenAI-compatible providers |
+| `LLM_MAX_TOKENS` | `4096` | Max tokens per response |
+| `LLM_FORMAT` | Auto | SDK format: `openai`, `anthropic`, or `bedrock` |
+
+Unknown providers are automatically registered as OpenAI-compatible at runtime.
+
+### 5.16 Webhooks
 
 | Method | Path | Auth | Body | Description |
 |--------|------|------|------|-------------|
 | POST | `/webhooks/pretium` | None | `{ transaction_code, status, receipt_number?, failure_reason?, amount?, currency_code? }` | Pretium payment status callback |
 
-### 5.11 Internal/Admin API
+### 5.17 Internal/Admin API
 
 All internal routes require `X-Admin-Key` header. These are not for frontend use in normal flows but are listed for completeness.
 
@@ -467,6 +635,7 @@ All internal routes require `X-Admin-Key` header. These are not for frontend use
 | POST | `/internal/yield/vaults/sync` | Sync vaults from chain |
 | GET | `/internal/yield/positions` | List all positions |
 | POST | `/internal/yield/snapshots/run` | Trigger yield snapshots |
+| POST | `/internal/goal-savings/process` | Process due goal deposits |
 
 ---
 
@@ -820,6 +989,79 @@ await request(`/api/recurring-payments/${schedule.id}/cancel`, { method: "POST" 
 // Get execution history
 const executions = await request(`/api/recurring-payments/${schedule.id}/executions`);
 ```
+
+### 7.10 Transaction Approval Flow
+
+```typescript
+// 1. Check if approval is enabled
+const settings = await request<{
+  enabled: boolean;
+  method: "pin" | "passkey" | null;
+  passkeyCount: number;
+}>("/api/security/approval");
+
+// 2. If enabled, verify before protected mutations
+if (settings.enabled) {
+  let token: string;
+
+  if (settings.method === "pin") {
+    const pin = prompt("Enter your PIN:");
+    const result = await request<{ token: string }>("/api/security/approval/verify", {
+      method: "POST",
+      body: { method: "pin", pin },
+    });
+    token = result.token;
+  } else {
+    // Passkey flow — use @simplewebauthn/browser
+    const { startAuthentication } = await import("@simplewebauthn/browser");
+    // Server generates challenge options internally during verify
+    const assertion = await startAuthentication(/* options from verify flow */);
+    const result = await request<{ token: string }>("/api/security/approval/verify", {
+      method: "POST",
+      body: { method: "passkey", assertion },
+    });
+    token = result.token;
+  }
+
+  // 3. Include token on protected request
+  const headers = { "X-Approval-Token": token };
+  await request("/api/wallets/transfer", {
+    method: "POST",
+    body: { walletType: "user", to: recipientAddress, amount: "1000000" },
+    headers,
+  });
+}
+```
+
+### 7.11 AI Agent Chat (Glove Integration)
+
+The demo app uses Glove React for the AI chat interface. The backend's `/api/chat` route streams SSE events. Tools execute client-side:
+
+```typescript
+import { GloveClient } from "glove-react";
+import type { ToolConfig } from "glove-react";
+
+// Define tools as Glove ToolConfig objects
+const getBalances: ToolConfig = {
+  name: "get_balances",
+  description: "Get wallet balances for the authenticated user",
+  inputSchema: z.object({}),
+  async do() {
+    const balances = await api.get("/api/wallets/balances");
+    return { status: "success", data: balances };
+  },
+};
+
+// Create client — Glove serializes tool schemas to JSON Schema
+// and streams them to the backend's /api/chat SSE endpoint
+const gloveClient = new GloveClient({
+  endpoint: "/api/chat",
+  systemPrompt: "You are a helpful crypto wallet assistant.",
+  tools: [getBalances, /* ...other tools */],
+});
+```
+
+The `GloveProvider` wraps the React app, and `useGlove()` provides the chat state (timeline, streaming text, slots, sendMessage, etc.).
 
 ---
 

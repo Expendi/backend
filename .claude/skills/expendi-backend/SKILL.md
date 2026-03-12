@@ -582,7 +582,31 @@ Group accounts are shared wallets with admin/member roles, powered by on-chain s
 | POST | `/api/groups/:id/transfer-admin` | Privy | `{ newAdmin: string }` | `{ transferred: true }`. Admin only. |
 | GET | `/api/groups/:id/balance` | Privy | Query: `?tokens=0xAddr1,0xAddr2` | `{ eth, tokens: { addr: balance } }` |
 
-### 5.12 Goal Savings
+### 5.12 Split Expenses
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| POST | `/api/split-expenses` | Privy | See below | Created expense (HTTP 201) |
+| GET | `/api/split-expenses` | Privy | -- | Array of user's split expenses (as creator or participant) |
+| GET | `/api/split-expenses/:id` | Privy | -- | Expense with all share details |
+| POST | `/api/split-expenses/:id/pay` | Privy | `{ walletId: string, walletType: "user" \| "server" \| "agent" }` | Pay your share |
+| DELETE | `/api/split-expenses/:id` | Privy | -- | Cancel expense (creator only) |
+
+**POST `/api/split-expenses` body:**
+```typescript
+{
+  title: string;                 // e.g. "Dinner at Luigi's"
+  tokenAddress: string;          // ERC-20 token address
+  tokenSymbol: string;           // e.g. "USDC"
+  tokenDecimals: number;         // e.g. 6
+  totalAmount: string;           // Total amount in smallest unit
+  chainId: number;               // e.g. 8453
+  transactionId?: string;        // Optional linked transaction
+  shares: { userId: string; amount: string }[];
+}
+```
+
+### 5.13 Goal Savings
 
 Goal savings lets users define savings goals with a target token and amount, optionally automating recurring deposits from a server wallet into a yield pool. Each deposit creates a yield position. When accumulated deposits reach the target, the goal is marked completed.
 
@@ -705,7 +729,7 @@ interface GoalSavingsDeposit {
 - **Resume behavior:** Resuming a paused goal resets `consecutiveFailures` to 0 and recalculates `nextDepositAt` from the current time plus the frequency interval.
 - **Manual deposit wallet fallback chain:** `request body walletId` -> `goal.walletId` -> user profile (`serverWalletId` or `agentWalletId` based on `walletType`).
 
-### 5.13 Transaction Approval / Security
+### 5.14 Transaction Approval / Security
 
 Transaction approval is an optional per-user security feature. When enabled, mutating API requests to financial endpoints require an `X-Approval-Token` header. The token is obtained by verifying the user's PIN or passkey via `POST /api/security/approval/verify` and is valid for 5 minutes.
 
@@ -739,7 +763,45 @@ These routes require the approval token header for mutating (POST) requests only
 
 **Backend-automated flows bypass:** Recurring payments, goal savings deposits, and swap automations call services directly and do not require an approval token.
 
-### 5.14 Webhooks
+### 5.15 Chat / AI Agent
+
+| Method | Path | Auth | Body | Response |
+|--------|------|------|------|----------|
+| POST | `/api/chat` | Privy | See below | SSE stream |
+
+The chat endpoint streams LLM responses via Server-Sent Events. Tools are serialized as JSON Schema from the client and converted to Zod schemas server-side. Tools execute client-side — the server only handles the LLM conversation loop.
+
+**Request body:**
+```typescript
+{
+  systemPrompt: string;
+  messages: { sender: "user" | "agent"; text: string; tool_calls?: ToolCall[] }[];
+  tools?: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;  // JSON Schema
+  }[];
+}
+```
+
+**SSE events:**
+- `text_delta` — `{ type: "text_delta", text: "..." }` — streaming text chunk from the model
+- `tool_use` — `{ type: "tool_use", id: "...", name: "...", input: {...} }` — tool invocation (client executes the tool, not the server)
+- `done` — `{ type: "done", message: {...}, tokens_in: N, tokens_out: N }` — stream complete
+
+**LLM configuration (backend env vars):**
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLM_PROVIDER` | `anthropic` | Provider: `anthropic`, `openai`, `openrouter`, `gemini`, etc. |
+| `LLM_MODEL` | Provider default | Model ID (e.g. `claude-sonnet-4-20250514`) |
+| `LLM_API_KEY` | Provider-specific env var | API key (falls back to e.g. `ANTHROPIC_API_KEY`) |
+| `LLM_BASE_URL` | Provider default | Custom base URL for OpenAI-compatible providers |
+| `LLM_MAX_TOKENS` | `4096` | Max tokens per response |
+| `LLM_FORMAT` | Auto | SDK format: `openai`, `anthropic`, or `bedrock` |
+
+Unknown providers are automatically registered as OpenAI-compatible at runtime.
+
+### 5.16 Webhooks
 
 | Method | Path | Auth | Body | Description |
 |--------|------|------|------|-------------|
@@ -755,7 +817,7 @@ These routes require the approval token header for mutating (POST) requests only
    - Sent after stablecoins are released to the user's wallet
    - Marks the onramp transaction as `completed` and stores the on-chain tx hash
 
-### 5.15 Internal/Admin API
+### 5.17 Internal/Admin API
 
 All internal routes require `X-Admin-Key` header. These are not for frontend use in normal flows but are listed for completeness.
 
@@ -1286,6 +1348,73 @@ await fetch(`${BASE_URL}/api/security/approval`, {
   },
   body: JSON.stringify({ pin: "5678" }),
 });
+```
+
+### 7.13 AI Agent Chat (Glove Integration)
+
+The demo app uses Glove React for the AI chat interface. The backend's `/api/chat` route streams SSE events. Tools execute client-side — the server only handles the LLM conversation loop.
+
+```typescript
+import { GloveClient } from "glove-react";
+import type { ToolConfig } from "glove-react";
+import { z } from "zod";
+
+// Define tools as Glove ToolConfig objects
+const getBalances: ToolConfig = {
+  name: "get_balances",
+  description: "Get wallet balances for the authenticated user",
+  inputSchema: z.object({}),
+  async do() {
+    const balances = await api.get("/api/wallets/balances");
+    return { status: "success", data: balances };
+  },
+};
+
+// Create the Glove client — it serializes tool schemas to JSON Schema
+// and streams them to the backend's /api/chat SSE endpoint
+const gloveClient = new GloveClient({
+  endpoint: "/api/chat",
+  systemPrompt: "You are a helpful crypto wallet assistant.",
+  tools: [getBalances, /* ...other tools */],
+});
+
+// Wrap your app with GloveProvider
+// <GloveProvider client={gloveClient}>
+//   <App />
+// </GloveProvider>
+
+// In components, use the useGlove() hook:
+// const { timeline, streamingText, busy, slots, sendMessage, renderSlot } = useGlove();
+```
+
+### 7.14 Split Expenses
+
+```typescript
+// Create a split expense
+const expense = await request("/api/split-expenses", {
+  method: "POST",
+  body: {
+    title: "Dinner at Luigi's",
+    tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    tokenSymbol: "USDC",
+    tokenDecimals: 6,
+    totalAmount: "45000000",  // 45 USDC
+    chainId: 8453,
+    shares: [
+      { userId: "did:privy:user1", amount: "22500000" },
+      { userId: "did:privy:user2", amount: "22500000" },
+    ],
+  },
+});
+
+// Pay your share
+await request(`/api/split-expenses/${expense.id}/pay`, {
+  method: "POST",
+  body: { walletId: userWalletId, walletType: "user" },
+});
+
+// List your split expenses
+const expenses = await request("/api/split-expenses");
 ```
 
 ---

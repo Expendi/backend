@@ -31,6 +31,11 @@
       "sourceType": "github",
       "computedHash": "4e7dc75c4bfff37778ad13ffdc3e12fe527be9d49090ec94e97a02600a22fc78"
     },
+    "glove": {
+      "source": "porkytheblack/glove",
+      "sourceType": "github",
+      "computedHash": "fa66262179fb3336ce649edd544811abab54aceb3070fe73fedd01b38bbdcdbe"
+    },
     "metrics": {
       "source": "railwayapp/railway-skills",
       "sourceType": "github",

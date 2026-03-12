@@ -1,12 +1,82 @@
 import { Hono } from "hono";
 import { Effect } from "effect";
 import { eq } from "drizzle-orm";
+import {
+  createPublicClient,
+  http,
+  encodeFunctionData,
+  maxUint256,
+  type Hash,
+} from "viem";
+import { base } from "viem/chains";
+import { erc20Abi } from "viem";
 import { type AppRuntime, runEffect } from "./effect-handler.js";
 import { UniswapService, BASE_CHAIN_ID } from "../services/uniswap/uniswap-service.js";
 import { TransactionService } from "../services/transaction/transaction-service.js";
 import { DatabaseService } from "../db/client.js";
 import { wallets } from "../db/schema/index.js";
 import type { AuthVariables } from "../middleware/auth.js";
+
+const publicClient = createPublicClient({ chain: base, transport: http() });
+
+// Permit2 canonical address (same on all chains)
+const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78BA3" as const;
+
+// Universal Router V2 on Base
+const UNIVERSAL_ROUTER_BASE = "0x6ff5693b99212da76ad316178a184ab56d299b43" as const;
+
+const ETH_ADDRESS = "0x0000000000000000000000000000000000000000";
+
+// Max values for Permit2 allowance (uint160, uint48)
+const MAX_UINT160 = BigInt("1461501637330902918203684832716283019655932542975");
+const MAX_UINT48 = BigInt("281474976710655");
+
+// Minimal Permit2 ABI for allowance checks and on-chain approve
+const permit2Abi = [
+  {
+    name: "allowance",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "token", type: "address" },
+      { name: "spender", type: "address" },
+    ],
+    outputs: [
+      { name: "amount", type: "uint160" },
+      { name: "expiration", type: "uint48" },
+      { name: "nonce", type: "uint48" },
+    ],
+  },
+  {
+    name: "approve",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "spender", type: "address" },
+      { name: "amount", type: "uint160" },
+      { name: "expiration", type: "uint48" },
+    ],
+    outputs: [],
+  },
+] as const;
+
+const waitForConfirmation = (txHash: Hash) =>
+  Effect.tryPromise({
+    try: async () => {
+      const receipt = await publicClient.waitForTransactionReceipt({
+        hash: txHash,
+        confirmations: 1,
+        timeout: 60_000,
+      });
+      if (receipt.status === "reverted") {
+        throw new Error(`Transaction reverted: ${txHash}`);
+      }
+      return receipt;
+    },
+    catch: (error) => new Error(`Failed waiting for tx confirmation: ${error}`),
+  });
 
 // ── Helper: resolve wallet address from walletId ────────────────────
 
@@ -97,7 +167,7 @@ export function createUniswapRoutes(runtime: AppRuntime) {
     )
   );
 
-  /** Execute a full swap: check approval → approve if needed → quote → swap */
+  /** Execute a full swap: legacy approve → quote → swap */
   app.post("/swap", (c) =>
     runEffect(
       runtime,
@@ -120,31 +190,92 @@ export function createUniswapRoutes(runtime: AppRuntime) {
         const uniswap = yield* UniswapService;
         const txService = yield* TransactionService;
 
-        // 1. Check if token approval is needed
-        const approvalResult = yield* uniswap.checkApproval({
-          walletAddress: wallet.address,
-          token: body.tokenIn,
-          amount: body.amount,
-          chainId: BASE_CHAIN_ID,
-        });
-
         let approvalTxId: string | undefined;
 
-        if (approvalResult.approval) {
-          // 2. Submit the approval transaction
-          const approvalTx = yield* txService.submitRawTransaction({
-            walletId: body.walletId,
-            walletType: wallet.type,
-            chainId: BASE_CHAIN_ID,
-            to: approvalResult.approval.to as `0x${string}`,
-            data: approvalResult.approval.data as `0x${string}`,
-            value: BigInt(approvalResult.approval.value || "0"),
-            userId,
+        // 1. Permit2-based approval for smart accounts (no EIP-712 signatures needed).
+        //    Universal Router pulls tokens via Permit2's AllowanceTransfer, so we need:
+        //    a) ERC20 approve token → Permit2 contract
+        //    b) Permit2.approve(token, universalRouter, amount, expiration)
+        //    ETH (zero address) doesn't need approval.
+        const tokenIn = body.tokenIn.toLowerCase();
+        if (tokenIn !== ETH_ADDRESS) {
+          const tokenAddress = body.tokenIn as `0x${string}`;
+          const requiredAmount = BigInt(body.amount);
+
+          // Step 1a: Check ERC20 allowance to Permit2
+          const erc20Allowance = yield* Effect.tryPromise({
+            try: () =>
+              publicClient.readContract({
+                address: tokenAddress,
+                abi: erc20Abi,
+                functionName: "allowance",
+                args: [wallet.address, PERMIT2_ADDRESS],
+              }),
+            catch: (error) =>
+              new Error(`Failed to check ERC20 allowance: ${error}`),
           });
-          approvalTxId = approvalTx.id;
+
+          if (erc20Allowance < requiredAmount) {
+            // Approve token → Permit2 (max allowance, one-time)
+            const approveData = encodeFunctionData({
+              abi: erc20Abi,
+              functionName: "approve",
+              args: [PERMIT2_ADDRESS, maxUint256],
+            });
+
+            const erc20ApproveTx = yield* txService.submitRawTransaction({
+              walletId: body.walletId,
+              walletType: wallet.type,
+              chainId: BASE_CHAIN_ID,
+              to: tokenAddress,
+              data: approveData,
+              value: 0n,
+              userId,
+              sponsor: true,
+            });
+
+            yield* waitForConfirmation(erc20ApproveTx.txHash as Hash);
+          }
+
+          // Step 1b: Check Permit2 allowance for Universal Router
+          const [permit2Amount, permit2Expiration] = yield* Effect.tryPromise({
+            try: () =>
+              publicClient.readContract({
+                address: PERMIT2_ADDRESS,
+                abi: permit2Abi,
+                functionName: "allowance",
+                args: [wallet.address, tokenAddress, UNIVERSAL_ROUTER_BASE],
+              }),
+            catch: (error) =>
+              new Error(`Failed to check Permit2 allowance: ${error}`),
+          });
+
+          const now = BigInt(Math.floor(Date.now() / 1000));
+          if (permit2Amount < requiredAmount || permit2Expiration <= now) {
+            // Set Permit2 allowance for Universal Router (on-chain, no signature)
+            const permit2ApproveData = encodeFunctionData({
+              abi: permit2Abi,
+              functionName: "approve",
+              args: [tokenAddress, UNIVERSAL_ROUTER_BASE, MAX_UINT160, Number(MAX_UINT48)],
+            });
+
+            const permit2ApproveTx = yield* txService.submitRawTransaction({
+              walletId: body.walletId,
+              walletType: wallet.type,
+              chainId: BASE_CHAIN_ID,
+              to: PERMIT2_ADDRESS,
+              data: permit2ApproveData,
+              value: 0n,
+              userId,
+              sponsor: true,
+            });
+            approvalTxId = permit2ApproveTx.id;
+
+            yield* waitForConfirmation(permit2ApproveTx.txHash as Hash);
+          }
         }
 
-        // 3. Get a fresh quote
+        // 2. Get a fresh quote
         const quote = yield* uniswap.getQuote({
           swapper: wallet.address,
           tokenIn: body.tokenIn,
@@ -155,10 +286,10 @@ export function createUniswapRoutes(runtime: AppRuntime) {
           chainId: BASE_CHAIN_ID,
         });
 
-        // 4. Get the swap transaction
+        // 3. Get the swap transaction
         const swapTx = yield* uniswap.getSwapTransaction(quote);
 
-        // 5. Submit the swap transaction
+        // 4. Submit the swap transaction
         const swapResult = yield* txService.submitRawTransaction({
           walletId: body.walletId,
           walletType: wallet.type,
@@ -167,6 +298,7 @@ export function createUniswapRoutes(runtime: AppRuntime) {
           data: swapTx.data as `0x${string}`,
           value: BigInt(swapTx.value || "0"),
           userId,
+          sponsor: true,
         });
 
         return {
