@@ -1084,7 +1084,7 @@
 							"response": []
 						},
 						{
-							"name": "Create Recurring Payment (ERC-20 Transfer)",
+							"name": "Create Recurring Offramp (Pretium — Mobile Money)",
 							"request": {
 								"method": "POST",
 								"header": [
@@ -1099,7 +1099,7 @@
 								],
 								"body": {
 									"mode": "raw",
-									"raw": "{\n  \"walletType\": \"server\",\n  \"recipientAddress\": \"0xdAC17F958D2ee523a2206206994597C13D831ec7\",\n  \"paymentType\": \"erc20_transfer\",\n  \"amount\": \"1000000\",\n  \"tokenContractName\": \"usdc\",\n  \"chainId\": 1,\n  \"frequency\": \"1d\",\n  \"startDate\": \"2026-03-11T10:00:00.000Z\",\n  \"executeImmediately\": true,\n  \"maxRetries\": 5\n}"
+									"raw": "{\n  \"type\": \"offramp\",\n  \"wallet\": \"server\",\n  \"amount\": \"1000\",\n  \"currency\": \"KES\",\n  \"frequency\": \"7d\",\n  \"recipient\": {\n    \"phoneNumber\": \"0712345678\",\n    \"mobileNetwork\": \"safaricom\",\n    \"country\": \"KE\"\n  },\n  \"executeImmediately\": true\n}"
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/recurring-payments",
@@ -1111,12 +1111,12 @@
 										"recurring-payments"
 									]
 								},
-								"description": "Creates a new recurring ERC-20 token transfer schedule. The walletType is resolved from the user's onboarding profile. The chainId is optional and defaults to the server's DEFAULT_CHAIN_ID configuration."
+								"description": "Creates a recurring Pretium offramp to mobile money. The `amount` is in fiat (KES) by default — USDC conversion happens at execution time. Set `amountInUsdc: true` if amount is denominated in USDC instead. The `recipient` object groups all Pretium destination fields. If recipient fields are omitted, they are auto-filled from the user's saved preferences."
 							},
 							"response": []
 						},
 						{
-							"name": "Create Recurring Payment (Raw Transfer)",
+							"name": "Create Recurring Offramp (Pretium — Bank Transfer)",
 							"request": {
 								"method": "POST",
 								"header": [
@@ -1131,7 +1131,7 @@
 								],
 								"body": {
 									"mode": "raw",
-									"raw": "{\n  \"walletType\": \"user\",\n  \"recipientAddress\": \"0x742d35Cc6634C0532925a3b844Bc9e7595f2bD68\",\n  \"paymentType\": \"raw_transfer\",\n  \"amount\": \"1000000000000000000\",\n  \"frequency\": \"7d\",\n  \"startDate\": \"2025-02-01T00:00:00.000Z\",\n  \"endDate\": \"2025-12-31T23:59:59.000Z\"\n}"
+									"raw": "{\n  \"type\": \"offramp\",\n  \"wallet\": \"server\",\n  \"amount\": \"50000\",\n  \"currency\": \"NGN\",\n  \"frequency\": \"30d\",\n  \"recipient\": {\n    \"country\": \"NG\",\n    \"paymentMethod\": \"BANK_TRANSFER\",\n    \"accountName\": \"John Doe\",\n    \"accountNumber\": \"0012345678\",\n    \"bankCode\": \"000019\",\n    \"bankName\": \"Enterprise Bank\"\n  },\n  \"executeImmediately\": true\n}"
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/recurring-payments",
@@ -1143,12 +1143,12 @@
 										"recurring-payments"
 									]
 								},
-								"description": "Creates a new recurring raw ETH transfer schedule with start and end dates. When chainId is omitted, the server's DEFAULT_CHAIN_ID is used."
+								"description": "Creates a recurring Pretium offramp to a Nigerian bank account. The recipient object includes bank details. Amount is in NGN."
 							},
 							"response": []
 						},
 						{
-							"name": "Create Recurring Payment (Offramp)",
+							"name": "Create Recurring Transfer (ERC-20)",
 							"request": {
 								"method": "POST",
 								"header": [
@@ -1163,7 +1163,7 @@
 								],
 								"body": {
 									"mode": "raw",
-									"raw": "{\n  \"walletType\": \"server\",\n  \"recipientAddress\": \"0x742d35Cc6634C0532925a3b844Bc9e7595f2bD68\",\n  \"paymentType\": \"offramp\",\n  \"amount\": \"1000000\",\n  \"chainId\": 1,\n  \"frequency\": \"30d\",\n  \"offramp\": {\n    \"currency\": \"USD\",\n    \"fiatAmount\": \"100.00\",\n    \"provider\": \"moonpay\",\n    \"destinationId\": \"bank-acct-12345\"\n  }\n}"
+									"raw": "{\n  \"type\": \"transfer\",\n  \"wallet\": \"server\",\n  \"to\": \"0xdAC17F958D2ee523a2206206994597C13D831ec7\",\n  \"amount\": \"1000000\",\n  \"token\": \"usdc\",\n  \"frequency\": \"1d\",\n  \"startDate\": \"2026-03-11T10:00:00.000Z\",\n  \"executeImmediately\": true,\n  \"maxRetries\": 5\n}"
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/recurring-payments",
@@ -1175,7 +1175,71 @@
 										"recurring-payments"
 									]
 								},
-								"description": "Creates a new recurring offramp (crypto-to-fiat) payment schedule. The offramp object specifies the fiat currency, amount, provider, and destination payment method. Available providers: moonpay, bridge, transak."
+								"description": "Creates a recurring ERC-20 token transfer. `token` defaults to 'usdc'. `wallet` defaults to 'server'. Chain defaults to DEFAULT_CHAIN_ID."
+							},
+							"response": []
+						},
+						{
+							"name": "Create Recurring Transfer (Raw ETH)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"type\": \"raw_transfer\",\n  \"wallet\": \"user\",\n  \"to\": \"0x742d35Cc6634C0532925a3b844Bc9e7595f2bD68\",\n  \"amount\": \"1000000000000000000\",\n  \"frequency\": \"7d\",\n  \"startDate\": \"2026-02-01T00:00:00.000Z\",\n  \"endDate\": \"2026-12-31T23:59:59.000Z\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/recurring-payments",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"recurring-payments"
+									]
+								},
+								"description": "Creates a recurring raw ETH/native transfer. Amount is in wei."
+							},
+							"response": []
+						},
+						{
+							"name": "Create Recurring Payment (Legacy Format — Offramp)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"walletType\": \"server\",\n  \"recipientAddress\": \"0x8005ee53E57aB11E11eAA4EFe07Ee3835Dc02F98\",\n  \"paymentType\": \"offramp\",\n  \"amount\": \"0\",\n  \"tokenContractName\": \"usdc\",\n  \"chainId\": 8453,\n  \"frequency\": \"7d\",\n  \"country\": \"KE\",\n  \"phoneNumber\": \"0712345678\",\n  \"mobileNetwork\": \"safaricom\",\n  \"paymentMethod\": \"MOBILE\",\n  \"fiatAmount\": \"1000\",\n  \"currency\": \"KES\",\n  \"executeImmediately\": true\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/api/recurring-payments",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"recurring-payments"
+									]
+								},
+								"description": "LEGACY FORMAT — still supported for backward compatibility. Uses paymentType/walletType/recipientAddress fields. Prefer the new format with `type` field instead."
 							},
 							"response": []
 						},
@@ -1291,7 +1355,7 @@
 							"response": []
 						}
 					],
-					"description": "Public recurring payment endpoints. Requires Privy auth. Users can create, manage, and view execution history for their own recurring payment schedules. Supports ERC-20 transfers, raw transfers, contract calls, and offramp (crypto-to-fiat) payments."
+					"description": "Public recurring payment endpoints. Requires Privy auth. Users can create, manage, and view execution history for their own recurring payment schedules.\n\nThe create endpoint (POST /) accepts a clean, use-case-driven request body with a `type` discriminator:\n- `offramp` — Pretium crypto-to-fiat (primary use case). Amount is in fiat by default.\n- `transfer` — ERC-20 token transfer. Token defaults to USDC.\n- `raw_transfer` — Raw ETH/native transfer.\n- `contract_call` — Arbitrary contract call.\n\nThe legacy format (using `paymentType`, `walletType`, `recipientAddress`) is still supported for backward compatibility."
 				},
 				{
 					"name": "Yield",

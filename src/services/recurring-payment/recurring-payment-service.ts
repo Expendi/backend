@@ -273,8 +273,47 @@ export const RecurringPaymentServiceLive: Layer.Layer<
                 );
               }
 
+              // Determine if amount is denominated in fiat or USDC
+              const isFiatDenominated = !!(meta.amountInFiat && schedule.offrampFiatAmount);
+
+              let usdcAmount: number;
+              let fiatAmount: number;
+
+              if (isFiatDenominated) {
+                // Amount is in local currency — convert fiat → USDC
+                fiatAmount = parseFloat(schedule.offrampFiatAmount!);
+                const conversion = yield* exchangeRateService
+                  .convertFiatToUsdc(fiatAmount, countryConfig.currency)
+                  .pipe(
+                    Effect.catchAll((err) =>
+                      Effect.fail(
+                        new RecurringPaymentError({
+                          message: `Exchange rate conversion failed: ${err}`,
+                          cause: err,
+                        })
+                      )
+                    )
+                  );
+                usdcAmount = conversion.amount;
+              } else {
+                // Amount is in USDC — convert USDC → fiat
+                usdcAmount = parseFloat(schedule.amount);
+                const conversion = yield* exchangeRateService
+                  .convertUsdcToFiat(usdcAmount, countryConfig.currency)
+                  .pipe(
+                    Effect.catchAll((err) =>
+                      Effect.fail(
+                        new RecurringPaymentError({
+                          message: `Exchange rate conversion failed: ${err}`,
+                          cause: err,
+                        })
+                      )
+                    )
+                  );
+                fiatAmount = conversion.amount;
+              }
+
               // 1. Send USDC to Pretium settlement address
-              const usdcAmount = parseFloat(schedule.amount);
               const transferTx = yield* txService
                 .submitContractTransaction({
                   walletId: schedule.walletId,
@@ -301,20 +340,6 @@ export const RecurringPaymentServiceLive: Layer.Layer<
                   )
                 );
 
-              // 2. Convert USDC to fiat amount
-              const conversion = yield* exchangeRateService
-                .convertUsdcToFiat(usdcAmount, countryConfig.currency)
-                .pipe(
-                  Effect.catchAll((err) =>
-                    Effect.fail(
-                      new RecurringPaymentError({
-                        message: `Exchange rate conversion failed: ${err}`,
-                        cause: err,
-                      })
-                    )
-                  )
-                );
-
               // 3. Call Pretium disburse with the on-chain tx hash
               const callbackUrl =
                 (meta.callbackUrl as string) ||
@@ -323,7 +348,7 @@ export const RecurringPaymentServiceLive: Layer.Layer<
               const disburseResult = yield* pretium
                 .disburse({
                   country: country as SupportedCountry,
-                  amount: conversion.amount,
+                  amount: fiatAmount,
                   phoneNumber,
                   mobileNetwork,
                   transactionHash: transferTx.txHash!,
