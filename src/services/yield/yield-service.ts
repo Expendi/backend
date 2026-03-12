@@ -18,6 +18,9 @@ import {
 import {
   ContractExecutor,
 } from "../contract/contract-executor.js";
+import {
+  ContractRegistry,
+} from "../contract/contract-registry.js";
 import { ConfigService } from "../../config.js";
 
 // ── Error type ───────────────────────────────────────────────────────
@@ -142,13 +145,14 @@ export class YieldService extends Context.Tag("YieldService")<
 export const YieldServiceLive: Layer.Layer<
   YieldService,
   never,
-  DatabaseService | TransactionService | ContractExecutor | ConfigService
+  DatabaseService | TransactionService | ContractExecutor | ContractRegistry | ConfigService
 > = Layer.effect(
   YieldService,
   Effect.gen(function* () {
     const { db } = yield* DatabaseService;
     const txService = yield* TransactionService;
     const executor = yield* ContractExecutor;
+    const registry = yield* ContractRegistry;
     const config = yield* ConfigService;
 
     const CONTRACT_NAME = "yield-timelock";
@@ -356,6 +360,40 @@ export const YieldServiceLive: Layer.Layer<
               })
             );
           }
+
+          // Approve the YieldTimeLock contract to spend the underlying token
+          const tokenContractName = (vault.underlyingSymbol ?? "usdc").toLowerCase();
+          const timelockConnector = yield* registry
+            .get(CONTRACT_NAME, chainId)
+            .pipe(
+              Effect.mapError(
+                (e) =>
+                  new YieldError({
+                    message: `Failed to resolve timelock contract address: ${e}`,
+                    cause: e,
+                  })
+              )
+            );
+
+          yield* txService
+            .submitContractTransaction({
+              walletId: params.walletId,
+              walletType: params.walletType,
+              contractName: tokenContractName,
+              chainId,
+              method: "approve",
+              args: [timelockConnector.address, BigInt(params.amount)],
+              userId: params.userId,
+            })
+            .pipe(
+              Effect.mapError(
+                (e) =>
+                  new YieldError({
+                    message: `Failed to approve token spend: ${e}`,
+                    cause: e,
+                  })
+              )
+            );
 
           // Submit the lockWithYield transaction via the contract
           const tx = yield* txService
