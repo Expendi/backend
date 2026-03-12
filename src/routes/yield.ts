@@ -5,6 +5,100 @@ import { YieldService } from "../services/yield/yield-service.js";
 import { OnboardingService } from "../services/onboarding/onboarding-service.js";
 import { ConfigService } from "../config.js";
 import type { AuthVariables } from "../middleware/auth.js";
+import type { YieldVault } from "../db/schema/index.js";
+
+// ── Morpho GraphQL enrichment ─────────────────────────────────────────
+
+const MORPHO_GRAPHQL = "https://api.morpho.org/graphql";
+
+interface MorphoVaultData {
+  avgApy: number;
+  netApy: number;
+  performanceFee: number;
+  totalAssetsUsd: number;
+  asset: { symbol: string; priceUsd: number } | null;
+  metadata: { image: string | null; description: string | null } | null;
+}
+
+const morphoQuery = `
+  query VaultData($address: String!, $chainId: Int!) {
+    vaultV2ByAddress(address: $address, chainId: $chainId) {
+      avgApy
+      netApy
+      performanceFee
+      totalAssetsUsd
+      asset { symbol priceUsd }
+      metadata { image description }
+    }
+  }
+`;
+
+async function fetchMorphoVault(
+  address: string,
+  chainId: number
+): Promise<MorphoVaultData | null> {
+  try {
+    const res = await fetch(MORPHO_GRAPHQL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: morphoQuery,
+        variables: { address, chainId },
+      }),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as {
+      data?: { vaultV2ByAddress?: MorphoVaultData };
+    };
+    return json.data?.vaultV2ByAddress ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function formatApy(apy: number): string {
+  return `${(apy * 100).toFixed(2)}%`;
+}
+
+type EnrichedVault = YieldVault & {
+  apy: string | null;
+  netApy: string | null;
+  performanceFee: string | null;
+  totalAssetsUsd: string | null;
+  assetPriceUsd: number | null;
+  vaultImage: string | null;
+  vaultDescription: string | null;
+};
+
+async function enrichVault(vault: YieldVault): Promise<EnrichedVault> {
+  const morpho = await fetchMorphoVault(vault.vaultAddress, vault.chainId);
+  if (!morpho) {
+    return {
+      ...vault,
+      apy: null,
+      netApy: null,
+      performanceFee: null,
+      totalAssetsUsd: null,
+      assetPriceUsd: null,
+      vaultImage: null,
+      vaultDescription: null,
+    };
+  }
+  return {
+    ...vault,
+    apy: formatApy(morpho.avgApy),
+    netApy: formatApy(morpho.netApy),
+    performanceFee: `${(morpho.performanceFee * 100).toFixed(2)}%`,
+    totalAssetsUsd: morpho.totalAssetsUsd.toFixed(2),
+    assetPriceUsd: morpho.asset?.priceUsd ?? null,
+    vaultImage: morpho.metadata?.image ?? null,
+    vaultDescription: morpho.metadata?.description ?? vault.description,
+  };
+}
+
+async function enrichVaults(vaults: ReadonlyArray<YieldVault>): Promise<EnrichedVault[]> {
+  return Promise.all(vaults.map(enrichVault));
+}
 
 /**
  * Public yield routes -- all behind Privy auth middleware.
@@ -15,7 +109,7 @@ export function createYieldRoutes(runtime: AppRuntime) {
 
   // ── Vault routes ──────────────────────────────────────────────────
 
-  // List active vaults
+  // List active vaults (enriched with Morpho APY data)
   app.get("/vaults", (c) =>
     runEffect(
       runtime,
@@ -23,13 +117,17 @@ export function createYieldRoutes(runtime: AppRuntime) {
         const chainIdParam = c.req.query("chainId");
         const chainId = chainIdParam ? Number(chainIdParam) : undefined;
         const yieldService = yield* YieldService;
-        return yield* yieldService.listVaults(chainId);
+        const vaults = yield* yieldService.listVaults(chainId);
+        return yield* Effect.tryPromise({
+          try: () => enrichVaults(vaults),
+          catch: () => new Error("Failed to enrich vault data"),
+        });
       }),
       c
     )
   );
 
-  // Get a single vault
+  // Get a single vault (enriched with Morpho APY data)
   app.get("/vaults/:id", (c) =>
     runEffect(
       runtime,
@@ -40,7 +138,10 @@ export function createYieldRoutes(runtime: AppRuntime) {
         if (!vault) {
           return yield* Effect.fail(new Error("Vault not found"));
         }
-        return vault;
+        return yield* Effect.tryPromise({
+          try: () => enrichVault(vault),
+          catch: () => new Error("Failed to enrich vault data"),
+        });
       }),
       c
     )

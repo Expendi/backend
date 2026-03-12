@@ -178,8 +178,8 @@ export const UniswapServiceLive: Layer.Layer<
           swapper: params.swapper,
           tokenIn: params.tokenIn,
           tokenOut: params.tokenOut,
-          tokenInChainId: chainId, // Must be integer, not string
-          tokenOutChainId: chainId, // Must be integer, not string
+          tokenInChainId: String(chainId),
+          tokenOutChainId: String(chainId),
           amount: params.amount,
           type: params.type ?? "EXACT_INPUT",
           slippageTolerance: params.slippageTolerance ?? 0.5,
@@ -189,12 +189,14 @@ export const UniswapServiceLive: Layer.Layer<
 
       getSwapTransaction: (quoteResponse: QuoteResponse) =>
         Effect.gen(function* () {
-          // Strip null fields — API rejects permitData: null
+          // Strip permitData and signature fields — backend uses legacy approvals
+          // (direct to router), not Permit2. The API requires both permitData and
+          // signature to be present or both absent.
           const cleaned: Record<string, unknown> = {};
           for (const [key, value] of Object.entries(quoteResponse)) {
-            if (value !== null && value !== undefined) {
-              cleaned[key] = value;
-            }
+            if (value === null || value === undefined) continue;
+            if (key === "permitData" || key === "signature") continue;
+            cleaned[key] = value;
           }
 
           const result = yield* apiCall<SwapResponse>("/swap", cleaned);

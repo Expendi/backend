@@ -1,6 +1,14 @@
-import { pgTable, text, timestamp, uuid, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uuid, boolean, jsonb } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { wallets } from "./wallets.js";
+
+export interface UserPreferences {
+  country?: string;
+  currency?: string;
+  mobileNetwork?: string;
+  phoneNumber?: string;
+  defaultWallet?: "user" | "server" | "agent";
+}
 
 export const userProfiles = pgTable("user_profiles", {
   id: text("id")
@@ -24,6 +32,7 @@ export const userProfiles = pgTable("user_profiles", {
     "pin" | "passkey"
   >(),
   transactionPinHash: text("transaction_pin_hash"),
+  preferences: jsonb("preferences").$type<UserPreferences>(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),

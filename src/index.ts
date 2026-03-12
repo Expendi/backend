@@ -25,6 +25,7 @@ import { createSplitExpenseRoutes } from "./routes/split-expenses.js";
 import { createGoalSavingsRoutes } from "./routes/goal-savings.js";
 import { createTransactionApprovalRoutes } from "./routes/transaction-approval.js";
 import { transactionApprovalMiddleware } from "./middleware/transaction-approval.js";
+import { createChatRoutes } from "./routes/chat.js";
 
 // Resolve the Privy client and admin API key from the Effect runtime so
 // we can hand them to the Hono middleware layer without requiring Effect
@@ -60,6 +61,7 @@ app.get("/", (c) =>
       splitExpenses: "/api/split-expenses",
       goalSavings: "/api/goal-savings",
       security: "/api/security/approval",
+      chat: "/api/chat",
       webhooks: "/webhooks/pretium",
     },
   })
@@ -98,6 +100,7 @@ app.route("/api/swap-automations", createSwapAutomationRoutes(runtime));
 app.route("/api/groups", createGroupAccountRoutes(runtime));
 app.route("/api/split-expenses", createSplitExpenseRoutes(runtime));
 app.route("/api/goal-savings", createGoalSavingsRoutes(runtime));
+app.route("/api/chat", createChatRoutes());
 
 // ── Webhook routes (no auth -- called by payment providers) ────────
 

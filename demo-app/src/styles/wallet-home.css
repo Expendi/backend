@@ -1,0 +1,629 @@
+/* ─── Wallet Home Page ────────────────────────────────────────────── */
+
+.wallet-home {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 0 16px 100px;
+  width: 100%;
+}
+
+/* ─── Hero Balance ────────────────────────────────────────────────── */
+
+.wh-hero {
+  position: relative;
+  padding: 32px 0 24px;
+  text-align: center;
+}
+
+.wh-hero-glow {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
+  opacity: 0.06;
+  pointer-events: none;
+}
+
+.wh-hero-content {
+  position: relative;
+}
+
+.wh-total-balance {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+}
+
+.wh-total-amount {
+  font-family: var(--font-display);
+  font-size: 40px;
+  font-weight: 900;
+  letter-spacing: -1px;
+  line-height: 1;
+}
+
+.wh-total-symbol {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 1px;
+}
+
+.wh-secondary-balance {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+
+.wh-hero-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ─── Balance Label ──────────────────────────────────────────────── */
+
+.wh-balance-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+/* ─── Wallet Carousel ────────────────────────────────────────────── */
+
+.wh-carousel-wrapper {
+  margin-bottom: 20px;
+}
+
+.wh-carousel {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 4px 2px;
+}
+
+.wh-carousel::-webkit-scrollbar {
+  display: none;
+}
+
+.wh-carousel-card {
+  flex: 0 0 calc(75% - 6px);
+  min-width: 200px;
+  scroll-snap-align: center;
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  cursor: pointer;
+  transition: all var(--transition);
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wh-carousel-card:hover {
+  border-color: var(--text-muted);
+}
+
+.wh-carousel-card.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg-card));
+}
+
+.wh-carousel-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.wh-carousel-card-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+}
+
+.wh-carousel-card.active .wh-carousel-card-label {
+  color: var(--accent);
+}
+
+.wh-carousel-card-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.wh-carousel-card-balances {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+/* Dots */
+.wh-carousel-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.wh-carousel-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.wh-carousel-dot.active {
+  background: var(--accent);
+  width: 18px;
+  border-radius: 3px;
+}
+
+/* ─── Quick Actions ───────────────────────────────────────────────── */
+
+.wh-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 0 24px;
+}
+
+.wh-action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--transition);
+  font-family: var(--font-body);
+  flex: 1;
+  max-width: 100px;
+}
+
+.wh-action-btn:hover {
+  border-color: var(--accent);
+  background: var(--bg-elevated);
+}
+
+.wh-action-btn.active {
+  border-color: var(--accent);
+  background: var(--bg-elevated);
+}
+
+.wh-action-icon {
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wh-action-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+/* ─── Sections ────────────────────────────────────────────────────── */
+
+.wh-section {
+  margin-bottom: 24px;
+}
+
+.wh-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.wh-section-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-muted);
+}
+
+.wh-section-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+}
+
+/* ─── Wallet Cards ────────────────────────────────────────────────── */
+
+.wh-wallet-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wh-wallet-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  transition: border-color var(--transition);
+}
+
+.wh-wallet-card:hover {
+  border-color: var(--text-muted);
+}
+
+.wh-wallet-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.wh-wallet-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+}
+
+.wh-wallet-addr {
+  background: none;
+  border: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background var(--transition);
+}
+
+.wh-wallet-addr:hover {
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+}
+
+.wh-wallet-balances {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wh-token-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.wh-token-symbol {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.5px;
+}
+
+.wh-token-amount {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* ─── Insight Card ────────────────────────────────────────────────── */
+
+.wh-insight-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  text-align: center;
+}
+
+.wh-insight-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.wh-insight-btn {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 20px;
+  background: var(--accent);
+  color: var(--accent-text);
+  border: none;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: opacity var(--transition);
+  letter-spacing: 0.5px;
+}
+
+.wh-insight-btn:hover {
+  opacity: 0.9;
+}
+
+/* ─── Skeletons ───────────────────────────────────────────────────── */
+
+.wh-skeleton {
+  height: 14px;
+  background: var(--bg-elevated);
+  border-radius: 6px;
+  animation: wh-pulse 1.5s ease-in-out infinite;
+}
+
+.wh-skeleton-lg {
+  width: 160px;
+  height: 36px;
+}
+
+.wh-skeleton-sm {
+  width: 100px;
+  height: 14px;
+}
+
+.wh-skeleton-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@keyframes wh-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+/* ─── Activity Page ───────────────────────────────────────────────── */
+
+.activity-filters {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.activity-filter-btn {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition);
+}
+
+.activity-filter-btn.active {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+.activity-filter-btn:hover:not(.active) {
+  border-color: var(--text-muted);
+}
+
+.activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.activity-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color var(--transition);
+  text-align: left;
+  width: 100%;
+  font-family: inherit;
+  color: inherit;
+}
+
+.activity-item:hover {
+  border-color: var(--text-muted);
+}
+
+.activity-item-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.activity-method {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.activity-time {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.activity-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.activity-badge.confirmed { background: rgba(0, 200, 83, 0.12); color: #00c853; }
+.activity-badge.pending { background: rgba(255, 184, 108, 0.12); color: var(--exo-peach); }
+.activity-badge.submitted { background: rgba(0, 200, 83, 0.12); color: #00c853; }
+.activity-badge.failed { background: rgba(255, 107, 107, 0.12); color: var(--exo-coral); }
+
+/* ─── Activity Detail Modal ───────────────────────────────────────── */
+
+.activity-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.activity-modal {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  max-width: 420px;
+  width: 100%;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.activity-detail {
+  padding: 20px;
+}
+
+.activity-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.activity-detail-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+}
+
+.activity-detail-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.activity-detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.activity-detail-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.activity-detail-value {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-align: right;
+  word-break: break-all;
+}
+
+.activity-detail-link {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.activity-detail-link:hover {
+  text-decoration: underline;
+}
+
+/* ─── Settings Page ───────────────────────────────────────────────── */
+
+.settings-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 14px;
+  transition: border-color var(--transition);
+  margin-bottom: 4px;
+}
+
+.settings-item:hover {
+  border-color: var(--text-muted);
+}
+
+.settings-danger {
+  color: var(--exo-coral);
+}
+
+.settings-danger:hover {
+  border-color: var(--exo-coral);
+}
+
+.settings-item-icon {
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+}
+
+.settings-item-label {
+  font-weight: 500;
+}

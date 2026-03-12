@@ -1,83 +1,129 @@
 import { usePrivy } from "@privy-io/react-auth";
-import { useEffect, useState } from "react";
+import { GloveProvider } from "glove-react";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import { ApprovalProvider } from "./context/ApprovalContext";
+import { DashboardProvider } from "./context/DashboardContext";
+import { ChatActionsProvider } from "./context/ChatActionsContext";
+import { PreferencesProvider } from "./context/PreferencesContext";
+import { AppShell } from "./components/AppShell";
+import { Spinner } from "./components/Spinner";
+import { gloveClient } from "./lib/glove-client";
 
-export default function App() {
-  const { login, logout, authenticated, user, getAccessToken } = usePrivy();
-  const [token, setToken] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+import { OnboardingPage } from "./pages/OnboardingPage";
+import { WalletHomePage } from "./pages/WalletHomePage";
+import { AgentPage } from "./pages/AgentPage";
+import { ActivityPage } from "./pages/ActivityPage";
+import { ReceivePage } from "./pages/ReceivePage";
+import { SettingsPage } from "./pages/SettingsPage";
+import { BuyPage } from "./pages/BuyPage";
+import { SwapPage } from "./pages/SwapPage";
+import { EarnPage } from "./pages/EarnPage";
+import { RecurringPaymentsPage } from "./pages/RecurringPaymentsPage";
+import { GoalsPage } from "./pages/GoalsPage";
+import { CategoriesPage } from "./pages/CategoriesPage";
+import { TransferPage } from "./pages/TransferPage";
 
-  useEffect(() => {
-    if (!authenticated) {
-      setToken(null);
-      return;
-    }
-    getAccessToken().then(setToken);
-  }, [authenticated, getAccessToken]);
+import "./styles/exo-tokens.css";
+import "./styles/components.css";
+import "./styles/layout.css";
+import "./styles/pages.css";
 
-  const copy = async (text: string) => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
+function LoginScreen() {
+  const { login, ready } = usePrivy();
+  const { theme, toggleTheme } = useAuth();
+
+  if (!ready) {
+    return (
+      <div className="login-screen">
+        <Spinner />
+      </div>
+    );
+  }
 
   return (
-    <div style={{ fontFamily: "system-ui, sans-serif", maxWidth: 640, margin: "80px auto", padding: "0 20px" }}>
-      <h1>Expendi Auth Demo</h1>
-
-      {!authenticated ? (
-        <button onClick={login} style={btnStyle}>
-          Login with Privy
+    <div className="login-screen">
+      <div className="login-card">
+        <button
+          className="theme-toggle-btn"
+          onClick={toggleTheme}
+          style={{ position: "absolute", top: 24, right: 24 }}
+          title="Toggle theme"
+        >
+          {theme === "dark" ? "\u2600" : "\u263E"}
         </button>
-      ) : (
-        <div>
-          <p>
-            <strong>Privy DID:</strong>{" "}
-            <code style={codeStyle}>{user?.id}</code>
-          </p>
-
-          {token && (
-            <div>
-              <p><strong>Access Token:</strong></p>
-              <pre style={{ ...codeStyle, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
-                {token}
-              </pre>
-              <button onClick={() => copy(token)} style={btnStyle}>
-                {copied ? "Copied!" : "Copy Token"}
-              </button>
-            </div>
-          )}
-
-          <div style={{ marginTop: 24 }}>
-            <p><strong>Example curl:</strong></p>
-            <pre style={{ ...codeStyle, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
-{`curl http://localhost:3000/api/wallets \\
-  -H "Authorization: Bearer ${token ?? "<token>"}"`}
-            </pre>
-          </div>
-
-          <button onClick={logout} style={{ ...btnStyle, marginTop: 24, background: "#666" }}>
-            Logout
-          </button>
-        </div>
-      )}
+        <h1>exo<span className="dot">.</span></h1>
+        <p style={{ fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 24 }}>
+          Your AI-powered crypto wallet
+        </p>
+        <p>Send, receive, and manage your crypto with a simple conversation.</p>
+        <button className="btn-exo btn-primary" onClick={login} style={{ fontSize: 15, padding: "14px 40px" }}>
+          Get Started
+        </button>
+        <p style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)", marginTop: 16, letterSpacing: 0.5 }}>
+          Send, swap, and earn — all through conversation
+        </p>
+      </div>
     </div>
   );
 }
 
-const btnStyle: React.CSSProperties = {
-  padding: "10px 20px",
-  fontSize: 16,
-  border: "none",
-  borderRadius: 6,
-  background: "#111",
-  color: "#fff",
-  cursor: "pointer",
-};
+function AuthenticatedApp() {
+  const { authenticated, ready } = usePrivy();
+  const { profile, loading } = useAuth();
 
-const codeStyle: React.CSSProperties = {
-  background: "#f4f4f4",
-  padding: "8px 12px",
-  borderRadius: 4,
-  fontSize: 14,
-  display: "block",
-};
+  if (!ready || loading) {
+    return (
+      <div className="login-screen">
+        <Spinner />
+      </div>
+    );
+  }
+
+  if (!authenticated) {
+    return <LoginScreen />;
+  }
+
+  if (!profile) {
+    return <OnboardingPage />;
+  }
+
+  return (
+    <ApprovalProvider>
+      <PreferencesProvider>
+        <DashboardProvider>
+          <ChatActionsProvider>
+            <Routes>
+            <Route element={<AppShell />}>
+              <Route index element={<WalletHomePage />} />
+              <Route path="agent" element={<AgentPage />} />
+              <Route path="activity" element={<ActivityPage />} />
+              <Route path="receive" element={<ReceivePage />} />
+              <Route path="settings" element={<SettingsPage />} />
+              <Route path="buy" element={<BuyPage />} />
+              <Route path="swap" element={<SwapPage />} />
+              <Route path="earn" element={<EarnPage />} />
+              <Route path="recurring" element={<RecurringPaymentsPage />} />
+              <Route path="goals" element={<GoalsPage />} />
+              <Route path="categories" element={<CategoriesPage />} />
+              <Route path="transfer" element={<TransferPage />} />
+            </Route>
+            </Routes>
+          </ChatActionsProvider>
+        </DashboardProvider>
+      </PreferencesProvider>
+    </ApprovalProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <GloveProvider client={gloveClient}>
+          <AuthenticatedApp />
+        </GloveProvider>
+      </AuthProvider>
+    </BrowserRouter>
+  );
+}

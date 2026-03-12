@@ -8,7 +8,8 @@ import { ExchangeRateService } from "../services/pretium/exchange-rate-service.j
 import { TransactionService } from "../services/transaction/transaction-service.js";
 import { ConfigService } from "../config.js";
 import { DatabaseService } from "../db/client.js";
-import { pretiumTransactions, wallets } from "../db/schema/index.js";
+import { pretiumTransactions, wallets, userProfiles } from "../db/schema/index.js";
+import type { UserPreferences } from "../db/schema/user-profiles.js";
 import type { AuthVariables } from "../middleware/auth.js";
 import type {
   SupportedCountry,
@@ -21,6 +22,48 @@ import {
   ONRAMP_SUPPORTED_COUNTRIES,
   ONRAMP_SUPPORTED_ASSETS,
 } from "../services/pretium/pretium-service.js";
+
+// ── Helper: persist phone number & network to user preferences ───────
+
+const savePhoneToPreferences = (
+  db: Parameters<typeof eq>[0] extends never ? never : any,
+  userId: string,
+  phoneNumber: string,
+  mobileNetwork: string,
+  country: string
+) =>
+  Effect.tryPromise({
+    try: async () => {
+      const rows = await db
+        .select({ preferences: userProfiles.preferences })
+        .from(userProfiles)
+        .where(eq(userProfiles.privyUserId, userId))
+        .limit(1);
+      const existing = (rows[0]?.preferences ?? {}) as UserPreferences;
+      if (
+        existing.phoneNumber === phoneNumber &&
+        existing.mobileNetwork === mobileNetwork &&
+        existing.country === country
+      ) {
+        return; // already up to date
+      }
+      await db
+        .update(userProfiles)
+        .set({
+          preferences: {
+            ...existing,
+            phoneNumber,
+            mobileNetwork,
+            country,
+          },
+          updatedAt: new Date(),
+        })
+        .where(eq(userProfiles.privyUserId, userId));
+    },
+    catch: () => {
+      /* best-effort — don't fail the transaction */
+    },
+  });
 
 // ── Public Pretium routes (behind Privy auth) ────────────────────────
 
@@ -364,6 +407,15 @@ export function createPretiumRoutes(runtime: AppRuntime) {
             new Error(`Failed to store pretium transaction: ${error}`),
         });
 
+        // Save phone details to user preferences for next time
+        yield* savePhoneToPreferences(
+          db,
+          userId,
+          body.phoneNumber,
+          body.mobileNetwork,
+          body.country
+        );
+
         return {
           transaction: record,
           pretiumResponse: disburseResult,
@@ -649,6 +701,15 @@ export function createPretiumRoutes(runtime: AppRuntime) {
           catch: (error) =>
             new Error(`Failed to store pretium transaction: ${error}`),
         });
+
+        // Save phone details to user preferences for next time
+        yield* savePhoneToPreferences(
+          db,
+          userId,
+          body.phoneNumber,
+          body.mobileNetwork,
+          body.country
+        );
 
         return {
           transaction: record,

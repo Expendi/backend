@@ -85,6 +85,11 @@
 			"key": "passkeyId",
 			"value": "a1b2c3d4-pkey-0000-0000-000000000000",
 			"type": "string"
+		},
+		{
+			"key": "splitExpenseId",
+			"value": "e1f2a3b4-split-0000-0000-000000000000",
+			"type": "string"
 		}
 	],
 	"item": [
@@ -98,8 +103,12 @@
 						"header": [],
 						"url": {
 							"raw": "{{baseUrl}}/",
-							"host": ["{{baseUrl}}"],
-							"path": [""]
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								""
+							]
 						},
 						"description": "Returns basic information about the Expendi API, including the service name, version, and available endpoint paths. No authentication required."
 					},
@@ -112,8 +121,12 @@
 						"header": [],
 						"url": {
 							"raw": "{{baseUrl}}/health",
-							"host": ["{{baseUrl}}"],
-							"path": ["health"]
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"health"
+							]
 						},
 						"description": "Returns the health status of the Expendi backend with a current timestamp. No authentication required."
 					},
@@ -148,8 +161,13 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/onboard",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "onboard"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"onboard"
+									]
 								},
 								"description": "Onboards the authenticated user by creating three wallets (user, server, agent) and a user_profiles record linking them. This operation is idempotent -- calling it again for an already-onboarded user returns the existing profile and wallets without creating duplicates. The chainId defaults to 1 (Ethereum Mainnet) if not specified."
 							},
@@ -167,8 +185,13 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/profile",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "profile"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"profile"
+									]
 								},
 								"description": "Retrieves the authenticated user's onboarding profile with all wallet details populated (user, server, agent wallets). Returns 400 with OnboardingError if the user has not been onboarded yet."
 							},
@@ -186,8 +209,14 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/profile/wallets",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "profile", "wallets"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"profile",
+										"wallets"
+									]
 								},
 								"description": "Returns just the wallet addresses for the authenticated user, keyed by type: { user: '0x...', server: '0x...', agent: '0x...' }. A convenience endpoint for clients that only need addresses. Returns 400 with OnboardingError if the user has not been onboarded."
 							},
@@ -213,8 +242,14 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/profile/username",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "profile", "username"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"profile",
+										"username"
+									]
 								},
 								"description": "Claim or update the authenticated user's username. Must be 3-20 characters, lowercase alphanumeric with underscores only (^[a-z0-9_]+$). Returns the updated profile."
 							},
@@ -232,10 +267,66 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/profile/resolve/alice_99",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "profile", "resolve", "alice_99"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"profile",
+										"resolve",
+										"alice_99"
+									]
 								},
 								"description": "Resolve a username to its user ID and wallet address. Returns { username, userId, address }. Useful for sending to users by name."
+							},
+							"response": []
+						},
+						{
+							"name": "Get User Preferences",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/api/profile/preferences",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"profile",
+										"preferences"
+									]
+								},
+								"description": "Get the authenticated user's preferences (theme, default wallet, notification settings, etc.)."
+							},
+							"response": []
+						},
+						{
+							"name": "Update User Preferences",
+							"request": {
+								"method": "PATCH",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/profile/preferences",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"profile",
+										"preferences"
+									]
+								},
+								"description": "Merge-update user preferences. Only the provided fields are changed; others are preserved.",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"theme\": \"dark\",\n  \"defaultCurrency\": \"USD\"\n}"
+								}
 							},
 							"response": []
 						}
@@ -257,10 +348,35 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/wallets",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "wallets"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"wallets"
+									]
 								},
 								"description": "Retrieves the authenticated user's own wallets, ordered by creation date. Only wallets where ownerId matches the authenticated user's Privy DID are returned."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Wallet Balances",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/api/wallets/balances",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"wallets",
+										"balances"
+									]
+								},
+								"description": "Read on-chain token balances for all of the authenticated user's wallets. Returns token symbol, decimals, raw balance, and formatted balance for each wallet."
 							},
 							"response": []
 						},
@@ -276,8 +392,14 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/wallets/{{walletId}}",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "wallets", "{{walletId}}"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"wallets",
+										"{{walletId}}"
+									]
 								},
 								"description": "Retrieves a single wallet by its UUID. Returns 400 if the wallet is not found or not owned by the authenticated user."
 							},
@@ -303,8 +425,14 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/wallets/user",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "wallets", "user"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"wallets",
+										"user"
+									]
 								},
 								"description": "Creates a new user-type wallet via Privy. The userId is automatically extracted from the authenticated Privy token -- no userId in the request body is needed. Returns the new wallet address and type."
 							},
@@ -330,8 +458,15 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/wallets/{{walletId}}/sign",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "wallets", "{{walletId}}", "sign"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"wallets",
+										"{{walletId}}",
+										"sign"
+									]
 								},
 								"description": "Signs an arbitrary message using the wallet's private key resolved through Privy. The authenticated user must own the wallet. Returns the hex-encoded signature."
 							},
@@ -357,8 +492,14 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/wallets/transfer",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "wallets", "transfer"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"wallets",
+										"transfer"
+									]
 								},
 								"description": "Transfers tokens between the authenticated user's own wallets (user, server, agent). The backend resolves wallet IDs and addresses from the user's profile. Amount is in token units (e.g. 1 USDC = 1000000). Token defaults to 'usdc' if omitted."
 							},
@@ -382,8 +523,13 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/transactions",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "transactions"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"transactions"
+									]
 								},
 								"description": "Retrieves all transactions belonging to the authenticated user."
 							},
@@ -401,8 +547,14 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/transactions/{{transactionId}}",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "transactions", "{{transactionId}}"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"transactions",
+										"{{transactionId}}"
+									]
 								},
 								"description": "Retrieves a single transaction by its UUID. Only returned if the authenticated user owns the transaction."
 							},
@@ -428,8 +580,14 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/transactions/contract",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "transactions", "contract"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"transactions",
+										"contract"
+									]
 								},
 								"description": "Submits a transaction that calls a method on a registered contract, identifying the wallet by its database UUID. The authenticated user must own the specified wallet. The userId is set automatically from the auth context."
 							},
@@ -455,8 +613,14 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/transactions/contract",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "transactions", "contract"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"transactions",
+										"contract"
+									]
 								},
 								"description": "Submits a contract transaction using walletType instead of walletId. The wallet is resolved from the user's onboarding profile (user_profiles table). The user must be onboarded first via POST /api/onboard. Valid walletType values: 'user', 'server', 'agent'."
 							},
@@ -482,8 +646,14 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/transactions/raw",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "transactions", "raw"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"transactions",
+										"raw"
+									]
 								},
 								"description": "Submits a raw Ethereum transaction with pre-encoded calldata, identifying the wallet by its database UUID. The authenticated user must own the specified wallet. The userId is set automatically from the auth context."
 							},
@@ -509,8 +679,14 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/transactions/raw",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "transactions", "raw"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"transactions",
+										"raw"
+									]
 								},
 								"description": "Submits a raw Ethereum transaction using walletType instead of walletId. The wallet is resolved from the user's onboarding profile (user_profiles table). The user must be onboarded first via POST /api/onboard. Valid walletType values: 'user', 'server', 'agent'."
 							},
@@ -523,6 +699,26 @@
 					"name": "Categories",
 					"item": [
 						{
+							"name": "Get All Spending Limits",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/api/categories/limits",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"categories",
+										"limits"
+									]
+								},
+								"description": "Get all category spending limits for the authenticated user."
+							},
+							"response": []
+						},
+						{
 							"name": "List My Categories",
 							"request": {
 								"method": "GET",
@@ -534,8 +730,13 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/categories",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "categories"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"categories"
+									]
 								},
 								"description": "Retrieves global categories (userId is null) plus the authenticated user's own categories."
 							},
@@ -553,8 +754,14 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/categories/{{categoryId}}",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "categories", "{{categoryId}}"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"categories",
+										"{{categoryId}}"
+									]
 								},
 								"description": "Retrieves a single category by its UUID. Only returned if the category is global or owned by the authenticated user."
 							},
@@ -580,8 +787,13 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/categories",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "categories"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"categories"
+									]
 								},
 								"description": "Creates a new transaction category scoped to the authenticated user. The userId is set automatically from the auth context."
 							},
@@ -607,8 +819,14 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/categories/{{categoryId}}",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "categories", "{{categoryId}}"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"categories",
+										"{{categoryId}}"
+									]
 								},
 								"description": "Updates an existing transaction category. The authenticated user must own the category."
 							},
@@ -626,10 +844,98 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/categories/{{categoryId}}",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "categories", "{{categoryId}}"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"categories",
+										"{{categoryId}}"
+									]
 								},
 								"description": "Deletes a transaction category. The authenticated user must own the category."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Spending Per Category",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/api/categories/spending?from=2026-03-01&to=2026-03-31",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"categories",
+										"spending"
+									],
+									"query": [
+										{
+											"key": "from",
+											"value": "2026-03-01"
+										},
+										{
+											"key": "to",
+											"value": "2026-03-31"
+										}
+									]
+								},
+								"description": "Get spending per category for a time period. Defaults to the current month. Accepts optional 'from' and 'to' query params (ISO dates)."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Daily Spending Breakdown",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/api/categories/spending/daily?from=2026-03-01&to=2026-03-31",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"categories",
+										"spending",
+										"daily"
+									],
+									"query": [
+										{
+											"key": "from",
+											"value": "2026-03-01"
+										},
+										{
+											"key": "to",
+											"value": "2026-03-31"
+										}
+									]
+								},
+								"description": "Get daily spending breakdown for charts. Useful for rendering spending trends over time."
+							},
+							"response": []
+						},
+						{
+							"name": "Remove Category Limit",
+							"request": {
+								"method": "DELETE",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/api/categories/{{categoryId}}/limit",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"categories",
+										"{{categoryId}}",
+										"limit"
+									]
+								},
+								"description": "Remove the spending limit for a specific category."
 							},
 							"response": []
 						}
@@ -651,8 +957,13 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/contracts",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "contracts"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"contracts"
+									]
 								},
 								"description": "Retrieves all contract connectors registered in the ContractRegistry. Connectors are defined in code (src/connectors/) and loaded at startup."
 							},
@@ -670,8 +981,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/contracts/usdc/1",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "contracts", "usdc", "1"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"contracts",
+										"usdc",
+										"1"
+									]
 								},
 								"description": "Retrieves a specific contract connector by name and chain ID."
 							},
@@ -697,8 +1015,14 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/contracts/read",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "contracts", "read"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"contracts",
+										"read"
+									]
 								},
 								"description": "Executes a read-only (view/pure) call on a registered contract without sending a transaction. No wallet is needed."
 							},
@@ -722,8 +1046,13 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/recurring-payments",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "recurring-payments"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"recurring-payments"
+									]
 								},
 								"description": "Retrieves the authenticated user's recurring payment schedules, ordered by creation date."
 							},
@@ -741,8 +1070,14 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/recurring-payments/{{scheduleId}}",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "recurring-payments", "{{scheduleId}}"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"recurring-payments",
+										"{{scheduleId}}"
+									]
 								},
 								"description": "Retrieves a single recurring payment schedule by its UUID. Only returned if the authenticated user owns the schedule."
 							},
@@ -768,8 +1103,13 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/recurring-payments",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "recurring-payments"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"recurring-payments"
+									]
 								},
 								"description": "Creates a new recurring ERC-20 token transfer schedule. The walletType is resolved from the user's onboarding profile. The chainId is optional and defaults to the server's DEFAULT_CHAIN_ID configuration."
 							},
@@ -795,8 +1135,13 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/recurring-payments",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "recurring-payments"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"recurring-payments"
+									]
 								},
 								"description": "Creates a new recurring raw ETH transfer schedule with start and end dates. When chainId is omitted, the server's DEFAULT_CHAIN_ID is used."
 							},
@@ -822,8 +1167,13 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/recurring-payments",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "recurring-payments"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"recurring-payments"
+									]
 								},
 								"description": "Creates a new recurring offramp (crypto-to-fiat) payment schedule. The offramp object specifies the fiat currency, amount, provider, and destination payment method. Available providers: moonpay, bridge, transak."
 							},
@@ -841,8 +1191,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/recurring-payments/{{scheduleId}}/pause",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "recurring-payments", "{{scheduleId}}", "pause"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"recurring-payments",
+										"{{scheduleId}}",
+										"pause"
+									]
 								},
 								"description": "Pauses an active recurring payment schedule. The schedule will not be processed until resumed. The authenticated user must own the schedule."
 							},
@@ -860,8 +1217,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/recurring-payments/{{scheduleId}}/resume",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "recurring-payments", "{{scheduleId}}", "resume"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"recurring-payments",
+										"{{scheduleId}}",
+										"resume"
+									]
 								},
 								"description": "Resumes a paused recurring payment schedule. Resets consecutive failure count and recalculates the next execution time. The authenticated user must own the schedule."
 							},
@@ -879,8 +1243,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/recurring-payments/{{scheduleId}}/cancel",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "recurring-payments", "{{scheduleId}}", "cancel"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"recurring-payments",
+										"{{scheduleId}}",
+										"cancel"
+									]
 								},
 								"description": "Cancels a recurring payment schedule permanently. The schedule will not be processed again. The authenticated user must own the schedule."
 							},
@@ -898,8 +1269,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/recurring-payments/{{scheduleId}}/executions?limit=50",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "recurring-payments", "{{scheduleId}}", "executions"],
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"recurring-payments",
+										"{{scheduleId}}",
+										"executions"
+									],
 									"query": [
 										{
 											"key": "limit",
@@ -930,8 +1308,14 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/yield/vaults?chainId=1",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "yield", "vaults"],
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"yield",
+										"vaults"
+									],
 									"query": [
 										{
 											"key": "chainId",
@@ -956,8 +1340,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/yield/vaults/{{vaultId}}",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "yield", "vaults", "{{vaultId}}"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"yield",
+										"vaults",
+										"{{vaultId}}"
+									]
 								},
 								"description": "Retrieves a single yield vault by its UUID. Returns 400 if not found."
 							},
@@ -983,8 +1374,14 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/yield/positions",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "yield", "positions"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"yield",
+										"positions"
+									]
 								},
 								"description": "Creates a new yield position (lock) in a vault. The walletType is resolved from the user's onboarding profile if walletId is not provided. The chainId defaults to DEFAULT_CHAIN_ID if not specified."
 							},
@@ -1002,8 +1399,14 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/yield/positions",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "yield", "positions"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"yield",
+										"positions"
+									]
 								},
 								"description": "Retrieves all yield positions belonging to the authenticated user."
 							},
@@ -1021,8 +1424,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/yield/positions/{{positionId}}",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "yield", "positions", "{{positionId}}"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"yield",
+										"positions",
+										"{{positionId}}"
+									]
 								},
 								"description": "Retrieves a single yield position by its UUID. The authenticated user must own the position."
 							},
@@ -1048,8 +1458,16 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/yield/positions/{{positionId}}/withdraw",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "yield", "positions", "{{positionId}}", "withdraw"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"yield",
+										"positions",
+										"{{positionId}}",
+										"withdraw"
+									]
 								},
 								"description": "Withdraws a matured yield position. The authenticated user must own the position. Optionally specify walletId or walletType for the withdrawal destination; defaults to the wallet used for the original deposit."
 							},
@@ -1067,8 +1485,16 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/yield/positions/{{positionId}}/history?limit=50",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "yield", "positions", "{{positionId}}", "history"],
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"yield",
+										"positions",
+										"{{positionId}}",
+										"history"
+									],
 									"query": [
 										{
 											"key": "limit",
@@ -1093,8 +1519,14 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/yield/portfolio",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "yield", "portfolio"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"yield",
+										"portfolio"
+									]
 								},
 								"description": "Retrieves a portfolio summary for the authenticated user, including total deposited, total yield earned, and weighted average APY across all active positions."
 							},
@@ -1118,8 +1550,14 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/pretium/countries",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "pretium", "countries"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"pretium",
+										"countries"
+									]
 								},
 								"description": "Lists all countries supported by the Pretium offramp service, including their payment configurations, supported mobile networks, and currency codes. Currently supports KE, NG, GH, UG, CD, MW, and ET."
 							},
@@ -1137,8 +1575,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/pretium/countries/KE",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "pretium", "countries", "KE"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"pretium",
+										"countries",
+										"KE"
+									]
 								},
 								"description": "Retrieves the payment configuration for a specific country, including supported payment types, mobile networks, and currency. Pass the ISO 3166-1 alpha-2 country code as a path parameter."
 							},
@@ -1156,8 +1601,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/pretium/exchange-rate/KES",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "pretium", "exchange-rate", "KES"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"pretium",
+										"exchange-rate",
+										"KES"
+									]
 								},
 								"description": "Fetches the current USDC-to-fiat exchange rate for the specified currency code. Rates are cached for 5 minutes. Supported currencies include KES, NGN, GHS, UGX, CDF, MWK, and ETB."
 							},
@@ -1183,8 +1635,15 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/pretium/convert/usdc-to-fiat",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "pretium", "convert", "usdc-to-fiat"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"pretium",
+										"convert",
+										"usdc-to-fiat"
+									]
 								},
 								"description": "Converts a USDC amount to its equivalent fiat value using the current live exchange rate from the Pretium API."
 							},
@@ -1210,8 +1669,15 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/pretium/convert/fiat-to-usdc",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "pretium", "convert", "fiat-to-usdc"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"pretium",
+										"convert",
+										"fiat-to-usdc"
+									]
 								},
 								"description": "Converts a fiat amount to its equivalent USDC value using the current live exchange rate from the Pretium API."
 							},
@@ -1237,8 +1703,15 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/pretium/validate/phone",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "pretium", "validate", "phone"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"pretium",
+										"validate",
+										"phone"
+									]
 								},
 								"description": "Validates a phone number against the Pretium API and looks up the mobile network operator (MNO) name. Used to verify the recipient before initiating an offramp disbursement."
 							},
@@ -1264,8 +1737,15 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/pretium/validate/bank-account",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "pretium", "validate", "bank-account"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"pretium",
+										"validate",
+										"bank-account"
+									]
 								},
 								"description": "Validates a bank account number against the Pretium API and looks up the account holder name. Available for countries that support bank transfers (NG, KE)."
 							},
@@ -1283,8 +1763,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/pretium/banks/NG",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "pretium", "banks", "NG"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"pretium",
+										"banks",
+										"NG"
+									]
 								},
 								"description": "Retrieves the list of supported banks for a country. Currently available for Nigeria (NG) and Kenya (KE). Returns bank codes and names needed for bank transfer offramps."
 							},
@@ -1302,8 +1789,14 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/pretium/settlement-address",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "pretium", "settlement-address"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"pretium",
+										"settlement-address"
+									]
 								},
 								"description": "Returns the USDC deposit address where funds must be sent before initiating an offramp disbursement. The on-chain transfer to this address must be completed and its transaction hash included in the offramp request."
 							},
@@ -1329,8 +1822,14 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/pretium/offramp",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "pretium", "offramp"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"pretium",
+										"offramp"
+									]
 								},
 								"description": "Initiates a crypto-to-fiat offramp disbursement via Pretium. The USDC must already have been transferred to the settlement address and the on-chain transaction hash must be provided. Supports mobile money (MOBILE, BUY_GOODS, PAYBILL) and bank transfer (BANK_TRANSFER) payment types."
 							},
@@ -1348,8 +1847,14 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/pretium/offramp?limit=50&offset=0",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "pretium", "offramp"],
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"pretium",
+										"offramp"
+									],
 									"query": [
 										{
 											"key": "limit",
@@ -1379,8 +1884,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/pretium/offramp/{{pretiumTransactionId}}",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "pretium", "offramp", "{{pretiumTransactionId}}"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"pretium",
+										"offramp",
+										"{{pretiumTransactionId}}"
+									]
 								},
 								"description": "Retrieves a single Pretium offramp transaction by its UUID. Only returned if the authenticated user owns the transaction."
 							},
@@ -1398,8 +1910,16 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/pretium/offramp/{{pretiumTransactionId}}/refresh",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "pretium", "offramp", "{{pretiumTransactionId}}", "refresh"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"pretium",
+										"offramp",
+										"{{pretiumTransactionId}}",
+										"refresh"
+									]
 								},
 								"description": "Polls the Pretium API for the latest status of an offramp transaction and updates the local record. Use this to manually check for status changes without waiting for the webhook callback."
 							},
@@ -1417,10 +1937,17 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/pretium/onramp/countries",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "pretium", "onramp", "countries"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"pretium",
+										"onramp",
+										"countries"
+									]
 								},
-								"description": "Lists countries that support onramp (fiat → stablecoin) transactions. Currently: KE (Kenya), GH (Ghana), UG (Uganda), CD (DR Congo), MW (Malawi). Nigeria and Ethiopia do NOT support onramp."
+								"description": "Lists countries that support onramp (fiat \u2192 stablecoin) transactions. Currently: KE (Kenya), GH (Ghana), UG (Uganda), CD (DR Congo), MW (Malawi). Nigeria and Ethiopia do NOT support onramp."
 							},
 							"response": []
 						},
@@ -1444,8 +1971,14 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/pretium/onramp",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "pretium", "onramp"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"pretium",
+										"onramp"
+									]
 								},
 								"description": "Initiates a fiat-to-stablecoin onramp via Pretium. The user pays via mobile money and receives stablecoins (USDC, USDT, or CUSD) at the specified wallet address on Base chain. A callback URL is auto-generated from SERVER_BASE_URL if not provided."
 							},
@@ -1463,8 +1996,14 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/pretium/onramp?limit=50&offset=0",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "pretium", "onramp"],
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"pretium",
+										"onramp"
+									],
 									"query": [
 										{
 											"key": "limit",
@@ -1478,7 +2017,7 @@
 										}
 									]
 								},
-								"description": "Retrieves the authenticated user's onramp (fiat → stablecoin) transactions with pagination, ordered by creation date."
+								"description": "Retrieves the authenticated user's onramp (fiat \u2192 stablecoin) transactions with pagination, ordered by creation date."
 							},
 							"response": []
 						},
@@ -1494,8 +2033,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/pretium/onramp/{{pretiumTransactionId}}",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "pretium", "onramp", "{{pretiumTransactionId}}"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"pretium",
+										"onramp",
+										"{{pretiumTransactionId}}"
+									]
 								},
 								"description": "Retrieves a single onramp transaction by its UUID. Only returned if the authenticated user owns the transaction."
 							},
@@ -1513,8 +2059,16 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/pretium/onramp/{{pretiumTransactionId}}/refresh",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "pretium", "onramp", "{{pretiumTransactionId}}", "refresh"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"pretium",
+										"onramp",
+										"{{pretiumTransactionId}}",
+										"refresh"
+									]
 								},
 								"description": "Polls the Pretium API for the latest status of an onramp transaction and updates the local record. Use this to manually check for status changes without waiting for the webhook callback."
 							},
@@ -1546,8 +2100,14 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/uniswap/check-approval",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "uniswap", "check-approval"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"uniswap",
+										"check-approval"
+									]
 								},
 								"description": "Checks whether a token approval transaction is required before performing a swap on Uniswap. The wallet address is resolved from the database using the walletId. If the token already has sufficient allowance for the Uniswap Universal Router, the approval field in the response will be null. All checks are performed on Base (chain ID 8453)."
 							},
@@ -1573,8 +2133,14 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/uniswap/quote",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "uniswap", "quote"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"uniswap",
+										"quote"
+									]
 								},
 								"description": "Fetches a swap quote from the Uniswap Trading API without executing the swap. Returns routing information, expected input and output amounts, slippage, and estimated gas fees. The wallet address is resolved from the database. The type field defaults to EXACT_INPUT and slippageTolerance defaults to 0.5%. All quotes are for Base (chain ID 8453). Common Base token addresses: ETH (0x0000000000000000000000000000000000000000), WETH (0x4200000000000000000000000000000000000006), USDC (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913), USDbC (0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6Ca)."
 							},
@@ -1600,8 +2166,14 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/uniswap/swap",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "uniswap", "swap"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"uniswap",
+										"swap"
+									]
 								},
 								"description": "Executes a full token swap on Uniswap via the Trading API. The endpoint orchestrates the complete flow: (1) resolve the wallet address from the database, (2) check if a token approval is needed, (3) submit the approval transaction if required, (4) fetch a fresh quote, (5) get the swap calldata, (6) submit the swap transaction. Both approval and swap transactions are recorded in the transactions table through the existing ledger system. The response includes the swap transaction ID and hash, an optional approval transaction ID (only present when approval was needed), and the quote details. All swaps execute on Base (chain ID 8453)."
 							},
@@ -1625,8 +2197,13 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/swap-automations",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "swap-automations"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"swap-automations"
+									]
 								},
 								"description": "Lists all swap automations for the authenticated user, ordered by creation date."
 							},
@@ -1644,8 +2221,14 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/swap-automations/{{swapAutomationId}}",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "swap-automations", "{{swapAutomationId}}"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"swap-automations",
+										"{{swapAutomationId}}"
+									]
 								},
 								"description": "Retrieves a single swap automation by its UUID."
 							},
@@ -1671,8 +2254,13 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/swap-automations",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "swap-automations"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"swap-automations"
+									]
 								},
 								"description": "Creates a new swap automation that will execute a Uniswap swap when the specified indicator condition is met. The automation checks prices every minute via a Trigger.dev cron task. Supported indicator types: price_above (trigger when price >= threshold), price_below (trigger when price <= threshold), percent_change_up (trigger when price increases by threshold% from reference), percent_change_down (trigger when price decreases by threshold% from reference). For percent_change indicators, a reference price is automatically captured at creation time. Users can choose server or agent wallet for execution. Use maxExecutionsPerDay to cap how many times the automation can trigger per calendar day (UTC); set to null or omit for no daily limit."
 							},
@@ -1698,8 +2286,14 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/swap-automations/{{swapAutomationId}}",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "swap-automations", "{{swapAutomationId}}"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"swap-automations",
+										"{{swapAutomationId}}"
+									]
 								},
 								"description": "Updates modifiable fields on a swap automation. Only the provided fields are changed."
 							},
@@ -1717,8 +2311,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/swap-automations/{{swapAutomationId}}/pause",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "swap-automations", "{{swapAutomationId}}", "pause"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"swap-automations",
+										"{{swapAutomationId}}",
+										"pause"
+									]
 								},
 								"description": "Pauses an active swap automation. The cron task will skip paused automations."
 							},
@@ -1736,8 +2337,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/swap-automations/{{swapAutomationId}}/resume",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "swap-automations", "{{swapAutomationId}}", "resume"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"swap-automations",
+										"{{swapAutomationId}}",
+										"resume"
+									]
 								},
 								"description": "Resumes a paused swap automation. Resets consecutive failure count."
 							},
@@ -1755,8 +2363,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/swap-automations/{{swapAutomationId}}/cancel",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "swap-automations", "{{swapAutomationId}}", "cancel"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"swap-automations",
+										"{{swapAutomationId}}",
+										"cancel"
+									]
 								},
 								"description": "Permanently cancels a swap automation. Cannot be resumed."
 							},
@@ -1774,8 +2389,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/swap-automations/{{swapAutomationId}}/executions?limit=50",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "swap-automations", "{{swapAutomationId}}", "executions"],
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"swap-automations",
+										"{{swapAutomationId}}",
+										"executions"
+									],
 									"query": [
 										{
 											"key": "limit",
@@ -1813,8 +2435,13 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/groups",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "groups"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"groups"
+									]
 								},
 								"description": "Create a new group account. The authenticated user becomes admin. Members can be usernames or 0x addresses. Returns the created GroupAccount object."
 							},
@@ -1832,8 +2459,13 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/groups",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "groups"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"groups"
+									]
 								},
 								"description": "List all groups the authenticated user belongs to (as admin or member)."
 							},
@@ -1851,8 +2483,14 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/groups/{{groupId}}",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "groups", "{{groupId}}"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"groups",
+										"{{groupId}}"
+									]
 								},
 								"description": "Get a group with all its members, including usernames and wallet addresses."
 							},
@@ -1870,8 +2508,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/groups/{{groupId}}/members",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "groups", "{{groupId}}", "members"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"groups",
+										"{{groupId}}",
+										"members"
+									]
 								},
 								"description": "List group members with usernames, wallet addresses, and roles."
 							},
@@ -1897,8 +2542,15 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/groups/{{groupId}}/members",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "groups", "{{groupId}}", "members"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"groups",
+										"{{groupId}}",
+										"members"
+									]
 								},
 								"description": "Add a member to the group. Admin only. Member can be a username or 0x address."
 							},
@@ -1916,8 +2568,16 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/groups/{{groupId}}/members/charlie",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "groups", "{{groupId}}", "members", "charlie"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"groups",
+										"{{groupId}}",
+										"members",
+										"charlie"
+									]
 								},
 								"description": "Remove a member from the group. Admin only. Identifier can be a username or wallet address."
 							},
@@ -1943,8 +2603,15 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/groups/{{groupId}}/pay",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "groups", "{{groupId}}", "pay"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"groups",
+										"{{groupId}}",
+										"pay"
+									]
 								},
 								"description": "Admin payout from the group wallet. Supports ETH (omit token) or ERC-20 token payments. Recipient can be a username or 0x address."
 							},
@@ -1970,8 +2637,15 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/groups/{{groupId}}/deposit",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "groups", "{{groupId}}", "deposit"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"groups",
+										"{{groupId}}",
+										"deposit"
+									]
 								},
 								"description": "Deposit into the group wallet. Any group member can deposit. Supports ETH (omit token) or ERC-20."
 							},
@@ -1997,8 +2671,15 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/groups/{{groupId}}/transfer-admin",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "groups", "{{groupId}}", "transfer-admin"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"groups",
+										"{{groupId}}",
+										"transfer-admin"
+									]
 								},
 								"description": "Transfer admin role to another group member. Current admin only."
 							},
@@ -2016,8 +2697,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/groups/{{groupId}}/balance?tokens=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "groups", "{{groupId}}", "balance"],
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"groups",
+										"{{groupId}}",
+										"balance"
+									],
 									"query": [
 										{
 											"key": "tokens",
@@ -2048,8 +2736,13 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/goal-savings",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "goal-savings"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"goal-savings"
+									]
 								},
 								"description": "List all savings goals for the authenticated user. Returns an array of goal objects with their current progress, status, and deposit schedule."
 							},
@@ -2075,8 +2768,13 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/goal-savings",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "goal-savings"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"goal-savings"
+									]
 								},
 								"description": "Create a new savings goal with automatic recurring deposits. Specify the target amount, deposit frequency, and token details. The goal will automatically deposit the specified amount on the configured schedule."
 							},
@@ -2094,8 +2792,14 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/goal-savings/{{goalId}}",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "goal-savings", "{{goalId}}"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"goal-savings",
+										"{{goalId}}"
+									]
 								},
 								"description": "Retrieve a specific savings goal by its ID. Returns the goal details including current progress, deposit history summary, and schedule configuration."
 							},
@@ -2121,8 +2825,14 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/goal-savings/{{goalId}}",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "goal-savings", "{{goalId}}"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"goal-savings",
+										"{{goalId}}"
+									]
 								},
 								"description": "Update a savings goal's mutable fields such as name, deposit amount, or frequency. Only provided fields are updated; omitted fields remain unchanged."
 							},
@@ -2140,8 +2850,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/goal-savings/{{goalId}}/pause",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "goal-savings", "{{goalId}}", "pause"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"goal-savings",
+										"{{goalId}}",
+										"pause"
+									]
 								},
 								"description": "Pause a savings goal. Automatic deposits are suspended until the goal is resumed. The goal retains all existing deposits and progress."
 							},
@@ -2159,8 +2876,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/goal-savings/{{goalId}}/resume",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "goal-savings", "{{goalId}}", "resume"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"goal-savings",
+										"{{goalId}}",
+										"resume"
+									]
 								},
 								"description": "Resume a previously paused savings goal. Automatic deposits will restart on the next scheduled date."
 							},
@@ -2178,8 +2902,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/goal-savings/{{goalId}}/cancel",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "goal-savings", "{{goalId}}", "cancel"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"goal-savings",
+										"{{goalId}}",
+										"cancel"
+									]
 								},
 								"description": "Cancel a savings goal permanently. Automatic deposits are stopped. Existing deposited funds remain in the vault until the unlock time has passed."
 							},
@@ -2205,8 +2936,15 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/goal-savings/{{goalId}}/deposit",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "goal-savings", "{{goalId}}", "deposit"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"goal-savings",
+										"{{goalId}}",
+										"deposit"
+									]
 								},
 								"description": "Make a manual one-time deposit into a savings goal outside of the automatic schedule. Useful for contributing extra funds toward the goal target."
 							},
@@ -2224,8 +2962,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/goal-savings/{{goalId}}/deposits?limit=50",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "goal-savings", "{{goalId}}", "deposits"],
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"goal-savings",
+										"{{goalId}}",
+										"deposits"
+									],
 									"query": [
 										{
 											"key": "limit",
@@ -2242,6 +2987,129 @@
 					"description": "Goal-based savings endpoints. Create savings goals with automatic recurring deposits, track progress toward a target amount, pause/resume/cancel goals, and make manual deposits. Goals deposit into yield vaults on a configurable schedule."
 				},
 				{
+					"name": "Split Expenses",
+					"description": "Create and manage shared expense splits within groups. Track who owes whom and record payments.",
+					"item": [
+						{
+							"name": "Create Split Expense",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/split-expenses",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"split-expenses"
+									]
+								},
+								"description": "Create a new split expense with shares assigned to participants.",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"title\": \"Dinner at Luigi's\",\n  \"tokenAddress\": \"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\",\n  \"tokenSymbol\": \"USDC\",\n  \"tokenDecimals\": 6,\n  \"totalAmount\": \"45000000\",\n  \"chainId\": 8453,\n  \"shares\": [\n    {\n      \"userId\": \"did:privy:user1\",\n      \"amount\": \"22500000\"\n    },\n    {\n      \"userId\": \"did:privy:user2\",\n      \"amount\": \"22500000\"\n    }\n  ]\n}"
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "List Split Expenses",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/api/split-expenses",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"split-expenses"
+									]
+								},
+								"description": "List all split expenses the authenticated user is involved in (as creator or participant)."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Split Expense",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/api/split-expenses/{{transactionId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"split-expenses",
+										"{{transactionId}}"
+									]
+								},
+								"description": "Get a single split expense with all share details."
+							},
+							"response": []
+						},
+						{
+							"name": "Pay Your Share",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/split-expenses/{{transactionId}}/pay",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"split-expenses",
+										"{{transactionId}}",
+										"pay"
+									]
+								},
+								"description": "Pay your share of a split expense.",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"walletId\": \"{{walletId}}\",\n  \"walletType\": \"user\"\n}"
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Cancel Split Expense",
+							"request": {
+								"method": "DELETE",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/api/split-expenses/{{transactionId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"split-expenses",
+										"{{transactionId}}"
+									]
+								},
+								"description": "Cancel a split expense. Only the creator can cancel."
+							},
+							"response": []
+						}
+					]
+				},
+				{
 					"name": "Security / Transaction Approval",
 					"item": [
 						{
@@ -2256,8 +3124,14 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/security/approval",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "security", "approval"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"security",
+										"approval"
+									]
 								},
 								"description": "Retrieves the authenticated user's transaction approval settings, including which approval methods are enabled (PIN, passkey) and registered passkeys."
 							},
@@ -2283,8 +3157,16 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/security/approval/pin/setup",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "security", "approval", "pin", "setup"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"security",
+										"approval",
+										"pin",
+										"setup"
+									]
 								},
 								"description": "Sets up a new PIN for transaction approval. The PIN is used to authorize sensitive operations such as transfers and swaps."
 							},
@@ -2310,8 +3192,16 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/security/approval/pin/change",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "security", "approval", "pin", "change"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"security",
+										"approval",
+										"pin",
+										"change"
+									]
 								},
 								"description": "Changes the authenticated user's existing PIN. Requires the current PIN for verification before setting the new one."
 							},
@@ -2337,8 +3227,15 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/security/approval/pin",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "security", "approval", "pin"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"security",
+										"approval",
+										"pin"
+									]
 								},
 								"description": "Removes the authenticated user's PIN. Requires the current PIN for verification. If no other approval method is configured, transaction approval will be disabled."
 							},
@@ -2356,8 +3253,16 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/security/approval/passkey/register",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "security", "approval", "passkey", "register"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"security",
+										"approval",
+										"passkey",
+										"register"
+									]
 								},
 								"description": "Initiates passkey registration by returning WebAuthn credential creation options. The client uses these options to prompt the user's authenticator (biometrics, security key, etc.) to create a new credential."
 							},
@@ -2383,8 +3288,17 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/security/approval/passkey/register/verify",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "security", "approval", "passkey", "register", "verify"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"security",
+										"approval",
+										"passkey",
+										"register",
+										"verify"
+									]
 								},
 								"description": "Completes passkey registration by verifying the credential created by the authenticator. The credential object contains the WebAuthn attestation response. An optional label can be provided to identify the passkey."
 							},
@@ -2402,8 +3316,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/security/approval/passkeys",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "security", "approval", "passkeys"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"security",
+										"approval",
+										"passkeys"
+									]
 								},
 								"description": "Lists all passkeys registered by the authenticated user for transaction approval. Returns passkey metadata including labels and creation dates."
 							},
@@ -2421,8 +3342,16 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/api/security/approval/passkeys/{{passkeyId}}",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "security", "approval", "passkeys", "{{passkeyId}}"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"security",
+										"approval",
+										"passkeys",
+										"{{passkeyId}}"
+									]
 								},
 								"description": "Removes a registered passkey by its ID. If no other approval method remains configured, transaction approval will be disabled."
 							},
@@ -2448,8 +3377,15 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/security/approval/verify",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "security", "approval", "verify"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"security",
+										"approval",
+										"verify"
+									]
 								},
 								"description": "Verifies the user's identity using the specified approval method (PIN or passkey) and returns a short-lived approval token. This token is then attached to sensitive operations (transfers, swaps, etc.) to authorize them."
 							},
@@ -2475,8 +3411,14 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/security/approval",
-									"host": ["{{baseUrl}}"],
-									"path": ["api", "security", "approval"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"security",
+										"approval"
+									]
 								},
 								"description": "Disables transaction approval entirely for the authenticated user. Requires PIN verification to confirm the action. All registered approval methods (PIN, passkeys) will be removed."
 							},
@@ -2484,6 +3426,40 @@
 						}
 					],
 					"description": "Security and transaction approval endpoints. Configure PIN or passkey-based approval for sensitive operations like transfers and swaps. Users can set up, change, or remove a PIN, register and manage passkeys, and obtain short-lived approval tokens to authorize transactions."
+				},
+				{
+					"name": "Chat / AI Agent",
+					"description": "AI agent chat endpoint. Streams LLM responses via Server-Sent Events (SSE). Tools are serialized as JSON Schema and executed client-side \u2014 the server only handles the LLM conversation loop. Configure the LLM provider with LLM_PROVIDER, LLM_MODEL, and LLM_API_KEY environment variables.",
+					"item": [
+						{
+							"name": "Stream Chat",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/chat",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"chat"
+									]
+								},
+								"description": "Send a message to the AI agent and receive streamed SSE responses. The server converts JSON Schema tool definitions to Zod schemas for the LLM, streams text_delta and tool_use events, then sends a done event with the final message and token counts. Tools are NOT executed server-side \u2014 tool_use events are sent to the client for execution.",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"systemPrompt\": \"You are a helpful crypto wallet assistant.\",\n  \"messages\": [\n    {\n      \"sender\": \"user\",\n      \"text\": \"What's my USDC balance?\"\n    }\n  ],\n  \"tools\": [\n    {\n      \"name\": \"get_balances\",\n      \"description\": \"Get wallet balances for the authenticated user\",\n      \"parameters\": {\n        \"type\": \"object\",\n        \"properties\": {},\n        \"required\": []\n      }\n    }\n  ]\n}"
+								}
+							},
+							"response": []
+						}
+					]
 				}
 			],
 			"description": "Public API routes requiring Privy authentication via Authorization: Bearer <token> header. All operations are scoped to the authenticated user."
@@ -2506,8 +3482,13 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/internal/wallets",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "wallets"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"wallets"
+									]
 								},
 								"description": "Retrieves all wallets across all users, ordered by creation date. No user filtering applied."
 							},
@@ -2529,8 +3510,14 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/internal/wallets/server",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "wallets", "server"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"wallets",
+										"server"
+									]
 								},
 								"description": "Creates a new server-managed wallet via Privy. Server wallets are owned by the application and used for protocol operations such as gas sponsorship or treasury management."
 							},
@@ -2556,8 +3543,14 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/internal/wallets/agent",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "wallets", "agent"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"wallets",
+										"agent"
+									]
 								},
 								"description": "Creates a new agent-type wallet via Privy for an autonomous agent. The agentId identifies the agent that will control this wallet."
 							},
@@ -2581,8 +3574,13 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/internal/transactions?limit=50&offset=0",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "transactions"],
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"transactions"
+									],
 									"query": [
 										{
 											"key": "limit",
@@ -2612,8 +3610,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/internal/transactions/wallet/{{walletId}}",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "transactions", "wallet", "{{walletId}}"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"transactions",
+										"wallet",
+										"{{walletId}}"
+									]
 								},
 								"description": "Retrieves all transactions associated with a specific wallet."
 							},
@@ -2631,8 +3636,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/internal/transactions/user/{{userId}}",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "transactions", "user", "{{userId}}"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"transactions",
+										"user",
+										"{{userId}}"
+									]
 								},
 								"description": "Retrieves all transactions associated with a specific user."
 							},
@@ -2658,8 +3670,15 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/internal/transactions/{{transactionId}}/confirm",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "transactions", "{{transactionId}}", "confirm"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"transactions",
+										"{{transactionId}}",
+										"confirm"
+									]
 								},
 								"description": "Marks a transaction as confirmed on-chain. Typically called by an external indexer after a transaction has been included in a block."
 							},
@@ -2685,8 +3704,15 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/internal/transactions/{{transactionId}}/fail",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "transactions", "{{transactionId}}", "fail"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"transactions",
+										"{{transactionId}}",
+										"fail"
+									]
 								},
 								"description": "Marks a transaction as failed with an error message."
 							},
@@ -2710,8 +3736,13 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/internal/jobs",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "jobs"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"jobs"
+									]
 								},
 								"description": "Retrieves all scheduled jobs ordered by creation date."
 							},
@@ -2729,8 +3760,14 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/internal/jobs/{{jobId}}",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "jobs", "{{jobId}}"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"jobs",
+										"{{jobId}}"
+									]
 								},
 								"description": "Retrieves a single job by its UUID."
 							},
@@ -2756,8 +3793,13 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/internal/jobs",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "jobs"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"jobs"
+									]
 								},
 								"description": "Creates a new scheduled job. The schedule field uses a simple duration format (30s, 5m, 1h, 1d). The jobType is 'contract_transaction' or 'raw_transaction'. maxRetries defaults to 3 if not specified."
 							},
@@ -2775,8 +3817,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/internal/jobs/{{jobId}}/cancel",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "jobs", "{{jobId}}", "cancel"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"jobs",
+										"{{jobId}}",
+										"cancel"
+									]
 								},
 								"description": "Cancels a scheduled job by its ID. Sets the job status to 'cancelled'."
 							},
@@ -2794,8 +3843,14 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/internal/jobs/process",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "jobs", "process"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"jobs",
+										"process"
+									]
 								},
 								"description": "Triggers immediate processing of all jobs that are due to run. Returns the count of processed jobs and their results."
 							},
@@ -2819,8 +3874,13 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/internal/recurring-payments?limit=50&offset=0",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "recurring-payments"],
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"recurring-payments"
+									],
 									"query": [
 										{
 											"key": "limit",
@@ -2850,8 +3910,14 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/internal/recurring-payments/{{scheduleId}}",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "recurring-payments", "{{scheduleId}}"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"recurring-payments",
+										"{{scheduleId}}"
+									]
 								},
 								"description": "Retrieves a single recurring payment schedule by its UUID. No ownership check is performed."
 							},
@@ -2869,8 +3935,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/internal/recurring-payments/{{scheduleId}}/execute",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "recurring-payments", "{{scheduleId}}", "execute"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"recurring-payments",
+										"{{scheduleId}}",
+										"execute"
+									]
 								},
 								"description": "Force-executes a recurring payment schedule immediately, regardless of its next scheduled execution time or current status. Returns the execution record with success/failure status and linked transaction ID."
 							},
@@ -2888,8 +3961,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/internal/recurring-payments/{{scheduleId}}/executions?limit=50",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "recurring-payments", "{{scheduleId}}", "executions"],
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"recurring-payments",
+										"{{scheduleId}}",
+										"executions"
+									],
 									"query": [
 										{
 											"key": "limit",
@@ -2914,8 +3994,14 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/internal/recurring-payments/process",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "recurring-payments", "process"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"recurring-payments",
+										"process"
+									]
 								},
 								"description": "Triggers immediate processing of all recurring payments that are due to execute. Finds active schedules where nextExecutionAt is in the past, executes each one, records the result, and reschedules. Returns the count of processed payments and their execution records."
 							},
@@ -2939,8 +4025,13 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/internal/profiles",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "profiles"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"profiles"
+									]
 								},
 								"description": "Retrieves all user onboarding profiles ordered by creation date. Each profile links a Privy user to their three wallets (user, server, agent)."
 							},
@@ -2958,8 +4049,14 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/internal/profiles/{{userId}}",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "profiles", "{{userId}}"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"profiles",
+										"{{userId}}"
+									]
 								},
 								"description": "Retrieves a specific user's onboarding profile with all wallet details populated. Returns 400 with OnboardingError if the user has not been onboarded."
 							},
@@ -2985,8 +4082,15 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/internal/profiles/{{userId}}/onboard",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "profiles", "{{userId}}", "onboard"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"profiles",
+										"{{userId}}",
+										"onboard"
+									]
 								},
 								"description": "Triggers onboarding for a specific user without requiring their Privy auth token. Creates three wallets (user, server, agent) and a user_profiles record. Idempotent -- calling it again for an already-onboarded user returns the existing profile. The chainId defaults to 1 (Ethereum Mainnet) if not specified."
 							},
@@ -3010,8 +4114,14 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/internal/yield/vaults?chainId=1",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "yield", "vaults"],
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"yield",
+										"vaults"
+									],
 									"query": [
 										{
 											"key": "chainId",
@@ -3044,8 +4154,14 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/internal/yield/vaults",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "yield", "vaults"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"yield",
+										"vaults"
+									]
 								},
 								"description": "Adds a new yield vault to the system. Requires vault address, chain ID, and name at minimum."
 							},
@@ -3063,8 +4179,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/internal/yield/vaults/{{vaultId}}",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "yield", "vaults", "{{vaultId}}"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"yield",
+										"vaults",
+										"{{vaultId}}"
+									]
 								},
 								"description": "Deactivates a yield vault. Deactivated vaults are no longer shown to users in the public API."
 							},
@@ -3090,8 +4213,15 @@
 								},
 								"url": {
 									"raw": "{{baseUrl}}/internal/yield/vaults/sync",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "yield", "vaults", "sync"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"yield",
+										"vaults",
+										"sync"
+									]
 								},
 								"description": "Triggers a sync of vault data from the blockchain for the specified chain ID. Updates vault metadata and APY information."
 							},
@@ -3109,8 +4239,14 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/internal/yield/positions?limit=50&offset=0",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "yield", "positions"],
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"yield",
+										"positions"
+									],
 									"query": [
 										{
 											"key": "limit",
@@ -3140,8 +4276,15 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/internal/yield/snapshots/run",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "yield", "snapshots", "run"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"yield",
+										"snapshots",
+										"run"
+									]
 								},
 								"description": "Triggers a yield snapshot for all active positions. Records the current value of each position for historical tracking. Returns the count of snapshots taken."
 							},
@@ -3165,8 +4308,14 @@
 								],
 								"url": {
 									"raw": "{{baseUrl}}/internal/goal-savings/process",
-									"host": ["{{baseUrl}}"],
-									"path": ["internal", "goal-savings", "process"]
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"internal",
+										"goal-savings",
+										"process"
+									]
 								},
 								"description": "Triggers processing of all due goal savings deposits. Finds active goals with deposits scheduled at or before the current time and executes them. Returns the count of deposits processed and any errors encountered."
 							},
@@ -3197,10 +4346,15 @@
 						},
 						"url": {
 							"raw": "{{baseUrl}}/webhooks/pretium",
-							"host": ["{{baseUrl}}"],
-							"path": ["webhooks", "pretium"]
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"webhooks",
+								"pretium"
+							]
 						},
-						"description": "Receives payment status callbacks from Pretium. Called when a transaction status changes (completed, failed, reversed). For offramp, 'completed' marks the transaction as done. For onramp, 'completed' means payment was collected but assets aren't released yet — the transaction moves to 'processing' and waits for the asset release callback."
+						"description": "Receives payment status callbacks from Pretium. Called when a transaction status changes (completed, failed, reversed). For offramp, 'completed' marks the transaction as done. For onramp, 'completed' means payment was collected but assets aren't released yet \u2014 the transaction moves to 'processing' and waits for the asset release callback."
 					},
 					"response": []
 				},
@@ -3220,8 +4374,13 @@
 						},
 						"url": {
 							"raw": "{{baseUrl}}/webhooks/pretium",
-							"host": ["{{baseUrl}}"],
-							"path": ["webhooks", "pretium"]
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"webhooks",
+								"pretium"
+							]
 						},
 						"description": "Receives asset release callbacks from Pretium for onramp transactions. Sent after the user's mobile money payment is confirmed and stablecoins have been released to their wallet address. Contains the on-chain transaction hash. This marks the onramp transaction as 'completed'."
 					},

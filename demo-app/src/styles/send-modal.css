@@ -1,0 +1,738 @@
+/* ═══════════════════════════════════════════════════════════════════
+   SendModal — Direct Transfer UI
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ─── Overlay ────────────────────────────────────────────────────── */
+
+.send-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: sendOverlayIn 0.25s ease;
+  padding: 16px;
+}
+
+.send-overlay.closing {
+  animation: sendOverlayOut 0.2s ease forwards;
+}
+
+@keyframes sendOverlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes sendOverlayOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+/* ─── Card ───────────────────────────────────────────────────────── */
+
+.send-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  animation: sendCardIn 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  position: relative;
+}
+
+.send-overlay.closing .send-card {
+  animation: sendCardOut 0.2s ease forwards;
+}
+
+@keyframes sendCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes sendCardOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+}
+
+/* ─── Header ─────────────────────────────────────────────────────── */
+
+.send-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.send-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--text-primary);
+}
+
+.send-close {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.send-close:hover {
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+/* ─── Body ───────────────────────────────────────────────────────── */
+
+.send-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ─── Token Selector ─────────────────────────────────────────────── */
+
+.send-token-selector {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+}
+
+.send-token-pill {
+  flex: 1;
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.send-token-pill.active {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+.send-token-pill:hover:not(.active) {
+  color: var(--text-secondary);
+}
+
+/* ─── Amount Input ───────────────────────────────────────────────── */
+
+.send-amount-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+}
+
+.send-amount-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  justify-content: center;
+}
+
+.send-amount-input {
+  font-family: var(--font-display);
+  font-size: 42px;
+  font-weight: 900;
+  color: var(--text-primary);
+  background: transparent;
+  border: none;
+  outline: none;
+  text-align: center;
+  width: 100%;
+  max-width: 280px;
+  padding: 0;
+  line-height: 1.1;
+}
+
+.send-amount-input::placeholder {
+  color: var(--text-muted);
+}
+
+.send-amount-input::-webkit-outer-spin-button,
+.send-amount-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.send-amount-input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+.send-amount-symbol {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+.send-balance-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.send-balance-label {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.send-balance-value {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.send-max-btn {
+  padding: 3px 10px;
+  background: color-mix(in srgb, var(--exo-lime) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--exo-lime) 25%, transparent);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--exo-lime);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.send-max-btn:hover {
+  background: color-mix(in srgb, var(--exo-lime) 18%, transparent);
+  border-color: var(--exo-lime);
+}
+
+/* ─── Mode Toggle ────────────────────────────────────────────────── */
+
+.send-mode-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.send-mode-toggle:hover {
+  border-color: color-mix(in srgb, var(--exo-lime) 30%, var(--border));
+}
+
+.send-mode-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+
+.send-mode-switch {
+  width: 36px;
+  height: 20px;
+  background: var(--border);
+  border-radius: 10px;
+  position: relative;
+  transition: background 0.2s ease;
+  flex-shrink: 0;
+}
+
+.send-mode-switch.active {
+  background: var(--exo-lime);
+}
+
+.send-mode-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: var(--bg-card);
+  border-radius: 50%;
+  transition: transform 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.send-mode-switch.active::after {
+  transform: translateX(16px);
+}
+
+/* ─── Recipient Input ────────────────────────────────────────────── */
+
+.send-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.send-field-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.send-field-input {
+  padding: 10px 14px;
+  background: var(--bg-elevated);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  outline: none;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.send-field-input:focus {
+  border-color: var(--exo-lime);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--exo-lime) 10%, transparent);
+}
+
+.send-field-input::placeholder {
+  color: var(--text-muted);
+  font-family: var(--font-body);
+}
+
+.send-field-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.send-field-resolved {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--exo-lime);
+  padding-top: 2px;
+}
+
+.send-field-resolved svg {
+  flex-shrink: 0;
+}
+
+.send-field-error {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--exo-coral);
+  padding-top: 2px;
+}
+
+/* ─── Wallet Type Selectors (Own Wallet Transfer) ────────────────── */
+
+.send-wallet-selectors {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.send-wallet-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.send-wallet-options {
+  display: flex;
+  gap: 6px;
+}
+
+.send-wallet-opt {
+  flex: 1;
+  padding: 10px 12px;
+  background: var(--bg-elevated);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.send-wallet-opt:hover:not(.active):not(:disabled) {
+  border-color: var(--text-muted);
+  color: var(--text-secondary);
+}
+
+.send-wallet-opt.active {
+  border-color: var(--exo-lime);
+  color: var(--exo-lime);
+  background: color-mix(in srgb, var(--exo-lime) 6%, var(--bg-elevated));
+}
+
+.send-wallet-opt:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* ─── Review Step ────────────────────────────────────────────────── */
+
+.send-review {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.send-review-amount {
+  text-align: center;
+  padding: 16px 0 8px;
+}
+
+.send-review-amount-value {
+  font-family: var(--font-display);
+  font-size: 36px;
+  font-weight: 900;
+  color: var(--text-primary);
+  line-height: 1.1;
+}
+
+.send-review-amount-symbol {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-left: 6px;
+}
+
+.send-review-details {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.send-review-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  font-size: 13px;
+}
+
+.send-review-row + .send-review-row {
+  border-top: 1px solid var(--border);
+}
+
+.send-review-row-label {
+  color: var(--text-secondary);
+}
+
+.send-review-row-value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+  max-width: 60%;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.send-review-row-value.address {
+  color: var(--exo-sky);
+}
+
+.send-review-row-value.wallet-type {
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 700;
+}
+
+/* ─── Action Buttons ─────────────────────────────────────────────── */
+
+.send-actions {
+  display: flex;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.send-btn {
+  flex: 1;
+  padding: 12px 20px;
+  border: none;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.25s var(--bounce);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.send-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.send-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.send-btn-primary {
+  background: var(--exo-lime);
+  color: #0a0a0a;
+}
+
+.send-btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--exo-lime) 30%, transparent);
+}
+
+.send-btn-secondary {
+  background: transparent;
+  color: var(--text-primary);
+  border: 2px solid var(--border);
+}
+
+.send-btn-secondary:hover:not(:disabled) {
+  border-color: var(--text-muted);
+}
+
+.send-btn-retry {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.send-btn-retry:hover:not(:disabled) {
+  border-color: var(--text-muted);
+}
+
+/* ─── Spinner ────────────────────────────────────────────────────── */
+
+.send-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2.5px solid #0a0a0a;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: sendSpin 0.6s linear infinite;
+}
+
+@keyframes sendSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* ─── Success State ──────────────────────────────────────────────── */
+
+.send-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 24px 0 8px;
+  text-align: center;
+}
+
+.send-success-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--exo-lime) 12%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--exo-lime);
+  animation: sendSuccessPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes sendSuccessPop {
+  from {
+    transform: scale(0);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.send-success-label {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 900;
+  color: var(--text-primary);
+}
+
+.send-success-hash {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--exo-sky);
+  text-decoration: none;
+}
+
+.send-success-hash:hover {
+  text-decoration: underline;
+}
+
+/* ─── Error State ────────────────────────────────────────────────── */
+
+.send-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0 4px;
+  text-align: center;
+}
+
+.send-error-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--exo-coral) 12%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--exo-coral);
+}
+
+.send-error-label {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--text-primary);
+}
+
+.send-error-message {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--exo-coral);
+  max-width: 320px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+/* ─── Sending (loading) State ────────────────────────────────────── */
+
+.send-sending {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 32px 0;
+}
+
+.send-sending-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border);
+  border-top-color: var(--exo-lime);
+  border-radius: 50%;
+  animation: sendSpin 0.7s linear infinite;
+}
+
+.send-sending-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ─── Responsive: Mobile ─────────────────────────────────────────── */
+
+@media (max-width: 480px) {
+  .send-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .send-card {
+    max-width: none;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    max-height: 92vh;
+    overflow-y: auto;
+  }
+
+  @keyframes sendCardIn {
+    from {
+      opacity: 0;
+      transform: translateY(100%);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes sendCardOut {
+    from {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(100%);
+    }
+  }
+
+  .send-amount-input {
+    font-size: 34px;
+  }
+
+  .send-review-amount-value {
+    font-size: 30px;
+  }
+}
