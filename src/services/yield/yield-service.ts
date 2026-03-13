@@ -1,10 +1,11 @@
 import { Effect, Context, Layer, Data } from "effect";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray, notInArray } from "drizzle-orm";
 import { DatabaseService } from "../../db/client.js";
 import {
   yieldVaults,
   yieldPositions,
   yieldSnapshots,
+  goalSavingsDeposits,
   type YieldVault,
   type NewYieldVault,
   type YieldPosition,
@@ -92,7 +93,8 @@ export interface YieldServiceApi {
   ) => Effect.Effect<YieldPosition, YieldError>;
 
   readonly getUserPositions: (
-    userId: string
+    userId: string,
+    type?: "goal" | "lock"
   ) => Effect.Effect<ReadonlyArray<YieldPosition>, YieldError>;
 
   readonly getPosition: (
@@ -453,15 +455,45 @@ export const YieldServiceLive: Layer.Layer<
           return position!;
         }),
 
-      getUserPositions: (userId: string) =>
+      getUserPositions: (userId: string, type?: "goal" | "lock") =>
         Effect.tryPromise({
           try: async () => {
-            const results = await db
+            if (type) {
+              // Get all position IDs linked to goals for this user
+              const goalPositionIds = db
+                .select({ id: goalSavingsDeposits.yieldPositionId })
+                .from(goalSavingsDeposits);
+
+              if (type === "goal") {
+                return db
+                  .select()
+                  .from(yieldPositions)
+                  .where(
+                    and(
+                      eq(yieldPositions.userId, userId),
+                      inArray(yieldPositions.id, goalPositionIds)
+                    )
+                  )
+                  .orderBy(desc(yieldPositions.createdAt));
+              } else {
+                return db
+                  .select()
+                  .from(yieldPositions)
+                  .where(
+                    and(
+                      eq(yieldPositions.userId, userId),
+                      notInArray(yieldPositions.id, goalPositionIds)
+                    )
+                  )
+                  .orderBy(desc(yieldPositions.createdAt));
+              }
+            }
+
+            return db
               .select()
               .from(yieldPositions)
               .where(eq(yieldPositions.userId, userId))
               .orderBy(desc(yieldPositions.createdAt));
-            return results;
           },
           catch: (error) =>
             new YieldError({

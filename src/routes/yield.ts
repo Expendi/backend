@@ -201,14 +201,16 @@ export function createYieldRoutes(runtime: AppRuntime) {
     )
   );
 
-  // List the authenticated user's positions
+  // List the authenticated user's positions (optional ?type=goal|lock filter)
   app.get("/positions", (c) =>
     runEffect(
       runtime,
       Effect.gen(function* () {
         const userId = c.get("userId");
+        const typeParam = c.req.query("type") as "goal" | "lock" | undefined;
+        const type = typeParam === "goal" || typeParam === "lock" ? typeParam : undefined;
         const yieldService = yield* YieldService;
-        return yield* yieldService.getUserPositions(userId);
+        return yield* yieldService.getUserPositions(userId, type);
       }),
       c
     )
