@@ -251,22 +251,7 @@ export function createYieldRoutes(runtime: AppRuntime) {
           return yield* Effect.fail(new Error("Position not found"));
         }
 
-        const body = yield* Effect.tryPromise({
-          try: () =>
-            c.req.json<{
-              walletId?: string;
-              walletType: "user" | "server" | "agent";
-            }>(),
-          catch: () => ({ walletId: undefined, walletType: "server" as const }),
-        });
-
-        let resolvedWalletId = body.walletId ?? position.walletId;
-
-        return yield* yieldService.withdrawPosition(
-          id,
-          resolvedWalletId,
-          body.walletType
-        );
+        return yield* yieldService.withdrawPosition(id);
       }),
       c
     )

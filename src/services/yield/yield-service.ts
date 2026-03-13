@@ -6,6 +6,7 @@ import {
   yieldPositions,
   yieldSnapshots,
   goalSavingsDeposits,
+  wallets,
   type YieldVault,
   type NewYieldVault,
   type YieldPosition,
@@ -102,9 +103,7 @@ export interface YieldServiceApi {
   ) => Effect.Effect<YieldPosition | undefined, YieldError>;
 
   readonly withdrawPosition: (
-    positionId: string,
-    walletId: string,
-    walletType: "user" | "server" | "agent"
+    positionId: string
   ) => Effect.Effect<YieldPosition, YieldError>;
 
   readonly syncPositionFromChain: (
@@ -518,11 +517,7 @@ export const YieldServiceLive: Layer.Layer<
             }),
         }),
 
-      withdrawPosition: (
-        positionId: string,
-        walletId: string,
-        walletType: "user" | "server" | "agent"
-      ) =>
+      withdrawPosition: (positionId: string) =>
         Effect.gen(function* () {
           const [position] = yield* Effect.tryPromise({
             try: () =>
@@ -551,11 +546,33 @@ export const YieldServiceLive: Layer.Layer<
             );
           }
 
-          // Submit the withdraw transaction
+          // Look up the wallet type from the original depositor wallet
+          const [wallet] = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .select()
+                .from(wallets)
+                .where(eq(wallets.id, position.walletId)),
+            catch: (error) =>
+              new YieldError({
+                message: `Failed to look up wallet: ${error}`,
+                cause: error,
+              }),
+          });
+
+          if (!wallet) {
+            return yield* Effect.fail(
+              new YieldError({
+                message: `Wallet not found for position: ${position.walletId}`,
+              })
+            );
+          }
+
+          // Submit the withdraw transaction using the original depositor wallet
           yield* txService
             .submitContractTransaction({
-              walletId,
-              walletType,
+              walletId: position.walletId,
+              walletType: wallet.type as "user" | "server" | "agent",
               contractName: CONTRACT_NAME,
               chainId: position.chainId,
               method: "withdraw",
