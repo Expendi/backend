@@ -310,6 +310,110 @@ export function createCategoryRoutes(runtime: AppRuntime) {
     )
   );
 
+  // Get weekly spending breakdown for charts
+  app.get("/spending/weekly", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const userId = c.get("userId");
+        const { db } = yield* DatabaseService;
+
+        const weeksParam = c.req.query("weeks");
+        const weeks = weeksParam ? Number(weeksParam) : 12;
+        const since = new Date();
+        since.setDate(since.getDate() - weeks * 7);
+
+        const rows = yield* Effect.tryPromise({
+          try: () =>
+            db
+              .select({
+                week: sql<string>`to_char(date_trunc('week', ${transactions.createdAt}), 'YYYY-MM-DD')`,
+                categoryId: transactions.categoryId,
+                categoryName: transactionCategories.name,
+                totalAmount: sql<string>`coalesce(sum(
+                  case when ${transactions.method} in ('transfer', 'raw_transfer')
+                    then (${transactions.payload}->>'amount')::numeric
+                    else coalesce((${transactions.payload}->'args'->>1)::numeric, 0)
+                  end
+                ), 0)::text`,
+                txCount: sql<number>`count(*)::int`,
+              })
+              .from(transactions)
+              .innerJoin(transactionCategories, eq(transactions.categoryId, transactionCategories.id))
+              .where(
+                and(
+                  eq(transactions.userId, userId),
+                  gte(transactions.createdAt, since),
+                  sql`${transactions.categoryId} is not null`
+                )
+              )
+              .groupBy(
+                sql`date_trunc('week', ${transactions.createdAt})`,
+                transactions.categoryId,
+                transactionCategories.name
+              )
+              .orderBy(sql`date_trunc('week', ${transactions.createdAt})`),
+          catch: (error) => new Error(`Failed to get weekly spending: ${error}`),
+        });
+
+        return rows;
+      }),
+      c
+    )
+  );
+
+  // Get monthly spending breakdown for charts
+  app.get("/spending/monthly", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const userId = c.get("userId");
+        const { db } = yield* DatabaseService;
+
+        const monthsParam = c.req.query("months");
+        const months = monthsParam ? Number(monthsParam) : 12;
+        const since = new Date();
+        since.setMonth(since.getMonth() - months);
+
+        const rows = yield* Effect.tryPromise({
+          try: () =>
+            db
+              .select({
+                month: sql<string>`to_char(date_trunc('month', ${transactions.createdAt}), 'YYYY-MM')`,
+                categoryId: transactions.categoryId,
+                categoryName: transactionCategories.name,
+                totalAmount: sql<string>`coalesce(sum(
+                  case when ${transactions.method} in ('transfer', 'raw_transfer')
+                    then (${transactions.payload}->>'amount')::numeric
+                    else coalesce((${transactions.payload}->'args'->>1)::numeric, 0)
+                  end
+                ), 0)::text`,
+                txCount: sql<number>`count(*)::int`,
+              })
+              .from(transactions)
+              .innerJoin(transactionCategories, eq(transactions.categoryId, transactionCategories.id))
+              .where(
+                and(
+                  eq(transactions.userId, userId),
+                  gte(transactions.createdAt, since),
+                  sql`${transactions.categoryId} is not null`
+                )
+              )
+              .groupBy(
+                sql`date_trunc('month', ${transactions.createdAt})`,
+                transactions.categoryId,
+                transactionCategories.name
+              )
+              .orderBy(sql`date_trunc('month', ${transactions.createdAt})`),
+          catch: (error) => new Error(`Failed to get monthly spending: ${error}`),
+        });
+
+        return rows;
+      }),
+      c
+    )
+  );
+
   // ── Categories CRUD ───────────────────────────────────────────────
 
   // List categories: global categories (no userId) + user's own categories
