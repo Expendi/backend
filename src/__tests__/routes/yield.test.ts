@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import { Hono } from "hono";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { createYieldRoutes } from "../../routes/yield.js";
@@ -13,6 +13,30 @@ import type {
   YieldPosition,
   YieldSnapshot,
 } from "../../db/schema/index.js";
+
+// Mock global fetch to prevent real HTTP calls to Morpho API
+const originalFetch = globalThis.fetch;
+beforeAll(() => {
+  globalThis.fetch = vi.fn().mockResolvedValue({
+    ok: true,
+    json: () =>
+      Promise.resolve({
+        data: {
+          vaultV2ByAddress: {
+            avgApy: 0.05,
+            netApy: 0.048,
+            performanceFee: 0.1,
+            totalAssetsUsd: 1000000,
+            asset: { symbol: "USDC", priceUsd: 1.0 },
+            metadata: { image: null, description: "Test vault" },
+          },
+        },
+      }),
+  });
+});
+afterAll(() => {
+  globalThis.fetch = originalFetch;
+});
 
 const now = new Date("2025-01-15T12:00:00Z");
 
