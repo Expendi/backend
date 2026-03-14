@@ -99,6 +99,7 @@ const YieldServiceLayer = YieldServiceLive.pipe(
   Layer.provide(TransactionServiceLayer),
   Layer.provide(ContractExecutorLayer),
   Layer.provide(ContractRegistryLayer),
+  Layer.provide(WalletServiceLayer),
   Layer.provide(ConfigLayer)
 );
 
