@@ -257,6 +257,26 @@ export function createYieldRoutes(runtime: AppRuntime) {
     )
   );
 
+  // Get the currently accrued yield for a position (live from chain)
+  app.get("/positions/:id/accrued-yield", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const id = c.req.param("id");
+        const userId = c.get("userId");
+        const yieldService = yield* YieldService;
+
+        const position = yield* yieldService.getPosition(id);
+        if (!position || position.userId !== userId) {
+          return yield* Effect.fail(new Error("Position not found"));
+        }
+
+        return yield* yieldService.getAccruedYield(id);
+      }),
+      c
+    )
+  );
+
   // Get yield snapshot history for a position
   app.get("/positions/:id/history", (c) =>
     runEffect(
