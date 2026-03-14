@@ -1055,11 +1055,55 @@ Create a new recurring payment schedule. The authenticated user must own the spe
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `walletId` | string | no | Database ID of the wallet. Required if `walletType` is not provided. |
-| `walletType` | `"user"` \| `"server"` \| `"agent"` | yes | Wallet type. Used to resolve the wallet from the user's profile if `walletId` is not provided. |
-| `recipientAddress` | string | yes | Destination address for the payment |
-| `paymentType` | `"erc20_transfer"` \| `"raw_transfer"` \| `"contract_call"` \| `"offramp"` | yes | Type of payment to execute |
-| `amount` | string | yes | Amount in the smallest unit (wei, token units, etc.) |
+Supports two request formats: a new use-case-driven format (recommended) and a legacy format for backward compatibility.
+
+**New format (transfer example):**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | `"transfer"` \| `"raw_transfer"` \| `"contract_call"` \| `"offramp"` | yes | Payment type |
+| `name` | string | no | User-defined label (e.g. `"Rent Payment"`) |
+| `wallet` | `"user"` \| `"server"` \| `"agent"` | no | Wallet type (defaults to `"server"`) |
+| `walletId` | string | no | Database ID of the wallet |
+| `to` | string | yes* | Recipient address (for transfer / raw_transfer) |
+| `amount` | string | yes | Amount in the smallest unit |
+| `token` | string | no | Token contract name (defaults to `"usdc"`) |
+| `chainId` | number | no | EVM chain ID (defaults to `DEFAULT_CHAIN_ID`) |
+| `frequency` | string | yes | Schedule interval: `30s`, `5m`, `1h`, `1d`, `7d`, etc. |
+| `startDate` | string | no | ISO timestamp for when to begin (defaults to now) |
+| `endDate` | string | no | ISO timestamp for when to stop |
+| `maxRetries` | number | no | Consecutive failures before auto-pausing (default: 3) |
+| `categoryId` | string | no | Transaction category ID |
+| `executeImmediately` | boolean | no | If true, first payment runs at startDate (default: false) |
+
+*Required for `transfer` and `raw_transfer` types.
+
+```bash
+curl -X POST http://localhost:3000/api/recurring-payments \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "transfer",
+    "name": "Monthly Rent",
+    "wallet": "server",
+    "to": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+    "amount": "1000000",
+    "token": "usdc",
+    "frequency": "30d",
+    "categoryId": "cat-uuid"
+  }'
+```
+
+**Legacy format (backward compatible):**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | no | User-defined label |
+| `walletId` | string | no | Database ID of the wallet |
+| `walletType` | `"user"` \| `"server"` \| `"agent"` | yes | Wallet type |
+| `recipientAddress` | string | yes | Destination address |
+| `paymentType` | `"erc20_transfer"` \| `"raw_transfer"` \| `"contract_call"` \| `"offramp"` | yes | Type of payment |
+| `amount` | string | yes | Amount in the smallest unit |
 | `tokenContractName` | string | no | For `erc20_transfer`: the registered contract name |
 | `contractName` | string | no | For `contract_call`: the registered contract name |
 | `contractMethod` | string | no | For `contract_call`: the method to invoke |
@@ -1067,8 +1111,9 @@ Create a new recurring payment schedule. The authenticated user must own the spe
 | `chainId` | number | no | EVM chain ID (defaults to `DEFAULT_CHAIN_ID`) |
 | `frequency` | string | yes | Schedule interval: `30s`, `5m`, `1h`, `1d`, `7d`, etc. |
 | `startDate` | string | no | ISO timestamp for when to begin (defaults to now) |
-| `endDate` | string | no | ISO timestamp for when to stop (no end date if omitted) |
+| `endDate` | string | no | ISO timestamp for when to stop |
 | `maxRetries` | number | no | Consecutive failures before auto-pausing (default: 3) |
+| `categoryId` | string | no | Transaction category ID |
 | `offramp` | object | no | Offramp configuration (required when `paymentType` is `"offramp"`) |
 | `offramp.currency` | string | yes* | Fiat currency code (e.g., `"USD"`, `"EUR"`) |
 | `offramp.fiatAmount` | string | yes* | Fiat amount as a decimal string (e.g., `"100.50"`) |
@@ -1083,6 +1128,7 @@ curl -X POST http://localhost:3000/api/recurring-payments \
   -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
+    "name": "Daily USDC transfer",
     "walletType": "server",
     "recipientAddress": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
     "paymentType": "erc20_transfer",
@@ -1307,6 +1353,36 @@ curl -X POST http://localhost:3000/api/yield/positions/some-uuid/withdraw \
 **Response data:** `YieldPosition` (with status `"withdrawn"`)
 
 **Errors:** `Error` if not found or not owned. `YieldError` if position is not active/matured or withdraw transaction fails.
+
+#### `GET /api/yield/positions/:id/accrued-yield`
+
+Get the live accrued yield for a position, read directly from the on-chain `getAccruedYield` contract method. This is a read-only operation -- no snapshots are persisted.
+
+| Parameter | Location | Type | Required |
+|-----------|----------|------|----------|
+| `id` | path | string | yes |
+
+```bash
+curl http://localhost:3000/api/yield/positions/some-uuid/accrued-yield \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `AccruedYieldInfo`
+
+```json
+{
+  "success": true,
+  "data": {
+    "positionId": "some-uuid",
+    "principalAmount": "1000000000",
+    "currentAssets": "1050000000",
+    "accruedYield": "50000000",
+    "estimatedApy": "5.0000"
+  }
+}
+```
+
+**Errors:** `Error` if position not found or not owned by the authenticated user.
 
 #### `GET /api/yield/positions/:id/history`
 
@@ -2486,6 +2562,44 @@ curl -X POST http://localhost:3000/api/goal-savings/goal-uuid/deposit \
 **Response data:** `GoalSavingsDeposit` (HTTP 201)
 
 **Errors:** `Error` if goal not found or not owned. `GoalSavingsError` if deposit fails.
+
+#### `GET /api/goal-savings/:id/accrued-yield`
+
+Get aggregated live accrued yield across all deposit positions for a savings goal. Reads from chain for each deposit's yield position and returns totals plus per-position breakdowns.
+
+| Parameter | Location | Type | Required |
+|-----------|----------|------|----------|
+| `id` | path | string | yes |
+
+```bash
+curl http://localhost:3000/api/goal-savings/goal-uuid/accrued-yield \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `GoalAccruedYieldInfo`
+
+```json
+{
+  "success": true,
+  "data": {
+    "goalId": "goal-uuid",
+    "totalPrincipalAmount": "1000000000",
+    "totalCurrentAssets": "1050000000",
+    "totalAccruedYield": "50000000",
+    "positions": [
+      {
+        "positionId": "pos-uuid",
+        "principalAmount": "1000000000",
+        "currentAssets": "1050000000",
+        "accruedYield": "50000000",
+        "estimatedApy": "5.0000"
+      }
+    ]
+  }
+}
+```
+
+**Errors:** `Error` if goal not found or not owned by the authenticated user.
 
 #### `GET /api/goal-savings/:id/deposits`
 

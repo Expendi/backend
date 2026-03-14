@@ -46,6 +46,7 @@ export interface OfframpDetails {
 
 export interface CreateScheduleParams {
   readonly userId: string;
+  readonly name?: string;
   readonly walletId: string;
   readonly walletType: "user" | "server" | "agent";
   readonly recipientAddress: string;
@@ -67,6 +68,8 @@ export interface CreateScheduleParams {
 }
 
 export interface UpdateScheduleParams {
+  readonly name?: string;
+  readonly categoryId?: string;
   readonly amount?: string;
   readonly recipientAddress?: string;
   readonly frequency?: string;
@@ -601,6 +604,7 @@ export const RecurringPaymentServiceLive: Layer.Layer<
 
             const values: NewRecurringPayment = {
               userId: params.userId,
+              name: params.name ?? null,
               walletId: params.walletId,
               walletType: params.walletType,
               recipientAddress: params.recipientAddress,
@@ -696,6 +700,8 @@ export const RecurringPaymentServiceLive: Layer.Layer<
             const updates: Record<string, unknown> = {
               updatedAt: new Date(),
             };
+            if (params.name !== undefined) updates.name = params.name;
+            if (params.categoryId !== undefined) updates.categoryId = params.categoryId;
             if (params.amount !== undefined) updates.amount = params.amount;
             if (params.recipientAddress !== undefined)
               updates.recipientAddress = params.recipientAddress;

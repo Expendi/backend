@@ -7,6 +7,7 @@ import {
   OnboardingError,
   type UserProfileWithWallets,
 } from "../../services/onboarding/onboarding-service.js";
+import { DatabaseService } from "../../db/client.js";
 import { ConfigService } from "../../config.js";
 import type { UserProfile, Wallet } from "../../db/schema/index.js";
 import type { AuthVariables } from "../../middleware/auth.js";
@@ -98,6 +99,32 @@ function makeTestRuntime(opts?: {
         : Effect.succeed(profileWithWallets),
 
     isOnboarded: (_privyUserId: string) => Effect.succeed(true),
+
+    setUsername: (privyUserId: string, _username: string) =>
+      Effect.succeed(makeFakeProfile({ privyUserId, username: _username } as any)),
+
+    resolveUsername: (_username: string) =>
+      Effect.succeed({
+        privyUserId: TEST_USER_ID,
+        address: "0xuser1111111111111111111111111111111111111",
+      }),
+  });
+
+  const mockSelectLimit = vi.fn().mockResolvedValue([{ preferences: {} }]);
+  const mockSelectWhere = vi.fn().mockReturnValue({ limit: mockSelectLimit });
+  const mockSelectFrom = vi.fn().mockReturnValue({ where: mockSelectWhere });
+  const mockSelect = vi.fn().mockReturnValue({ from: mockSelectFrom });
+
+  const mockUpdateWhere = vi.fn().mockResolvedValue([]);
+  const mockUpdateSet = vi.fn().mockReturnValue({ where: mockUpdateWhere });
+  const mockUpdate = vi.fn().mockReturnValue({ set: mockUpdateSet });
+
+  const MockDbLayer = Layer.succeed(DatabaseService, {
+    db: {
+      select: mockSelect,
+      update: mockUpdate,
+    } as any,
+    pool: {} as any,
   });
 
   const MockConfigLayer = Layer.succeed(ConfigService, {
@@ -110,7 +137,7 @@ function makeTestRuntime(opts?: {
     port: 3000,
   });
 
-  return ManagedRuntime.make(Layer.mergeAll(MockOnboardingLayer, MockConfigLayer));
+  return ManagedRuntime.make(Layer.mergeAll(MockOnboardingLayer, MockConfigLayer, MockDbLayer));
 }
 
 function makeApp(runtime: ReturnType<typeof makeTestRuntime>) {

@@ -25,6 +25,8 @@ export const recurringPayments = pgTable("recurring_payments", {
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
   userId: text("user_id").notNull(),
+  /** Optional user-defined name for this recurring payment */
+  name: text("name"),
   walletId: text("wallet_id")
     .notNull()
     .references(() => wallets.id),
