@@ -919,6 +919,60 @@
 							"response": []
 						},
 						{
+							"name": "Get Weekly Spending Breakdown",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/api/categories/spending/weekly?weeks=12",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"categories",
+										"spending",
+										"weekly"
+									],
+									"query": [
+										{
+											"key": "weeks",
+											"value": "12"
+										}
+									]
+								},
+								"description": "Get weekly spending breakdown per category for charts. Returns week start date (YYYY-MM-DD), category info, total amount, and transaction count."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Monthly Spending Breakdown",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/api/categories/spending/monthly?months=12",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"categories",
+										"spending",
+										"monthly"
+									],
+									"query": [
+										{
+											"key": "months",
+											"value": "12"
+										}
+									]
+								},
+								"description": "Get monthly spending breakdown per category for charts. Returns month (YYYY-MM), category info, total amount, and transaction count."
+							},
+							"response": []
+						},
+						{
 							"name": "Remove Category Limit",
 							"request": {
 								"method": "DELETE",
@@ -1470,9 +1524,17 @@
 										"api",
 										"yield",
 										"positions"
+									],
+									"query": [
+										{
+											"key": "type",
+											"value": "",
+											"description": "Filter: 'goal' (goal-linked), 'lock' (standalone), or omit for all",
+											"disabled": true
+										}
 									]
 								},
-								"description": "Retrieves all yield positions belonging to the authenticated user."
+								"description": "Retrieves all yield positions belonging to the authenticated user. Optionally filter by type: 'goal' for goal-linked positions, 'lock' for standalone lock positions."
 							},
 							"response": []
 						},
@@ -1516,10 +1578,6 @@
 										"value": "application/json"
 									}
 								],
-								"body": {
-									"mode": "raw",
-									"raw": "{\n  \"walletType\": \"server\"\n}"
-								},
 								"url": {
 									"raw": "{{baseUrl}}/api/yield/positions/{{positionId}}/withdraw",
 									"host": [
@@ -1533,7 +1591,7 @@
 										"withdraw"
 									]
 								},
-								"description": "Withdraws a matured yield position. The authenticated user must own the position. Optionally specify walletId or walletType for the withdrawal destination; defaults to the wallet used for the original deposit."
+								"description": "Withdraws a matured yield position. The authenticated user must own the position. The original depositor wallet is used automatically for the on-chain withdraw call. No request body needed."
 							},
 							"response": []
 						},

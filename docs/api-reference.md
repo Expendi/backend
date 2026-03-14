@@ -497,6 +497,72 @@ curl -X DELETE http://localhost:3000/api/categories/some-uuid \
 
 **Errors:** `Error` if not found or not owned by the authenticated user.
 
+#### `GET /api/categories/spending`
+
+Get spending per category for a given period. Defaults to the start of the current month. Also returns category limits for comparison.
+
+| Parameter | Location | Type | Required | Description |
+|-----------|----------|------|----------|-------------|
+| `since` | query | string (ISO date) | no | Start of period (default: start of current month) |
+
+```bash
+curl "http://localhost:3000/api/categories/spending?since=2026-01-01" \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `Array<{ categoryId, categoryName, txCount, totalSpent, limit }>`
+
+#### `GET /api/categories/spending/daily`
+
+Get daily spending breakdown per category for chart data.
+
+| Parameter | Location | Type | Required | Description |
+|-----------|----------|------|----------|-------------|
+| `days` | query | number | no | Number of days to look back (default: 30) |
+
+```bash
+curl "http://localhost:3000/api/categories/spending/daily?days=30" \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `Array<{ date, categoryId, categoryName, totalAmount, txCount }>`
+
+- `date` is formatted as `YYYY-MM-DD`.
+
+#### `GET /api/categories/spending/weekly`
+
+Get weekly spending breakdown per category for chart data.
+
+| Parameter | Location | Type | Required | Description |
+|-----------|----------|------|----------|-------------|
+| `weeks` | query | number | no | Number of weeks to look back (default: 12) |
+
+```bash
+curl "http://localhost:3000/api/categories/spending/weekly?weeks=12" \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `Array<{ week, categoryId, categoryName, totalAmount, txCount }>`
+
+- `week` is formatted as `YYYY-MM-DD` (Monday of each week).
+
+#### `GET /api/categories/spending/monthly`
+
+Get monthly spending breakdown per category for chart data.
+
+| Parameter | Location | Type | Required | Description |
+|-----------|----------|------|----------|-------------|
+| `months` | query | number | no | Number of months to look back (default: 12) |
+
+```bash
+curl "http://localhost:3000/api/categories/spending/monthly?months=12" \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `Array<{ month, categoryId, categoryName, totalAmount, txCount }>`
+
+- `month` is formatted as `YYYY-MM`.
+
 ---
 
 ### Contracts (Read-Only)
@@ -1186,10 +1252,23 @@ curl -X POST http://localhost:3000/api/yield/positions \
 
 #### `GET /api/yield/positions`
 
-List the authenticated user's yield positions, ordered by creation date (newest first).
+List the authenticated user's yield positions, ordered by creation date (newest first). Optionally filter by position type.
+
+| Parameter | Location | Type | Required | Description |
+|-----------|----------|------|----------|-------------|
+| `type` | query | `"goal"` \| `"lock"` | no | Filter by position type: `"goal"` returns positions linked to a goal savings plan, `"lock"` returns standalone lock positions. Omit for all positions. |
 
 ```bash
+# All positions
 curl http://localhost:3000/api/yield/positions \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+
+# Only goal-linked positions
+curl "http://localhost:3000/api/yield/positions?type=goal" \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+
+# Only standalone lock positions
+curl "http://localhost:3000/api/yield/positions?type=lock" \
   -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
 ```
 
@@ -1214,19 +1293,15 @@ curl http://localhost:3000/api/yield/positions/some-uuid \
 
 #### `POST /api/yield/positions/:id/withdraw`
 
-Withdraw a matured yield position. Submits a `withdraw` transaction on-chain and marks the position as `"withdrawn"`.
+Withdraw a matured yield position. Submits a `withdraw` transaction on-chain using the original depositor wallet and marks the position as `"withdrawn"`. No request body is needed — the wallet that created the lock is used automatically to satisfy the on-chain `NotDepositor` check.
 
 | Parameter | Location | Type | Required | Description |
 |-----------|----------|------|----------|-------------|
 | `id` | path | string | yes | Position database ID |
-| `walletId` | body | string | no | Wallet to use for the withdraw transaction (defaults to the wallet used when creating the position) |
-| `walletType` | body | `"user"` \| `"server"` \| `"agent"` | no | Wallet type (defaults to `"server"`) |
 
 ```bash
 curl -X POST http://localhost:3000/api/yield/positions/some-uuid/withdraw \
-  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{ "walletType": "server" }'
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
 ```
 
 **Response data:** `YieldPosition` (with status `"withdrawn"`)

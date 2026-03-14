@@ -1,5 +1,13 @@
 import { Effect, Context, Layer, Data } from "effect";
 import { eq, and, desc, inArray, notInArray } from "drizzle-orm";
+import {
+  createPublicClient,
+  http,
+  decodeEventLog,
+  type Hash,
+  type Chain,
+} from "viem";
+import { mainnet, base, polygon, arbitrum, optimism } from "viem/chains";
 import { DatabaseService } from "../../db/client.js";
 import {
   yieldVaults,
@@ -23,6 +31,7 @@ import {
 import {
   ContractRegistry,
 } from "../contract/contract-registry.js";
+import { WalletService } from "../wallet/wallet-service.js";
 import { ConfigService } from "../../config.js";
 
 // ── Error type ───────────────────────────────────────────────────────
@@ -146,7 +155,7 @@ export class YieldService extends Context.Tag("YieldService")<
 export const YieldServiceLive: Layer.Layer<
   YieldService,
   never,
-  DatabaseService | TransactionService | ContractExecutor | ContractRegistry | ConfigService
+  DatabaseService | TransactionService | ContractExecutor | ContractRegistry | WalletService | ConfigService
 > = Layer.effect(
   YieldService,
   Effect.gen(function* () {
@@ -154,6 +163,7 @@ export const YieldServiceLive: Layer.Layer<
     const txService = yield* TransactionService;
     const executor = yield* ContractExecutor;
     const registry = yield* ContractRegistry;
+    const walletService = yield* WalletService;
     const config = yield* ConfigService;
 
     const CONTRACT_NAME = "yield-timelock";
@@ -422,10 +432,56 @@ export const YieldServiceLive: Layer.Layer<
               )
             );
 
-          // For now, use a placeholder lock ID derived from the tx hash.
-          // In production, we would parse the transaction receipt for the
-          // YieldLockCreated event to get the actual lockId.
-          const onChainLockId = tx.txHash ?? "pending";
+          // Parse the transaction receipt to extract the actual lockId
+          // from the YieldLockCreated event
+          let onChainLockId = tx.txHash ?? "pending";
+
+          if (tx.txHash) {
+            const chainMap: Record<number, Chain> = {
+              1: mainnet, 8453: base, 137: polygon, 42161: arbitrum, 10: optimism,
+            };
+            const chain = chainMap[chainId] ?? base;
+            const publicClient = createPublicClient({ chain, transport: http() });
+
+            const receipt = yield* Effect.tryPromise({
+              try: () => publicClient.getTransactionReceipt({ hash: tx.txHash as Hash }),
+              catch: () => new YieldError({ message: "Failed to fetch transaction receipt" }),
+            });
+
+            const timelockConnectorAddr = timelockConnector.address.toLowerCase();
+            const yieldLockCreatedAbi = [{
+              type: "event" as const,
+              name: "YieldLockCreated",
+              inputs: [
+                { name: "lockId", type: "uint256", indexed: true },
+                { name: "depositor", type: "address", indexed: true },
+                { name: "vault", type: "address", indexed: true },
+                { name: "underlyingToken", type: "address", indexed: false },
+                { name: "principalAssets", type: "uint256", indexed: false },
+                { name: "shares", type: "uint256", indexed: false },
+                { name: "unlockTime", type: "uint256", indexed: false },
+                { name: "label", type: "string", indexed: false },
+              ],
+            }];
+
+            for (const log of receipt.logs) {
+              if (log.address.toLowerCase() === timelockConnectorAddr) {
+                try {
+                  const decoded = decodeEventLog({
+                    abi: yieldLockCreatedAbi,
+                    data: log.data,
+                    topics: log.topics,
+                  });
+                  if (decoded.eventName === "YieldLockCreated") {
+                    onChainLockId = String((decoded.args as { lockId: bigint }).lockId);
+                    break;
+                  }
+                } catch {
+                  // Not the event we're looking for, continue
+                }
+              }
+            }
+          }
 
           // Record the position in the database
           const values: NewYieldPosition = {
@@ -564,6 +620,58 @@ export const YieldServiceLive: Layer.Layer<
             return yield* Effect.fail(
               new YieldError({
                 message: `Wallet not found for position: ${position.walletId}`,
+              })
+            );
+          }
+
+          // Verify the on-chain depositor matches the wallet we're about to use
+          const walletInstance = yield* walletService
+            .getWallet(position.walletId, wallet.type as "user" | "server" | "agent")
+            .pipe(
+              Effect.mapError(
+                (e) =>
+                  new YieldError({
+                    message: `Failed to resolve wallet instance: ${e}`,
+                    cause: e,
+                  })
+              )
+            );
+
+          const walletAddress = yield* walletInstance.getAddress().pipe(
+            Effect.mapError(
+              (e) =>
+                new YieldError({
+                  message: `Failed to get wallet address: ${e}`,
+                  cause: e,
+                })
+            )
+          );
+
+          // Read on-chain lock to check depositor
+          const lockData = yield* executor
+            .readContract(
+              CONTRACT_NAME,
+              position.chainId,
+              "getLock",
+              [BigInt(position.onChainLockId)]
+            )
+            .pipe(
+              Effect.mapError(
+                (e) =>
+                  new YieldError({
+                    message: `Failed to read on-chain lock: ${e}`,
+                    cause: e,
+                  })
+              )
+            ) as Effect.Effect<{ depositor: string }, YieldError>;
+
+          const onChainDepositor = lockData.depositor.toLowerCase();
+          const ourAddress = walletAddress.toLowerCase();
+
+          if (onChainDepositor !== ourAddress) {
+            return yield* Effect.fail(
+              new YieldError({
+                message: `Depositor mismatch: on-chain depositor is ${lockData.depositor}, but wallet ${position.walletId} (${wallet.type}) resolves to ${walletAddress}. DB address: ${wallet.address ?? "null"}`,
               })
             );
           }
