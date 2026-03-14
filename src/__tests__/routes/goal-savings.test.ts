@@ -5,6 +5,7 @@ import { createGoalSavingsRoutes } from "../../routes/goal-savings.js";
 import {
   GoalSavingsService,
   GoalSavingsError,
+  type GoalAccruedYieldInfo,
 } from "../../services/goal-savings/goal-savings-service.js";
 import type {
   GoalSaving,
@@ -73,6 +74,8 @@ function makeTestRuntime(opts?: {
   depositResult?: GoalSavingsDeposit;
   depositFail?: boolean;
   listDepositsResult?: GoalSavingsDeposit[];
+  accruedYieldResult?: GoalAccruedYieldInfo;
+  accruedYieldFail?: boolean;
   processDueResult?: GoalSavingsDeposit[];
 }) {
   const MockGoalSavingsLayer = Layer.succeed(GoalSavingsService, {
@@ -116,6 +119,27 @@ function makeTestRuntime(opts?: {
 
     listDeposits: () =>
       Effect.succeed(opts?.listDepositsResult ?? [makeFakeDeposit()]),
+
+    getAccruedYield: (goalId: string) =>
+      opts?.accruedYieldFail
+        ? Effect.fail(new GoalSavingsError({ message: "yield fetch failed" }))
+        : Effect.succeed(
+            opts?.accruedYieldResult ?? {
+              goalId,
+              totalPrincipalAmount: "1000000000",
+              totalCurrentAssets: "1050000000",
+              totalAccruedYield: "50000000",
+              positions: [
+                {
+                  positionId: "pos-1",
+                  principalAmount: "1000000000",
+                  currentAssets: "1050000000",
+                  accruedYield: "50000000",
+                  estimatedApy: "5.0000",
+                },
+              ],
+            }
+          ),
 
     processDueDeposits: () =>
       Effect.succeed(opts?.processDueResult ?? []),
@@ -357,6 +381,48 @@ describe("Goal Savings Routes", () => {
         body: JSON.stringify({ amount: "100000000" }),
       });
 
+      expect(res.status).toBe(400);
+
+      await runtime.dispose();
+    });
+  });
+
+  describe("GET /:id/accrued-yield", () => {
+    it("should return aggregated accrued yield for a goal", async () => {
+      const runtime = makeTestRuntime();
+      const app = makeApp(runtime);
+
+      const res = await app.request("/goal-1/accrued-yield");
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data.goalId).toBe("goal-1");
+      expect(body.data.totalPrincipalAmount).toBe("1000000000");
+      expect(body.data.totalCurrentAssets).toBe("1050000000");
+      expect(body.data.totalAccruedYield).toBe("50000000");
+      expect(body.data.positions).toHaveLength(1);
+
+      await runtime.dispose();
+    });
+
+    it("should return 400 for goal owned by another user", async () => {
+      const runtime = makeTestRuntime({
+        getResult: makeFakeGoal({ userId: "other-user" }),
+      });
+      const app = makeApp(runtime);
+
+      const res = await app.request("/goal-1/accrued-yield");
+      expect(res.status).toBe(400);
+
+      await runtime.dispose();
+    });
+
+    it("should return 400 when goal not found", async () => {
+      const runtime = makeTestRuntime({ getFail: true });
+      const app = makeApp(runtime);
+
+      const res = await app.request("/nonexistent/accrued-yield");
       expect(res.status).toBe(400);
 
       await runtime.dispose();
