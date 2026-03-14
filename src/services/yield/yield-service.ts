@@ -72,6 +72,14 @@ export interface PortfolioSummary {
   readonly positionCount: number;
 }
 
+export interface AccruedYieldInfo {
+  readonly positionId: string;
+  readonly principalAmount: string;
+  readonly currentAssets: string;
+  readonly accruedYield: string;
+  readonly estimatedApy: string;
+}
+
 // ── Service interface ────────────────────────────────────────────────
 
 export interface YieldServiceApi {
@@ -133,6 +141,10 @@ export interface YieldServiceApi {
     positionId: string,
     limit?: number
   ) => Effect.Effect<ReadonlyArray<YieldSnapshot>, YieldError>;
+
+  readonly getAccruedYield: (
+    positionId: string
+  ) => Effect.Effect<AccruedYieldInfo, YieldError>;
 
   readonly getPortfolioSummary: (
     userId: string
@@ -1009,6 +1021,74 @@ export const YieldServiceLive: Layer.Layer<
               message: `Failed to get yield history: ${error}`,
               cause: error,
             }),
+        }),
+
+      getAccruedYield: (positionId: string) =>
+        Effect.gen(function* () {
+          const [position] = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .select()
+                .from(yieldPositions)
+                .where(eq(yieldPositions.id, positionId)),
+            catch: (error) =>
+              new YieldError({
+                message: `Failed to find position: ${error}`,
+                cause: error,
+              }),
+          });
+
+          if (!position) {
+            return yield* Effect.fail(
+              new YieldError({ message: `Position not found: ${positionId}` })
+            );
+          }
+
+          // Read accrued yield from chain
+          const yieldData = yield* executor
+            .readContract(
+              CONTRACT_NAME,
+              position.chainId,
+              "yield",
+              [BigInt(position.onChainLockId)]
+            )
+            .pipe(
+              Effect.mapError(
+                (e) =>
+                  new YieldError({
+                    message: `Failed to read yield from chain: ${e}`,
+                    cause: e,
+                  })
+              )
+            ) as Effect.Effect<[bigint, bigint], YieldError>;
+
+          const [accruedYield, currentAssets] = yieldData;
+
+          const principal = BigInt(position.principalAmount);
+          let estimatedApy = "0";
+
+          if (principal > 0n) {
+            const elapsedMs =
+              Date.now() - new Date(position.createdAt).getTime();
+            const elapsedDays = elapsedMs / (1000 * 60 * 60 * 24);
+
+            if (elapsedDays > 0) {
+              const yieldAmount = currentAssets - principal;
+              const yieldRate =
+                Number(yieldAmount) / Number(principal);
+              const annualizedRate =
+                yieldRate * (365 / elapsedDays) * 100;
+              estimatedApy = annualizedRate.toFixed(4);
+            }
+          }
+
+          return {
+            positionId,
+            principalAmount: position.principalAmount,
+            currentAssets: String(currentAssets),
+            accruedYield: String(accruedYield),
+            estimatedApy,
+          } satisfies AccruedYieldInfo;
         }),
 
       getPortfolioSummary: (userId: string) =>

@@ -75,6 +75,14 @@ function makePublicTestRuntime(opts?: {
   withdrawResult?: YieldPosition;
   withdrawFail?: boolean;
   yieldHistory?: YieldSnapshot[];
+  accruedYield?: {
+    positionId: string;
+    principalAmount: string;
+    currentAssets: string;
+    accruedYield: string;
+    estimatedApy: string;
+  };
+  accruedYieldFail?: boolean;
   portfolio?: {
     totalPrincipal: string;
     totalCurrentValue: string;
@@ -117,6 +125,18 @@ function makePublicTestRuntime(opts?: {
     syncPositionFromChain: () => Effect.succeed(makeFakePosition()),
     snapshotYield: () => Effect.succeed(makeFakeSnapshot()),
     snapshotAllActivePositions: () => Effect.succeed([makeFakeSnapshot()]),
+    getAccruedYield: (positionId: string) =>
+      opts?.accruedYieldFail
+        ? Effect.fail(new YieldError({ message: "accrued yield failed" }))
+        : Effect.succeed(
+            opts?.accruedYield ?? {
+              positionId,
+              principalAmount: "1000000000",
+              currentAssets: "1050000000",
+              accruedYield: "50000000",
+              estimatedApy: "5.0000",
+            }
+          ),
     getYieldHistory: () =>
       Effect.succeed(opts?.yieldHistory ?? [makeFakeSnapshot()]),
     getPortfolioSummary: () =>
@@ -413,6 +433,47 @@ describe("Yield Routes (Public)", () => {
         body: JSON.stringify({ walletType: "server" }),
       });
 
+      expect(res.status).toBe(400);
+
+      await runtime.dispose();
+    });
+  });
+
+  describe("GET /positions/:id/accrued-yield", () => {
+    it("should return accrued yield for a position", async () => {
+      const runtime = makePublicTestRuntime();
+      const app = makePublicApp(runtime);
+
+      const res = await app.request("/positions/pos-1/accrued-yield");
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data.principalAmount).toBe("1000000000");
+      expect(body.data.currentAssets).toBe("1050000000");
+      expect(body.data.accruedYield).toBe("50000000");
+      expect(body.data.estimatedApy).toBe("5.0000");
+
+      await runtime.dispose();
+    });
+
+    it("should return 400 when position not found", async () => {
+      const runtime = makePublicTestRuntime({ getPosition: null });
+      const app = makePublicApp(runtime);
+
+      const res = await app.request("/positions/nonexistent/accrued-yield");
+      expect(res.status).toBe(400);
+
+      await runtime.dispose();
+    });
+
+    it("should return 400 when position belongs to another user", async () => {
+      const runtime = makePublicTestRuntime({
+        getPosition: makeFakePosition({ userId: "other-user" }),
+      });
+      const app = makePublicApp(runtime);
+
+      const res = await app.request("/positions/pos-1/accrued-yield");
       expect(res.status).toBe(400);
 
       await runtime.dispose();
