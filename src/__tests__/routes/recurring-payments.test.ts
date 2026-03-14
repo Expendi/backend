@@ -36,6 +36,7 @@ function makeFakeSchedule(
   return {
     id: "rp-1",
     userId: "user-1",
+    name: null,
     walletId: "wallet-1",
     walletType: "server",
     recipientAddress: "0x0000000000000000000000000000000000000001",
@@ -320,6 +321,36 @@ describe("Recurring Payment Routes (Public)", () => {
       await runtime.dispose();
     });
 
+    it("should create a schedule with name and categoryId", async () => {
+      const runtime = makePublicTestRuntime({
+        createResult: makeFakeSchedule({ name: "Rent Payment", categoryId: "cat-1" }),
+      });
+      const app = makePublicApp(runtime);
+
+      const res = await app.request("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "transfer",
+          name: "Rent Payment",
+          wallet: "server",
+          to: "0x0000000000000000000000000000000000000001",
+          amount: "1000000",
+          token: "usdc",
+          frequency: "30d",
+          categoryId: "cat-1",
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data.name).toBe("Rent Payment");
+      expect(body.data.categoryId).toBe("cat-1");
+
+      await runtime.dispose();
+    });
+
     it("should create a schedule using new transfer format", async () => {
       const runtime = makePublicTestRuntime();
       const app = makePublicApp(runtime);
@@ -583,6 +614,14 @@ function makeInternalTestRuntime(opts?: {
     snapshotYield: () => Effect.succeed({} as any),
     snapshotAllActivePositions: () => Effect.succeed([]),
     getYieldHistory: () => Effect.succeed([]),
+    getAccruedYield: () =>
+      Effect.succeed({
+        positionId: "pos-1",
+        principalAmount: "0",
+        currentAssets: "0",
+        accruedYield: "0",
+        estimatedApy: "0",
+      }),
     getPortfolioSummary: () =>
       Effect.succeed({
         totalPrincipal: "0",

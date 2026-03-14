@@ -29,6 +29,7 @@ interface OfframpRecipient {
 /** New shape: Pretium offramp */
 interface OfframpBody {
   type: "offramp";
+  name?: string;
   wallet?: "user" | "server" | "agent";
   walletId?: string;
   amount: string;          // fiat amount by default (e.g. "1000" KES)
@@ -48,6 +49,7 @@ interface OfframpBody {
 /** New shape: ERC-20 token transfer */
 interface TransferBody {
   type: "transfer";
+  name?: string;
   wallet?: "user" | "server" | "agent";
   walletId?: string;
   to: string;              // recipient address
@@ -65,6 +67,7 @@ interface TransferBody {
 /** New shape: raw ETH/native transfer */
 interface RawTransferBody {
   type: "raw_transfer";
+  name?: string;
   wallet?: "user" | "server" | "agent";
   walletId?: string;
   to: string;
@@ -81,6 +84,7 @@ interface RawTransferBody {
 /** New shape: arbitrary contract call */
 interface ContractCallBody {
   type: "contract_call";
+  name?: string;
   wallet?: "user" | "server" | "agent";
   walletId?: string;
   to?: string;             // recipient address (optional, used for recipientAddress)
@@ -102,6 +106,7 @@ type NewRequestBody = OfframpBody | TransferBody | RawTransferBody | ContractCal
 
 /** Legacy request body — kept for backward compatibility */
 interface LegacyRequestBody {
+  name?: string;
   walletId?: string;
   walletType: "user" | "server" | "agent";
   recipientAddress: string;
@@ -197,6 +202,7 @@ export function createRecurringPaymentRoutes(runtime: AppRuntime) {
         });
 
         // ── Normalize: detect legacy vs new format ──────────────────
+        let name: string | undefined;
         let walletType: "user" | "server" | "agent";
         let walletId: string | undefined;
         let recipientAddress: string;
@@ -218,6 +224,7 @@ export function createRecurringPaymentRoutes(runtime: AppRuntime) {
         if (isLegacyBody(rawBody)) {
           // ── LEGACY FORMAT — backward compatible path ───────────────
           const body = rawBody as unknown as LegacyRequestBody;
+          name = body.name;
           walletType = body.walletType;
           walletId = body.walletId;
           recipientAddress = body.recipientAddress;
@@ -305,6 +312,7 @@ export function createRecurringPaymentRoutes(runtime: AppRuntime) {
             return yield* Effect.fail(new Error("Missing required field: frequency"));
           }
 
+          name = body.name;
           walletType = body.wallet ?? "server";
           walletId = body.walletId;
           chainId = body.chainId ?? config.defaultChainId;
@@ -470,6 +478,7 @@ export function createRecurringPaymentRoutes(runtime: AppRuntime) {
         const rpService = yield* RecurringPaymentService;
         return yield* rpService.createSchedule({
           userId,
+          name,
           walletId: resolvedWalletId!,
           walletType,
           recipientAddress,
