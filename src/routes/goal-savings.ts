@@ -255,6 +255,26 @@ export function createGoalSavingsRoutes(runtime: AppRuntime) {
     )
   );
 
+  // GET /:id/accrued-yield — Aggregated accrued yield for all goal deposits
+  app.get("/:id/accrued-yield", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const userId = c.get("userId");
+        const id = c.req.param("id");
+        const service = yield* GoalSavingsService;
+
+        const goal = yield* service.getGoal(id);
+        if (!goal || goal.userId !== userId) {
+          return yield* Effect.fail(new Error("Goal not found"));
+        }
+
+        return yield* service.getAccruedYield(id);
+      }),
+      c
+    )
+  );
+
   // GET /:id/deposits — List deposits for goal
   app.get("/:id/deposits", (c) =>
     runEffect(

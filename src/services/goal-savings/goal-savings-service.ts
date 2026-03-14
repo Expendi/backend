@@ -9,7 +9,11 @@ import {
   type GoalSavingsDeposit,
   type NewGoalSavingsDeposit,
 } from "../../db/schema/index.js";
-import { YieldService, type YieldError } from "../yield/yield-service.js";
+import {
+  YieldService,
+  type YieldError,
+  type AccruedYieldInfo,
+} from "../yield/yield-service.js";
 import { OnboardingService } from "../onboarding/onboarding-service.js";
 import { ConfigService } from "../../config.js";
 
@@ -49,6 +53,14 @@ export interface UpdateGoalParams {
   readonly frequency?: string;
   readonly endDate?: Date | null;
   readonly maxRetries?: number;
+}
+
+export interface GoalAccruedYieldInfo {
+  readonly goalId: string;
+  readonly totalPrincipalAmount: string;
+  readonly totalCurrentAssets: string;
+  readonly totalAccruedYield: string;
+  readonly positions: ReadonlyArray<AccruedYieldInfo>;
 }
 
 export interface DepositParams {
@@ -102,6 +114,10 @@ export interface GoalSavingsServiceApi {
     goalId: string,
     limit?: number
   ) => Effect.Effect<ReadonlyArray<GoalSavingsDeposit>, GoalSavingsError>;
+
+  readonly getAccruedYield: (
+    goalId: string
+  ) => Effect.Effect<GoalAccruedYieldInfo, GoalSavingsError>;
 
   readonly processDueDeposits: () => Effect.Effect<
     ReadonlyArray<GoalSavingsDeposit>,
@@ -523,6 +539,68 @@ export const GoalSavingsServiceLive: Layer.Layer<
               message: `Failed to list deposits: ${error}`,
               cause: error,
             }),
+        }),
+
+      getAccruedYield: (goalId: string) =>
+        Effect.gen(function* () {
+          // Fetch all confirmed deposits for this goal
+          const deposits = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .select()
+                .from(goalSavingsDeposits)
+                .where(eq(goalSavingsDeposits.goalId, goalId)),
+            catch: (error) =>
+              new GoalSavingsError({
+                message: `Failed to list deposits: ${error}`,
+                cause: error,
+              }),
+          });
+
+          if (deposits.length === 0) {
+            return {
+              goalId,
+              totalPrincipalAmount: "0",
+              totalCurrentAssets: "0",
+              totalAccruedYield: "0",
+              positions: [],
+            } satisfies GoalAccruedYieldInfo;
+          }
+
+          // Get accrued yield for each position
+          const positionResults: AccruedYieldInfo[] = [];
+          let totalPrincipal = 0n;
+          let totalAssets = 0n;
+          let totalYield = 0n;
+
+          for (const deposit of deposits) {
+            if (!deposit.yieldPositionId) continue;
+
+            const info = yield* yieldService
+              .getAccruedYield(deposit.yieldPositionId)
+              .pipe(
+                Effect.mapError(
+                  (e) =>
+                    new GoalSavingsError({
+                      message: `Failed to get yield for position ${deposit.yieldPositionId}: ${e.message}`,
+                      cause: e,
+                    })
+                )
+              );
+
+            positionResults.push(info);
+            totalPrincipal += BigInt(info.principalAmount);
+            totalAssets += BigInt(info.currentAssets);
+            totalYield += BigInt(info.accruedYield);
+          }
+
+          return {
+            goalId,
+            totalPrincipalAmount: String(totalPrincipal),
+            totalCurrentAssets: String(totalAssets),
+            totalAccruedYield: String(totalYield),
+            positions: positionResults,
+          } satisfies GoalAccruedYieldInfo;
         }),
 
       processDueDeposits: () =>
