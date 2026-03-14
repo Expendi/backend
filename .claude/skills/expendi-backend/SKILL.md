@@ -300,9 +300,56 @@ Limits are **per-user, per-category, per-token**. The unique constraint is `(use
 | POST | `/api/recurring-payments/:id/cancel` | Privy | -- | Updated schedule |
 | GET | `/api/recurring-payments/:id/executions` | Privy | Query: `?limit=50` | Array of execution records |
 
-**POST `/api/recurring-payments` body:**
+**POST `/api/recurring-payments` body (new format — use-case-driven):**
+
+*Transfer (ERC-20):*
 ```typescript
 {
+  type: "transfer";
+  name?: string;               // User-defined label (e.g. "Rent Payment")
+  wallet?: "user" | "server" | "agent";  // Defaults to "server"
+  walletId?: string;
+  to: string;                  // Recipient address
+  amount: string;              // Token amount in base units
+  token?: string;              // Defaults to "usdc"
+  chainId?: number;
+  frequency: string;           // Interval: "5m", "1h", "1d", "7d", "30d"
+  startDate?: string;          // ISO 8601 (defaults to now)
+  endDate?: string;            // ISO 8601 (optional)
+  maxRetries?: number;         // Default: 3
+  categoryId?: string;         // Transaction category ID
+  executeImmediately?: boolean;
+}
+```
+
+*Offramp:*
+```typescript
+{
+  type: "offramp";
+  name?: string;
+  wallet?: "user" | "server" | "agent";
+  walletId?: string;
+  amount: string;              // Fiat amount by default (e.g. "1000" KES)
+  currency?: string;           // Resolved from recipient.country if omitted
+  amountInUsdc?: boolean;      // Set true if amount is USDC instead of fiat
+  recipient?: { phoneNumber?, mobileNetwork?, country?, paymentMethod?, accountNumber?, accountName?, bankAccount?, bankCode?, bankName? };
+  token?: string;              // Defaults to "usdc"
+  chainId?: number;
+  frequency: string;
+  startDate?: string;
+  endDate?: string;
+  maxRetries?: number;
+  categoryId?: string;
+  executeImmediately?: boolean;
+}
+```
+
+*Raw transfer & contract call types also supported — see `raw_transfer` and `contract_call` type variants.*
+
+**Legacy format (backward compatible):**
+```typescript
+{
+  name?: string;               // User-defined label
   walletId?: string;
   walletType: "user" | "server" | "agent";
   recipientAddress: string;    // 0x address
@@ -318,6 +365,7 @@ Limits are **per-user, per-category, per-token**. The unique constraint is `(use
   endDate?: string;            // ISO 8601 (optional)
   executeImmediately?: boolean; // If true, first payment runs at startDate; otherwise first payment is at startDate + frequency (default: false)
   maxRetries?: number;         // Default: 3
+  categoryId?: string;         // Transaction category ID
   offramp?: {                  // For offramp payment type
     currency: string;
     fiatAmount: string;
@@ -333,6 +381,7 @@ Limits are **per-user, per-category, per-token**. The unique constraint is `(use
 interface RecurringPayment {
   id: string;
   userId: string;
+  name: string | null;
   walletId: string;
   walletType: "user" | "server" | "agent";
   recipientAddress: string;
@@ -349,6 +398,7 @@ interface RecurringPayment {
   offrampProvider: string | null;
   offrampDestinationId: string | null;
   offrampMetadata: Record<string, unknown> | null;
+  categoryId: string | null;
   frequency: string;
   status: "active" | "paused" | "cancelled" | "completed" | "failed";
   startDate: string;
@@ -372,6 +422,7 @@ interface RecurringPayment {
 | GET | `/api/yield/positions` | Privy | -- | Array of user's positions |
 | GET | `/api/yield/positions/:id` | Privy | -- | Single position |
 | POST | `/api/yield/positions/:id/withdraw` | Privy | `{ walletId?: string, walletType: "user" \| "server" \| "agent" }` | Withdrawal result |
+| GET | `/api/yield/positions/:id/accrued-yield` | Privy | -- | Live accrued yield from chain |
 | GET | `/api/yield/positions/:id/history` | Privy | Query: `?limit=50` | Array of yield snapshots |
 | GET | `/api/yield/portfolio` | Privy | -- | Portfolio summary (totals, APY) |
 
@@ -620,6 +671,7 @@ Goal savings lets users define savings goals with a target token and amount, opt
 | POST | `/api/goal-savings/:id/resume` | Privy | -- | Resumed goal (resets failures, recalculates next deposit) |
 | POST | `/api/goal-savings/:id/cancel` | Privy | -- | Cancelled goal (existing positions remain) |
 | POST | `/api/goal-savings/:id/deposit` | Privy | See below | Manual deposit (HTTP 201) |
+| GET | `/api/goal-savings/:id/accrued-yield` | Privy | -- | Aggregated live yield across all deposits |
 | GET | `/api/goal-savings/:id/deposits` | Privy | Query: `?limit=50` | Array of deposit records |
 
 **POST `/api/goal-savings` body:**
@@ -716,6 +768,25 @@ interface GoalSavingsDeposit {
   depositedAt: string;
 }
 ```
+
+**GET `/api/goal-savings/:id/accrued-yield` response:**
+```typescript
+interface GoalAccruedYieldInfo {
+  goalId: string;
+  totalPrincipalAmount: string;
+  totalCurrentAssets: string;
+  totalAccruedYield: string;
+  positions: Array<{
+    positionId: string;
+    principalAmount: string;
+    currentAssets: string;
+    accruedYield: string;
+    estimatedApy: string;
+  }>;
+}
+```
+
+Reads live yield from chain for each deposit position linked to the goal and returns aggregated totals plus per-position breakdowns. This is a read-only operation — no snapshots are persisted.
 
 **Business logic & edge cases:**
 - **Deposit rejection:** Deposits to goals with status `cancelled` or `completed` are rejected with an error.
@@ -1193,20 +1264,20 @@ const refreshed = await request(`/api/pretium/onramp/${onramp.data.transaction.i
 ### 7.10 Creating a Recurring Payment
 
 ```typescript
-// Monthly USDC payment -- pay now, then every 30 days at the same time
+// Monthly USDC payment -- new format, pay now then every 30 days
 const schedule = await request("/api/recurring-payments", {
   method: "POST",
   body: {
-    walletType: "server",
-    recipientAddress: "0xRecipientAddress...",
-    paymentType: "erc20_transfer",
+    type: "transfer",
+    name: "Monthly Rent",           // User-defined label
+    wallet: "server",
+    to: "0xRecipientAddress...",
     amount: "5000000",              // 5 USDC
-    tokenContractName: "USDC",      // Registered contract name
+    token: "usdc",
     chainId: 8453,
     frequency: "30d",               // Every 30 days
-    startDate: new Date().toISOString(),
-    executeImmediately: true,       // First payment runs immediately; false = first payment at startDate + 30d
-    maxRetries: 3,
+    executeImmediately: true,       // First payment runs immediately
+    categoryId: "cat-uuid",         // Optional transaction category
   },
 });
 
@@ -1261,6 +1332,11 @@ console.log(`Status: ${updated.status}`);  // "active" or "completed"
 
 // List deposits
 const deposits = await request(`/api/goal-savings/${goal.id}/deposits`);
+
+// Check live accrued yield across all deposits
+const yieldInfo = await request(`/api/goal-savings/${goal.id}/accrued-yield`);
+console.log(`Total yield: ${yieldInfo.totalAccruedYield}`);
+console.log(`Positions: ${yieldInfo.positions.length}`);
 
 // Pause automation
 await request(`/api/goal-savings/${goal.id}/pause`, { method: "POST" });

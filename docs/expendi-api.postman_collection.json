@@ -1153,7 +1153,7 @@
 								],
 								"body": {
 									"mode": "raw",
-									"raw": "{\n  \"type\": \"offramp\",\n  \"wallet\": \"server\",\n  \"amount\": \"1000\",\n  \"currency\": \"KES\",\n  \"frequency\": \"7d\",\n  \"recipient\": {\n    \"phoneNumber\": \"0712345678\",\n    \"mobileNetwork\": \"safaricom\",\n    \"country\": \"KE\"\n  },\n  \"executeImmediately\": true\n}"
+									"raw": "{\n  \"name\": \"Monthly M-Pesa Withdrawal\",\n  \"type\": \"offramp\",\n  \"wallet\": \"server\",\n  \"amount\": \"1000\",\n  \"currency\": \"KES\",\n  \"frequency\": \"7d\",\n  \"recipient\": {\n    \"phoneNumber\": \"0712345678\",\n    \"mobileNetwork\": \"safaricom\",\n    \"country\": \"KE\"\n  },\n  \"executeImmediately\": true\n}"
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/recurring-payments",
@@ -1185,7 +1185,7 @@
 								],
 								"body": {
 									"mode": "raw",
-									"raw": "{\n  \"type\": \"offramp\",\n  \"wallet\": \"server\",\n  \"amount\": \"50000\",\n  \"currency\": \"NGN\",\n  \"frequency\": \"30d\",\n  \"recipient\": {\n    \"country\": \"NG\",\n    \"paymentMethod\": \"BANK_TRANSFER\",\n    \"accountName\": \"John Doe\",\n    \"accountNumber\": \"0012345678\",\n    \"bankCode\": \"000019\",\n    \"bankName\": \"Enterprise Bank\"\n  },\n  \"executeImmediately\": true\n}"
+									"raw": "{\n  \"name\": \"Monthly Bank Transfer\",\n  \"type\": \"offramp\",\n  \"wallet\": \"server\",\n  \"amount\": \"50000\",\n  \"currency\": \"NGN\",\n  \"frequency\": \"30d\",\n  \"recipient\": {\n    \"country\": \"NG\",\n    \"paymentMethod\": \"BANK_TRANSFER\",\n    \"accountName\": \"John Doe\",\n    \"accountNumber\": \"0012345678\",\n    \"bankCode\": \"000019\",\n    \"bankName\": \"Enterprise Bank\"\n  },\n  \"executeImmediately\": true\n}"
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/recurring-payments",
@@ -1217,7 +1217,7 @@
 								],
 								"body": {
 									"mode": "raw",
-									"raw": "{\n  \"type\": \"transfer\",\n  \"wallet\": \"server\",\n  \"to\": \"0xdAC17F958D2ee523a2206206994597C13D831ec7\",\n  \"amount\": \"1000000\",\n  \"token\": \"usdc\",\n  \"frequency\": \"1d\",\n  \"startDate\": \"2026-03-11T10:00:00.000Z\",\n  \"executeImmediately\": true,\n  \"maxRetries\": 5\n}"
+									"raw": "{\n  \"name\": \"Monthly Rent\",\n  \"type\": \"transfer\",\n  \"wallet\": \"server\",\n  \"to\": \"0xdAC17F958D2ee523a2206206994597C13D831ec7\",\n  \"amount\": \"1000000\",\n  \"token\": \"usdc\",\n  \"frequency\": \"1d\",\n  \"startDate\": \"2026-03-11T10:00:00.000Z\",\n  \"executeImmediately\": true,\n  \"maxRetries\": 5\n}"
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/recurring-payments",
@@ -1249,7 +1249,7 @@
 								],
 								"body": {
 									"mode": "raw",
-									"raw": "{\n  \"type\": \"raw_transfer\",\n  \"wallet\": \"user\",\n  \"to\": \"0x742d35Cc6634C0532925a3b844Bc9e7595f2bD68\",\n  \"amount\": \"1000000000000000000\",\n  \"frequency\": \"7d\",\n  \"startDate\": \"2026-02-01T00:00:00.000Z\",\n  \"endDate\": \"2026-12-31T23:59:59.000Z\"\n}"
+									"raw": "{\n  \"name\": \"Weekly ETH Transfer\",\n  \"type\": \"raw_transfer\",\n  \"wallet\": \"user\",\n  \"to\": \"0x742d35Cc6634C0532925a3b844Bc9e7595f2bD68\",\n  \"amount\": \"1000000000000000000\",\n  \"frequency\": \"7d\",\n  \"startDate\": \"2026-02-01T00:00:00.000Z\",\n  \"endDate\": \"2026-12-31T23:59:59.000Z\"\n}"
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/recurring-payments",
@@ -1281,7 +1281,7 @@
 								],
 								"body": {
 									"mode": "raw",
-									"raw": "{\n  \"walletType\": \"server\",\n  \"recipientAddress\": \"0x8005ee53E57aB11E11eAA4EFe07Ee3835Dc02F98\",\n  \"paymentType\": \"offramp\",\n  \"amount\": \"0\",\n  \"tokenContractName\": \"usdc\",\n  \"chainId\": 8453,\n  \"frequency\": \"7d\",\n  \"country\": \"KE\",\n  \"phoneNumber\": \"0712345678\",\n  \"mobileNetwork\": \"safaricom\",\n  \"paymentMethod\": \"MOBILE\",\n  \"fiatAmount\": \"1000\",\n  \"currency\": \"KES\",\n  \"executeImmediately\": true\n}"
+									"raw": "{\n  \"name\": \"Legacy Weekly Offramp\",\n  \"walletType\": \"server\",\n  \"recipientAddress\": \"0x8005ee53E57aB11E11eAA4EFe07Ee3835Dc02F98\",\n  \"paymentType\": \"offramp\",\n  \"amount\": \"0\",\n  \"tokenContractName\": \"usdc\",\n  \"chainId\": 8453,\n  \"frequency\": \"7d\",\n  \"country\": \"KE\",\n  \"phoneNumber\": \"0712345678\",\n  \"mobileNetwork\": \"safaricom\",\n  \"paymentMethod\": \"MOBILE\",\n  \"fiatAmount\": \"1000\",\n  \"currency\": \"KES\",\n  \"executeImmediately\": true\n}"
 								},
 								"url": {
 									"raw": "{{baseUrl}}/api/recurring-payments",
@@ -1651,6 +1651,33 @@
 									]
 								},
 								"description": "Retrieves a portfolio summary for the authenticated user, including total deposited, total yield earned, and weighted average APY across all active positions."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Accrued Yield",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/yield/positions/{{positionId}}/accrued-yield",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"yield",
+										"positions",
+										"{{positionId}}",
+										"accrued-yield"
+									]
+								},
+								"description": "Retrieves the accrued yield for a specific position. The authenticated user must own the position."
 							},
 							"response": []
 						}
@@ -3102,6 +3129,32 @@
 									]
 								},
 								"description": "List all deposits made toward a savings goal, including both automatic scheduled deposits and manual one-time deposits. Returns deposits in reverse chronological order."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Goal Accrued Yield",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authToken}}"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/goal-savings/{{goalId}}/accrued-yield",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"goal-savings",
+										"{{goalId}}",
+										"accrued-yield"
+									]
+								},
+								"description": "Retrieves the accrued yield for a specific savings goal. The authenticated user must own the goal."
 							},
 							"response": []
 						}
