@@ -653,10 +653,11 @@ export function createPretiumRoutes(runtime: AppRuntime) {
           body.callbackUrl ||
           `${config.serverBaseUrl}/webhooks/pretium`;
 
-        // Get exchange rate
+        // Get exchange rate — use selling rate for onramp (Pretium sells USDC to user)
         const conversion = yield* exchangeRateService.convertFiatToUsdc(
           body.fiatAmount,
-          countryConfig.currency
+          countryConfig.currency,
+          "selling"
         );
 
         // Call Pretium onramp
