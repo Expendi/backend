@@ -5,6 +5,7 @@ import {
   splitExpenseShareStatusEnum,
 } from "./enums.js";
 import { transactions } from "./transactions.js";
+import { transactionCategories } from "./transaction-categories.js";
 
 export { splitExpenseStatusEnum, splitExpenseShareStatusEnum } from "./enums.js";
 
@@ -20,6 +21,7 @@ export const splitExpenses = pgTable("split_expenses", {
   totalAmount: text("total_amount").notNull(),
   chainId: integer("chain_id").notNull().default(8453),
   transactionId: text("transaction_id").references(() => transactions.id),
+  categoryId: text("category_id").references(() => transactionCategories.id),
   status: splitExpenseStatusEnum("status").default("active").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
