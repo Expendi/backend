@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import { Hono } from "hono";
 import { Effect, Layer, ManagedRuntime } from "effect";
-import { createPretiumRoutes } from "../../routes/pretium.js";
+import { getTableName } from "drizzle-orm";
+import {
+  createPretiumRoutes,
+  createPretiumWebhookRoutes,
+} from "../../routes/pretium.js";
 import {
   PretiumService,
   SUPPORTED_COUNTRIES,
@@ -95,6 +99,22 @@ const mockWallet = {
   chainId: 1,
   createdAt: new Date("2025-01-15T12:00:00Z"),
   updatedAt: new Date("2025-01-15T12:00:00Z"),
+};
+
+const mockOnrampTransaction = {
+  ...mockPretiumTransaction,
+  id: "ptx-2",
+  direction: "onramp",
+  recipientAddress: "0x1111111111111111111111111111111111111111",
+  asset: "USDC",
+  pretiumTransactionCode: "TXN-002",
+  onChainTxHash: null,
+  phoneNumber: "254712345678",
+  mobileNetwork: "Safaricom",
+  accountNumber: null,
+  bankCode: null,
+  bankName: null,
+  accountName: null,
 };
 
 // ── Test runtime factory ──────────────────────────────────────────────
@@ -227,19 +247,17 @@ function makeTestRuntime(opts?: {
       const chain = createChainableMock([mockWallet]);
       // Override 'from' to route based on the table
       chain.from = vi.fn().mockImplementation((table: any) => {
-        if (table === undefined || table?.name === "wallets") {
-          const walletChain = createChainableMock([mockWallet]);
-          return walletChain;
+        const tableName = (() => {
+          try { return getTableName(table); } catch { return undefined; }
+        })();
+        if (tableName === "wallets") {
+          return createChainableMock([mockWallet]);
         }
-        if (table?.name === "pretium_transactions") {
-          const txChain = createChainableMock([mockPretiumTransaction]);
-          return txChain;
+        if (tableName === "pretium_transactions") {
+          return createChainableMock([mockPretiumTransaction]);
         }
-        if (table?.name === "user_profiles") {
-          const profileChain = createChainableMock([
-            { preferences: {} },
-          ]);
-          return profileChain;
+        if (tableName === "user_profiles") {
+          return createChainableMock([{ preferences: {} }]);
         }
         return createChainableMock([]);
       });
@@ -632,6 +650,438 @@ describe("Pretium Routes", () => {
       expect(codes).toContain("UG");
 
       await runtime.dispose();
+    });
+  });
+
+  // ── Offramp endpoints ─────────────────────────────────────────────
+
+  describe("POST /offramp", () => {
+    it("should initiate an offramp and return 201", async () => {
+      const runtime = makeTestRuntime();
+      const app = makeApp(runtime);
+
+      const res = await app.request("/offramp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          country: "KE",
+          walletId: "wallet-1",
+          usdcAmount: 100,
+          phoneNumber: "254712345678",
+          mobileNetwork: "Safaricom",
+        }),
+      });
+
+      expect(res.status).toBe(201);
+
+      const body = await res.json();
+
+      expect(body.success).toBe(true);
+      expect(body.data.transaction).toBeDefined();
+      expect(body.data.pretiumResponse).toBeDefined();
+      expect(body.data.pretiumResponse.data.transaction_code).toBe("TXN-001");
+
+      await runtime.dispose();
+    });
+
+    it("should return 400 for unsupported country", async () => {
+      const runtime = makeTestRuntime();
+      const app = makeApp(runtime);
+
+      const res = await app.request("/offramp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          country: "XX",
+          walletId: "wallet-1",
+          usdcAmount: 100,
+          phoneNumber: "254712345678",
+          mobileNetwork: "Safaricom",
+        }),
+      });
+
+      expect(res.status).toBe(400);
+
+      const body = await res.json();
+      expect(body.success).toBe(false);
+      expect(body.error.message).toContain("not supported");
+
+      await runtime.dispose();
+    });
+  });
+
+  describe("GET /offramp/:id", () => {
+    it("should return an offramp transaction by ID", async () => {
+      const runtime = makeTestRuntime();
+      const app = makeApp(runtime);
+
+      const res = await app.request("/offramp/ptx-1");
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data.id).toBe("ptx-1");
+      expect(body.data.direction).toBe("offramp");
+
+      await runtime.dispose();
+    });
+  });
+
+  describe("POST /offramp/:id/refresh", () => {
+    it("should poll Pretium status and update the transaction", async () => {
+      const runtime = makeTestRuntime();
+      const app = makeApp(runtime);
+
+      const res = await app.request("/offramp/ptx-1/refresh", {
+        method: "POST",
+      });
+
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data.pretiumStatus).toBeDefined();
+      expect(body.data.pretiumStatus.status).toBe("COMPLETED");
+      expect(body.data.pretiumStatus.receiptNumber).toBe("REC-001");
+      expect(body.data.transaction).toBeDefined();
+
+      await runtime.dispose();
+    });
+  });
+
+  describe("GET /offramp", () => {
+    it("should list user offramp transactions", async () => {
+      const runtime = makeTestRuntime();
+      const app = makeApp(runtime);
+
+      const res = await app.request("/offramp");
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(Array.isArray(body.data)).toBe(true);
+
+      await runtime.dispose();
+    });
+
+    it("should support limit and offset query params", async () => {
+      const runtime = makeTestRuntime();
+      const app = makeApp(runtime);
+
+      const res = await app.request("/offramp?limit=10&offset=5");
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.success).toBe(true);
+
+      await runtime.dispose();
+    });
+  });
+
+  // ── Onramp endpoints ──────────────────────────────────────────────
+
+  describe("POST /onramp", () => {
+    it("should initiate an onramp and return 201", async () => {
+      const runtime = makeTestRuntime();
+      const app = makeApp(runtime);
+
+      const res = await app.request("/onramp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          country: "KE",
+          walletId: "wallet-1",
+          fiatAmount: 10000,
+          phoneNumber: "254712345678",
+          mobileNetwork: "Safaricom",
+          asset: "USDC",
+        }),
+      });
+
+      expect(res.status).toBe(201);
+
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data.transaction).toBeDefined();
+      expect(body.data.pretiumResponse).toBeDefined();
+      expect(body.data.pretiumResponse.data.transaction_code).toBe("TXN-002");
+
+      await runtime.dispose();
+    });
+
+    it("should return 400 for unsupported onramp country", async () => {
+      const runtime = makeTestRuntime();
+      const app = makeApp(runtime);
+
+      const res = await app.request("/onramp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          country: "NG",
+          walletId: "wallet-1",
+          fiatAmount: 10000,
+          phoneNumber: "2348012345678",
+          mobileNetwork: "MTN",
+          asset: "USDC",
+        }),
+      });
+
+      expect(res.status).toBe(400);
+
+      const body = await res.json();
+      expect(body.success).toBe(false);
+      expect(body.error.message).toContain("not supported");
+
+      await runtime.dispose();
+    });
+  });
+
+  describe("GET /onramp/:id", () => {
+    it("should return an onramp transaction by ID", async () => {
+      const runtime = makeTestRuntime();
+      const app = makeApp(runtime);
+
+      const res = await app.request("/onramp/ptx-2");
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      // The mock DB returns mockPretiumTransaction for any pretium_transactions query
+      expect(body.data).toBeDefined();
+
+      await runtime.dispose();
+    });
+  });
+
+  describe("POST /onramp/:id/refresh", () => {
+    it("should poll Pretium status and update the onramp transaction", async () => {
+      const runtime = makeTestRuntime();
+      const app = makeApp(runtime);
+
+      const res = await app.request("/onramp/ptx-2/refresh", {
+        method: "POST",
+      });
+
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data.pretiumStatus).toBeDefined();
+      expect(body.data.pretiumStatus.status).toBe("COMPLETED");
+      expect(body.data.transaction).toBeDefined();
+
+      await runtime.dispose();
+    });
+  });
+
+  describe("GET /onramp", () => {
+    it("should list user onramp transactions", async () => {
+      const runtime = makeTestRuntime();
+      const app = makeApp(runtime);
+
+      const res = await app.request("/onramp");
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(Array.isArray(body.data)).toBe(true);
+
+      await runtime.dispose();
+    });
+
+    it("should support limit and offset query params", async () => {
+      const runtime = makeTestRuntime();
+      const app = makeApp(runtime);
+
+      const res = await app.request("/onramp?limit=20&offset=0");
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.success).toBe(true);
+
+      await runtime.dispose();
+    });
+  });
+});
+
+// ── Webhook Routes ────────────────────────────────────────────────────
+
+describe("Pretium Webhook Routes", () => {
+  function makeWebhookApp(runtime: ReturnType<typeof makeTestRuntime>) {
+    const app = new Hono();
+    // No auth middleware — webhooks are unauthenticated
+    app.route("/", createPretiumWebhookRoutes(runtime as any));
+    return app;
+  }
+
+  describe("POST /pretium (status update callback)", () => {
+    it("should handle offramp status update", async () => {
+      const runtime = makeTestRuntime();
+      const app = makeWebhookApp(runtime);
+
+      const res = await app.request("/pretium", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transaction_code: "TXN-001",
+          status: "COMPLETED",
+          receipt_number: "REC-001",
+        }),
+      });
+
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data.received).toBe(true);
+      expect(body.data.matched).toBe(true);
+      expect(body.data.type).toBe("status_update");
+      expect(body.data.transaction).toBeDefined();
+
+      await runtime.dispose();
+    });
+  });
+
+  describe("POST /pretium (asset release callback)", () => {
+    it("should handle onramp asset release", async () => {
+      const runtime = makeTestRuntime();
+      const app = makeWebhookApp(runtime);
+
+      const res = await app.request("/pretium", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transaction_code: "TXN-001",
+          is_released: true,
+          transaction_hash: "0xdef456",
+          public_name: "John Doe",
+        }),
+      });
+
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data.received).toBe(true);
+      expect(body.data.matched).toBe(true);
+      expect(body.data.type).toBe("asset_release");
+      expect(body.data.transaction).toBeDefined();
+
+      await runtime.dispose();
+    });
+  });
+
+  describe("POST /pretium (unmatched transaction)", () => {
+    it("should return matched=false for unknown transaction code", async () => {
+      // Create a runtime whose DB returns empty for pretium_transactions lookups
+      const runtime = makeTestRuntime();
+      const app = new Hono();
+
+      // We need a custom runtime where pretium_transactions select returns []
+      const emptyTxRuntime = (() => {
+        const createChainableMock = (resolveValue: any) => {
+          const chain: any = {};
+          const methods = [
+            "select", "from", "where", "limit", "offset",
+            "orderBy", "insert", "values", "returning", "update", "set",
+          ];
+          for (const method of methods) {
+            chain[method] = vi.fn().mockReturnValue(chain);
+          }
+          chain.then = (resolve: any, reject?: any) =>
+            Promise.resolve(resolveValue).then(resolve, reject);
+          return chain;
+        };
+
+        const mockDb: any = {
+          select: vi.fn().mockImplementation(() => {
+            const chain = createChainableMock([]);
+            chain.from = vi.fn().mockImplementation(() => {
+              return createChainableMock([]);
+            });
+            return chain;
+          }),
+          insert: vi.fn().mockImplementation(() => createChainableMock([])),
+          update: vi.fn().mockImplementation(() => createChainableMock([])),
+        };
+
+        const MockPretiumLayer = Layer.succeed(PretiumService, {
+          getSupportedCountries: () => mockCountries,
+          getCountryPaymentConfig: (country: string) =>
+            (COUNTRY_PAYMENT_CONFIG as any)[country] ?? undefined,
+          isCountrySupported: ((country: string) =>
+            country in mockCountries) as any,
+          validatePhoneWithMno: () => Effect.succeed(mockPhoneValidation),
+          validateBankAccount: () => Effect.succeed(mockBankValidation),
+          getBanksForCountry: () => Effect.succeed(mockBanks),
+          getSettlementAddress: () => SETTLEMENT_ADDRESS,
+          disburse: () => Effect.succeed({ success: true, data: { transaction_code: "TXN-001", message: "ok" } }),
+          getTransactionStatus: () => Effect.succeed({ success: true, status: "COMPLETED", receiptNumber: "REC-001", failureReason: null }),
+          onramp: () => Effect.succeed({ success: true, data: { transaction_code: "TXN-002", message: "ok" } }),
+        });
+
+        const MockExchangeRateLayer = Layer.succeed(ExchangeRateService, {
+          getExchangeRate: () => Effect.succeed(mockExchangeRate),
+          convertUsdcToFiat: () => Effect.succeed(mockConversionUsdcToFiat),
+          convertFiatToUsdc: () => Effect.succeed(mockConversionFiatToUsdc),
+          clearCache: () => Effect.void,
+        });
+
+        const MockTransactionLayer = Layer.succeed(TransactionService, {
+          submitContractTransaction: () => Effect.succeed({ id: "tx-1", txHash: "0xabc123", status: "confirmed" }),
+          getTransaction: () => Effect.succeed(undefined as any),
+          getUserTransactions: () => Effect.succeed([]),
+        } as any);
+
+        const MockConfigLayer = Layer.succeed(ConfigService, {
+          databaseUrl: "postgres://test",
+          privyAppId: "test",
+          privyAppSecret: "test",
+          coinmarketcapApiKey: "test",
+          adminApiKey: "test",
+          defaultChainId: 1,
+          port: 3000,
+          pretiumApiKey: "test",
+          pretiumBaseUri: "https://api.test.africa",
+          serverBaseUrl: "http://localhost:3000",
+          uniswapApiKey: "test",
+          approvalTokenSecret: "test",
+        });
+
+        const MockDatabaseLayer = Layer.succeed(DatabaseService, { db: mockDb });
+
+        return ManagedRuntime.make(
+          Layer.mergeAll(
+            MockPretiumLayer,
+            MockExchangeRateLayer,
+            MockTransactionLayer,
+            MockConfigLayer,
+            MockDatabaseLayer
+          )
+        );
+      })();
+
+      const webhookApp = new Hono();
+      webhookApp.route("/", createPretiumWebhookRoutes(emptyTxRuntime as any));
+
+      const res = await webhookApp.request("/pretium", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transaction_code: "UNKNOWN-999",
+          status: "COMPLETED",
+        }),
+      });
+
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data.received).toBe(true);
+      expect(body.data.matched).toBe(false);
+
+      await runtime.dispose();
+      await emptyTxRuntime.dispose();
     });
   });
 });
