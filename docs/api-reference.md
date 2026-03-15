@@ -151,6 +151,34 @@ curl http://localhost:3000/api/wallets \
 }
 ```
 
+#### `GET /api/wallets/balances`
+
+Read on-chain token balances (ETH and USDC) for all of the authenticated user's wallets.
+
+```bash
+curl http://localhost:3000/api/wallets/balances \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "walletId": "wallet-uuid",
+      "type": "user",
+      "address": "0x1234...abcd",
+      "balances": {
+        "ETH": "1000000000000000000",
+        "USDC": "5000000"
+      }
+    }
+  ]
+}
+```
+
 #### `GET /api/wallets/:id`
 
 Get a wallet by its database ID. Returns the wallet only if the authenticated user owns it.
@@ -220,6 +248,73 @@ curl -X POST http://localhost:3000/api/wallets/some-uuid/sign \
 ```
 
 **Errors:** `Error` if wallet not found or not owned by the user. `WalletError` if signing fails.
+
+#### `POST /api/wallets/transfer`
+
+Transfer tokens between the authenticated user's own wallets (user, server, agent). The backend resolves wallet IDs from the user's onboarding profile.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `from` | string | yes | Source wallet type: `"user"`, `"server"`, or `"agent"` |
+| `to` | string | yes | Destination wallet type: `"user"`, `"server"`, or `"agent"` |
+| `amount` | string | yes | Amount in token units (e.g. `"1000000"` for 1 USDC) |
+| `token` | string | no | Token name (defaults to `"usdc"`) |
+| `chainId` | number | no | EVM chain ID (defaults to `DEFAULT_CHAIN_ID`) |
+| `categoryId` | string | no | Transaction category ID for spending tracking |
+
+```bash
+curl -X POST http://localhost:3000/api/wallets/transfer \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": "user",
+    "to": "server",
+    "amount": "1000000",
+    "token": "usdc"
+  }'
+```
+
+**Response data:** Transaction result with `id`, `txHash`, etc.
+
+**Errors:** `Error` if source and destination are the same, wallet types not found on profile, or transfer fails.
+
+#### `GET /api/wallets/deposits`
+
+Scan recent on-chain blocks for incoming ERC-20 (USDC) Transfer events to any of the authenticated user's wallets. Returns deposit details sorted by block number (newest first).
+
+| Parameter | Location | Type | Required | Description |
+|-----------|----------|------|----------|-------------|
+| `chainId` | query | number | no | EVM chain ID (defaults to `DEFAULT_CHAIN_ID`) |
+| `blocks` | query | number | no | Number of recent blocks to scan (default: 100,000) |
+
+```bash
+curl "http://localhost:3000/api/wallets/deposits?blocks=50000" \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `Array<WalletDeposit>`
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "walletId": "wallet-uuid",
+      "walletType": "user",
+      "walletAddress": "0x1234...abcd",
+      "from": "0x5678...efgh",
+      "tokenAddress": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "tokenSymbol": "USDC",
+      "amount": "1000000",
+      "formattedAmount": "1.0",
+      "blockNumber": "12345678",
+      "transactionHash": "0xabc...def"
+    }
+  ]
+}
+```
+
+**Errors:** `Error` if wallet lookup or on-chain log fetch fails.
 
 ---
 
@@ -2639,6 +2734,403 @@ curl "http://localhost:3000/api/goal-savings/goal-uuid/deposits?limit=20" \
 
 ---
 
+### Split Expenses
+
+Split expenses allow users to divide bills between multiple participants with on-chain settlement tracking.
+
+#### `POST /api/split-expenses`
+
+Create a new split expense with shares for each participant.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `title` | string | yes | Description of the expense |
+| `tokenAddress` | string | yes | ERC-20 token contract address |
+| `tokenSymbol` | string | yes | Token symbol (e.g. `"USDC"`) |
+| `tokenDecimals` | number | yes | Token decimals (e.g. `6`) |
+| `totalAmount` | string | yes | Total expense amount as string bigint |
+| `chainId` | number | yes | EVM chain ID |
+| `transactionId` | string | no | Optional reference to an existing transaction |
+| `shares` | array | yes | Array of `{ userId: string, amount: string }` participant shares |
+
+```bash
+curl -X POST http://localhost:3000/api/split-expenses \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Dinner at Restaurant",
+    "tokenAddress": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "tokenSymbol": "USDC",
+    "tokenDecimals": 6,
+    "totalAmount": "50000000",
+    "chainId": 8453,
+    "shares": [
+      { "userId": "did:privy:user1", "amount": "25000000" },
+      { "userId": "did:privy:user2", "amount": "25000000" }
+    ]
+  }'
+```
+
+**Response data:** `SplitExpense` (HTTP 201)
+
+**Errors:** `SplitExpenseError` if creation fails.
+
+#### `GET /api/split-expenses`
+
+List the authenticated user's split expenses.
+
+```bash
+curl http://localhost:3000/api/split-expenses \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `Array<SplitExpense>`
+
+#### `GET /api/split-expenses/:id`
+
+Get a single split expense with shares.
+
+| Parameter | Location | Type | Required |
+|-----------|----------|------|----------|
+| `id` | path | string | yes |
+
+```bash
+curl http://localhost:3000/api/split-expenses/expense-uuid \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `SplitExpense` with `shares` array
+
+**Errors:** `SplitExpenseError` if not found or not a participant.
+
+#### `POST /api/split-expenses/:id/pay`
+
+Pay your share of a split expense.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `walletId` | string | yes | Wallet database ID to pay from |
+| `walletType` | string | yes | `"user"`, `"server"`, or `"agent"` |
+
+```bash
+curl -X POST http://localhost:3000/api/split-expenses/share-uuid/pay \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "walletId": "wallet-uuid",
+    "walletType": "server"
+  }'
+```
+
+**Response data:** Updated share record
+
+**Errors:** `SplitExpenseError` if share not found or not owned.
+
+#### `DELETE /api/split-expenses/:id`
+
+Cancel a split expense. Only the creator can cancel.
+
+| Parameter | Location | Type | Required |
+|-----------|----------|------|----------|
+| `id` | path | string | yes |
+
+```bash
+curl -X DELETE http://localhost:3000/api/split-expenses/expense-uuid \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** Cancelled expense record
+
+**Errors:** `SplitExpenseError` if not found or not the creator.
+
+---
+
+### Security / Transaction Approval
+
+Optional per-user PIN or passkey (WebAuthn) verification for mutating financial operations. When enabled, sensitive endpoints (transfers, swaps, offramps, yield deposits/withdrawals) require an `X-Approval-Token` header obtained by verifying the user's PIN or passkey. Approval tokens expire after 5 minutes.
+
+#### `GET /api/security/approval`
+
+Get the authenticated user's approval settings (whether PIN and/or passkeys are configured).
+
+```bash
+curl http://localhost:3000/api/security/approval \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "approvalEnabled": true,
+    "pinEnabled": true,
+    "passkeysEnabled": true,
+    "passkeyCount": 2
+  }
+}
+```
+
+#### `POST /api/security/approval/pin/setup`
+
+Set up a PIN for transaction approval.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `pin` | string | yes | The PIN to set (typically 4-6 digits) |
+
+```bash
+curl -X POST http://localhost:3000/api/security/approval/pin/setup \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "pin": "1234" }'
+```
+
+**Response data:** `{ "message": "PIN configured successfully" }`
+
+**Errors:** `Error` if PIN is already set or invalid.
+
+#### `POST /api/security/approval/pin/change`
+
+Change the existing PIN.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `currentPin` | string | yes | Current PIN for verification |
+| `newPin` | string | yes | New PIN to set |
+
+```bash
+curl -X POST http://localhost:3000/api/security/approval/pin/change \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "currentPin": "1234", "newPin": "5678" }'
+```
+
+**Response data:** `{ "message": "PIN updated successfully" }`
+
+**Errors:** `Error` if current PIN is incorrect.
+
+#### `DELETE /api/security/approval/pin`
+
+Remove the PIN.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `pin` | string | yes | Current PIN for verification |
+
+```bash
+curl -X DELETE http://localhost:3000/api/security/approval/pin \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "pin": "1234" }'
+```
+
+**Response data:** `{ "message": "PIN removed successfully" }`
+
+**Errors:** `Error` if PIN is incorrect.
+
+#### `POST /api/security/approval/passkey/register`
+
+Get WebAuthn registration options for setting up a new passkey.
+
+```bash
+curl -X POST http://localhost:3000/api/security/approval/passkey/register \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** WebAuthn `PublicKeyCredentialCreationOptions` object for the client to process.
+
+#### `POST /api/security/approval/passkey/register/verify`
+
+Verify the passkey registration response from the browser/client.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `credential` | object | yes | `RegistrationResponseJSON` from WebAuthn API |
+| `label` | string | no | Human-readable label for the passkey |
+
+```bash
+curl -X POST http://localhost:3000/api/security/approval/passkey/register/verify \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "credential": { "id": "...", "rawId": "...", "response": { ... }, "type": "public-key" },
+    "label": "iPhone"
+  }'
+```
+
+**Response data:** `{ "message": "Passkey registered successfully" }`
+
+#### `GET /api/security/approval/passkeys`
+
+List the authenticated user's registered passkeys.
+
+```bash
+curl http://localhost:3000/api/security/approval/passkeys \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** Array of passkey records with `id`, `label`, `createdAt`.
+
+#### `DELETE /api/security/approval/passkeys/:id`
+
+Remove a passkey.
+
+| Parameter | Location | Type | Required |
+|-----------|----------|------|----------|
+| `id` | path | string | yes |
+
+```bash
+curl -X DELETE http://localhost:3000/api/security/approval/passkeys/passkey-uuid \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `{ "message": "Passkey removed successfully" }`
+
+#### `POST /api/security/approval/verify`
+
+Verify a PIN or passkey and receive a time-limited approval token. For passkey verification, call first without `credential` to get authentication options, then call again with the credential.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `method` | string | yes | `"pin"` or `"passkey"` |
+| `pin` | string | conditional | Required when `method` is `"pin"` |
+| `credential` | object | conditional | `AuthenticationResponseJSON` when `method` is `"passkey"` (omit for initial challenge) |
+
+```bash
+# PIN verification
+curl -X POST http://localhost:3000/api/security/approval/verify \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "method": "pin", "pin": "1234" }'
+
+# Passkey verification - Step 1: Get challenge
+curl -X POST http://localhost:3000/api/security/approval/verify \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "method": "passkey" }'
+
+# Passkey verification - Step 2: Submit credential
+curl -X POST http://localhost:3000/api/security/approval/verify \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "method": "passkey", "credential": { ... } }'
+```
+
+**Response data (PIN or passkey step 2):** `{ "approvalToken": "hmac-token-string" }`
+
+**Response data (passkey step 1):** `{ "challenge": true, "options": { ... } }` — WebAuthn authentication options.
+
+Use the returned `approvalToken` as the `X-Approval-Token` header on subsequent mutating operations.
+
+**Errors:** `Error` if PIN is invalid, passkey authentication fails, or method is unrecognized.
+
+#### `DELETE /api/security/approval`
+
+Disable transaction approval entirely. Requires current PIN or passkey credential for verification.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `pin` | string | conditional | Current PIN (if PIN-enabled) |
+| `credential` | object | conditional | `AuthenticationResponseJSON` (if passkey-enabled) |
+
+```bash
+curl -X DELETE http://localhost:3000/api/security/approval \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "pin": "1234" }'
+```
+
+**Response data:** `{ "message": "Transaction approval disabled" }`
+
+**Errors:** `Error` if verification fails.
+
+---
+
+### Chat / AI Agent
+
+Server-side LLM chat endpoint using the Glove framework. Streams responses via Server-Sent Events (SSE). Supports tool calling with client-side execution.
+
+#### `POST /api/chat`
+
+Send messages to the LLM and receive streamed responses. The provider is configured via environment variables (`LLM_PROVIDER`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL`).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `systemPrompt` | string | yes | System prompt for the conversation |
+| `messages` | array | yes | Array of `Message` objects (`{ sender: string, text: string }`) |
+| `tools` | array | no | Array of serialized tools (`{ name, description, parameters }`) |
+
+```bash
+curl -X POST http://localhost:3000/api/chat \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "systemPrompt": "You are a helpful financial assistant.",
+    "messages": [
+      { "sender": "user", "text": "What is my wallet balance?" }
+    ],
+    "tools": []
+  }'
+```
+
+**Response:** Server-Sent Events stream with the following event types:
+
+| SSE `data` type | Fields | Description |
+|-----------------|--------|-------------|
+| `text_delta` | `text` | Incremental text from the LLM |
+| `tool_use` | `id`, `name`, `input` | Tool call request for client-side execution |
+| `done` | `message`, `tokens_in`, `tokens_out` | Final message with token usage |
+
+```json
+data: {"type":"text_delta","text":"Your wallet"}
+data: {"type":"text_delta","text":" balance is 100 USDC."}
+data: {"type":"done","message":{"sender":"agent","text":"Your wallet balance is 100 USDC."},"tokens_in":150,"tokens_out":20}
+```
+
+**Errors:** HTTP 500 if the model adapter cannot be created (check `LLM_PROVIDER` and API key env vars).
+
+---
+
+### User Preferences
+
+#### `GET /api/profile/preferences`
+
+Get the authenticated user's preferences object.
+
+```bash
+curl http://localhost:3000/api/profile/preferences \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+```
+
+**Response data:** `UserPreferences` object (may include `phoneNumber`, `mobileNetwork`, `country`, and any custom fields).
+
+#### `PATCH /api/profile/preferences`
+
+Update (merge) user preferences. Only provided fields are updated; existing fields are preserved.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| *(any)* | any | no | Arbitrary preference fields to merge |
+
+```bash
+curl -X PATCH http://localhost:3000/api/profile/preferences \
+  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phoneNumber": "+254700000000",
+    "mobileNetwork": "Safaricom",
+    "country": "KE"
+  }'
+```
+
+**Response data:** Merged `UserPreferences` object.
+
+**Errors:** `Error` if user profile not found.
+
+---
+
 ### Webhooks
 
 #### `POST /webhooks/pretium`
@@ -3871,5 +4363,49 @@ GroupAccount & {
   status: "pending" | "confirmed" | "failed";
   error: string | null;
   depositedAt: string;
+}
+```
+
+### SplitExpense
+
+```typescript
+{
+  id: string;
+  creatorId: string;
+  title: string;
+  tokenAddress: string;
+  tokenSymbol: string;
+  tokenDecimals: number;
+  totalAmount: string;
+  chainId: number;
+  transactionId: string | null;
+  status: "open" | "settled" | "cancelled";
+  createdAt: string;
+  updatedAt: string;
+}
+```
+
+### SplitExpenseShare
+
+```typescript
+{
+  id: string;
+  expenseId: string;
+  userId: string;
+  amount: string;
+  status: "unpaid" | "paid";
+  transactionId: string | null;
+  paidAt: string | null;
+}
+```
+
+### UserPreferences
+
+```typescript
+{
+  phoneNumber?: string;
+  mobileNetwork?: string;
+  country?: string;
+  [key: string]: unknown;   // extensible
 }
 ```
