@@ -282,6 +282,28 @@ describe("ExchangeRateService", () => {
       expect(result.exchangeRate).toBe(128.75);
     });
 
+    it("uses sellingRate when rateType is 'selling'", async () => {
+      mockFetchResponse({
+        data: {
+          buying_rate: 127.38,
+          selling_rate: 132.5,
+          quoted_rate: 128.75,
+        },
+      });
+
+      const result = await runEffect(
+        Effect.gen(function* () {
+          const svc = yield* ExchangeRateService;
+          return yield* svc.convertFiatToUsdc(50, "KES", "selling");
+        })
+      );
+
+      // 50 / 132.5 = 0.377358...
+      const expected = Math.round((50 / 132.5) * 1e6) / 1e6;
+      expect(result.amount).toBe(expected);
+      expect(result.exchangeRate).toBe(132.5);
+    });
+
     it("rounds to 6 decimal places correctly", async () => {
       mockFetchResponse({
         data: {

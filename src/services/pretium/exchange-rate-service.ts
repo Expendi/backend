@@ -69,10 +69,11 @@ export interface ExchangeRateServiceApi {
     currency: string
   ) => Effect.Effect<ConversionResult, ExchangeRateError>;
 
-  /** Convert fiat amount to USDC using the quoted rate */
+  /** Convert fiat amount to USDC using the quoted rate (or selling rate) */
   readonly convertFiatToUsdc: (
     fiatAmount: number,
-    currency: string
+    currency: string,
+    rateType?: "quoted" | "selling"
   ) => Effect.Effect<ConversionResult, ExchangeRateError>;
 
   /** Clear the rate cache */
@@ -190,12 +191,13 @@ export const ExchangeRateServiceLive: Layer.Layer<
           return { amount: fiatAmount, exchangeRate: rate.quotedRate };
         }),
 
-      convertFiatToUsdc: (fiatAmount: number, currency: string) =>
+      convertFiatToUsdc: (fiatAmount: number, currency: string, rateType: "quoted" | "selling" = "quoted") =>
         Effect.gen(function* () {
           const rate = yield* fetchRate(currency);
+          const effectiveRate = rateType === "selling" ? rate.sellingRate : rate.quotedRate;
           const usdcAmount =
-            Math.round((fiatAmount / rate.quotedRate) * 1e6) / 1e6;
-          return { amount: usdcAmount, exchangeRate: rate.quotedRate };
+            Math.round((fiatAmount / effectiveRate) * 1e6) / 1e6;
+          return { amount: usdcAmount, exchangeRate: effectiveRate };
         }),
 
       clearCache: () =>
