@@ -76,7 +76,12 @@ function makeTestRuntime(opts?: {
     : vi
         .fn()
         .mockResolvedValue(opts?.deleteResult ?? [makeFakeCategory()]);
-  const deleteWhere = vi.fn().mockReturnValue({ returning: deleteReturning });
+  const deleteWhere = vi.fn().mockImplementation(() => {
+    // Support both chained .returning() (for category delete) and
+    // plain resolution (for category_limits delete which has no .returning())
+    const promise = Promise.resolve([]);
+    return Object.assign(promise, { returning: deleteReturning });
+  });
   const deleteFn = vi.fn().mockReturnValue({ where: deleteWhere });
 
   const MockDbLayer = Layer.succeed(DatabaseService, {
@@ -256,6 +261,19 @@ describe("Category Routes", () => {
       expect(body.success).toBe(true);
       expect(body.data.deleted).toBe(true);
 
+      await runtime.dispose();
+    });
+
+    it("should delete a category that has an associated limit", async () => {
+      const runtime = makeTestRuntime({ deleteResult: [makeFakeCategory()] });
+      const app = makeApp(runtime);
+
+      const res = await app.request("/cat-1", { method: "DELETE" });
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data.deleted).toBe(true);
       await runtime.dispose();
     });
 

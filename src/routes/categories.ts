@@ -581,6 +581,21 @@ export function createCategoryRoutes(runtime: AppRuntime) {
         const userId = c.get("userId");
         const { db } = yield* DatabaseService;
 
+        // Delete associated limits first to avoid FK constraint violation
+        yield* Effect.tryPromise({
+          try: () =>
+            db
+              .delete(categoryLimits)
+              .where(
+                and(
+                  eq(categoryLimits.categoryId, id),
+                  eq(categoryLimits.userId, userId)
+                )
+              ),
+          catch: (error) =>
+            new Error(`Failed to delete category limits: ${error}`),
+        });
+
         const [result] = yield* Effect.tryPromise({
           try: () =>
             db
