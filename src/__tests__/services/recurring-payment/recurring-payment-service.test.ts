@@ -12,7 +12,12 @@ import {
 } from "../../../services/transaction/transaction-service.js";
 import { ConfigService } from "../../../config.js";
 import { OfframpAdapterRegistryLive } from "../../../services/offramp/index.js";
-import { PretiumService } from "../../../services/pretium/pretium-service.js";
+import {
+  PretiumService,
+  PretiumError,
+  SETTLEMENT_ADDRESS,
+  SUPPORTED_COUNTRIES,
+} from "../../../services/pretium/pretium-service.js";
 import { ExchangeRateService } from "../../../services/pretium/exchange-rate-service.js";
 import type {
   RecurringPayment,
@@ -714,6 +719,542 @@ describe("RecurringPaymentService", () => {
         Layer.provide(OfframpAdapterRegistryLive),
         Layer.provide(Layer.succeed(PretiumService, { disburse: () => Effect.succeed({} as any), getTransactionStatus: () => Effect.succeed({} as any), validatePhoneWithMno: () => Effect.succeed({} as any), validateBankAccount: () => Effect.succeed({} as any) } as any)),
         Layer.provide(Layer.succeed(ExchangeRateService, { getExchangeRate: () => Effect.succeed({} as any), convertUsdcToFiat: () => Effect.succeed({} as any), convertFiatToUsdc: () => Effect.succeed({} as any), clearCache: () => Effect.succeed(undefined) }))
+      );
+
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const rpService = yield* RecurringPaymentService;
+          return yield* rpService.processDuePayments();
+        }).pipe(Effect.provide(layer))
+      );
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.status).toBe("failed");
+    });
+
+    it("should process Pretium offramp schedule with USDC-denominated amount", async () => {
+      const dueSchedule = makeFakeSchedule({
+        paymentType: "offramp",
+        isOfframp: true,
+        offrampProvider: "pretium",
+        tokenContractName: "usdc",
+        amount: "10",
+        offrampMetadata: {
+          country: "KE",
+          phoneNumber: "254712345678",
+          mobileNetwork: "Safaricom",
+        },
+      });
+
+      const mockDb = makeMockDb({
+        selectResult: [dueSchedule],
+        insertResult: [makeFakeExecution()],
+      });
+
+      const MockDbLayer = Layer.succeed(DatabaseService, {
+        db: mockDb as any,
+        pool: {} as any,
+      });
+
+      const submitContractTransaction = vi.fn().mockReturnValue(
+        Effect.succeed(makeFakeTx({ txHash: "0xofframphash" }))
+      );
+      const MockTxServiceLayer = Layer.succeed(TransactionService, {
+        submitContractTransaction,
+        submitRawTransaction: () => Effect.succeed(makeFakeTx()),
+        getTransaction: () => Effect.succeed(makeFakeTx()),
+        listTransactions: () => Effect.succeed([makeFakeTx()]),
+      });
+      const MockConfigLayer = Layer.succeed(ConfigService, {
+        databaseUrl: "postgres://test",
+        privyAppId: "test",
+        privyAppSecret: "test",
+        coinmarketcapApiKey: "test",
+        adminApiKey: "test",
+        defaultChainId: 1,
+        port: 3000,
+        serverBaseUrl: "http://localhost:3000",
+      } as any);
+
+      const convertUsdcToFiat = vi.fn().mockReturnValue(
+        Effect.succeed({ amount: 1292.5, exchangeRate: 129.25 })
+      );
+      const disburseMock = vi.fn().mockReturnValue(
+        Effect.succeed({
+          data: {
+            transaction_code: "TXN123",
+            status: "pending",
+          },
+        })
+      );
+
+      const MockPretiumLayer = Layer.succeed(PretiumService, {
+        disburse: disburseMock,
+        getTransactionStatus: () => Effect.succeed({} as any),
+        validatePhoneWithMno: () => Effect.succeed({} as any),
+        validateBankAccount: () => Effect.succeed({} as any),
+        getSupportedCountries: () => SUPPORTED_COUNTRIES,
+        getSettlementAddress: () => SETTLEMENT_ADDRESS,
+        getCountryPaymentConfig: () => undefined,
+        isCountrySupported: () => true,
+      } as any);
+      const MockExchangeRateLayer = Layer.succeed(ExchangeRateService, {
+        getExchangeRate: () => Effect.succeed({} as any),
+        convertUsdcToFiat,
+        convertFiatToUsdc: () => Effect.succeed({} as any),
+        clearCache: () => Effect.succeed(undefined),
+      });
+
+      const layer = RecurringPaymentServiceLive.pipe(
+        Layer.provide(MockDbLayer),
+        Layer.provide(MockTxServiceLayer),
+        Layer.provide(MockConfigLayer),
+        Layer.provide(OfframpAdapterRegistryLive),
+        Layer.provide(MockPretiumLayer),
+        Layer.provide(MockExchangeRateLayer)
+      );
+
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const rpService = yield* RecurringPaymentService;
+          return yield* rpService.processDuePayments();
+        }).pipe(Effect.provide(layer))
+      );
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.status).toBe("success");
+      // Should have called convertUsdcToFiat (not convertFiatToUsdc)
+      expect(convertUsdcToFiat).toHaveBeenCalledWith(10, "KES");
+      // Should have called submitContractTransaction to send USDC to settlement
+      expect(submitContractTransaction).toHaveBeenCalled();
+      const txCallArgs = submitContractTransaction.mock.calls[0][0];
+      expect(txCallArgs.method).toBe("send");
+      expect(txCallArgs.args[0]).toBe(SETTLEMENT_ADDRESS);
+      // Should have called pretium.disburse with converted fiat amount
+      expect(disburseMock).toHaveBeenCalled();
+      const disburseArgs = disburseMock.mock.calls[0][0];
+      expect(disburseArgs.country).toBe("KE");
+      expect(disburseArgs.amount).toBe(1292.5);
+      expect(disburseArgs.phoneNumber).toBe("254712345678");
+      expect(disburseArgs.mobileNetwork).toBe("Safaricom");
+      // Should have updated offrampMetadata via db.update
+      expect(mockDb.update).toHaveBeenCalled();
+    });
+
+    it("should process Pretium offramp schedule with fiat-denominated amount", async () => {
+      const dueSchedule = makeFakeSchedule({
+        paymentType: "offramp",
+        isOfframp: true,
+        offrampProvider: "pretium",
+        tokenContractName: "usdc",
+        amount: "0",
+        offrampFiatAmount: "12925",
+        offrampMetadata: {
+          country: "KE",
+          phoneNumber: "254712345678",
+          mobileNetwork: "Safaricom",
+          amountInFiat: true,
+        },
+      });
+
+      const mockDb = makeMockDb({
+        selectResult: [dueSchedule],
+        insertResult: [makeFakeExecution()],
+      });
+
+      const MockDbLayer = Layer.succeed(DatabaseService, {
+        db: mockDb as any,
+        pool: {} as any,
+      });
+
+      const convertFiatToUsdc = vi.fn().mockReturnValue(
+        Effect.succeed({ amount: 100, exchangeRate: 129.25 })
+      );
+      const disburseMock = vi.fn().mockReturnValue(
+        Effect.succeed({
+          data: {
+            transaction_code: "TXN456",
+            status: "pending",
+          },
+        })
+      );
+      const submitContractTransaction = vi.fn().mockReturnValue(
+        Effect.succeed(makeFakeTx({ txHash: "0xfiathash" }))
+      );
+
+      const MockTxServiceLayer = Layer.succeed(TransactionService, {
+        submitContractTransaction,
+        submitRawTransaction: () => Effect.succeed(makeFakeTx()),
+        getTransaction: () => Effect.succeed(makeFakeTx()),
+        listTransactions: () => Effect.succeed([makeFakeTx()]),
+      });
+      const MockConfigLayer = Layer.succeed(ConfigService, {
+        databaseUrl: "postgres://test",
+        privyAppId: "test",
+        privyAppSecret: "test",
+        coinmarketcapApiKey: "test",
+        adminApiKey: "test",
+        defaultChainId: 1,
+        port: 3000,
+        serverBaseUrl: "http://localhost:3000",
+      } as any);
+      const MockPretiumLayer = Layer.succeed(PretiumService, {
+        disburse: disburseMock,
+        getTransactionStatus: () => Effect.succeed({} as any),
+        validatePhoneWithMno: () => Effect.succeed({} as any),
+        validateBankAccount: () => Effect.succeed({} as any),
+        getSupportedCountries: () => SUPPORTED_COUNTRIES,
+        getSettlementAddress: () => SETTLEMENT_ADDRESS,
+        getCountryPaymentConfig: () => undefined,
+        isCountrySupported: () => true,
+      } as any);
+      const MockExchangeRateLayer = Layer.succeed(ExchangeRateService, {
+        getExchangeRate: () => Effect.succeed({} as any),
+        convertUsdcToFiat: () => Effect.succeed({} as any),
+        convertFiatToUsdc,
+        clearCache: () => Effect.succeed(undefined),
+      });
+
+      const layer = RecurringPaymentServiceLive.pipe(
+        Layer.provide(MockDbLayer),
+        Layer.provide(MockTxServiceLayer),
+        Layer.provide(MockConfigLayer),
+        Layer.provide(OfframpAdapterRegistryLive),
+        Layer.provide(MockPretiumLayer),
+        Layer.provide(MockExchangeRateLayer)
+      );
+
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const rpService = yield* RecurringPaymentService;
+          return yield* rpService.processDuePayments();
+        }).pipe(Effect.provide(layer))
+      );
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.status).toBe("success");
+      // Should have called convertFiatToUsdc (not convertUsdcToFiat)
+      expect(convertFiatToUsdc).toHaveBeenCalledWith(12925, "KES");
+      // Should have called disburse with the fiat amount
+      expect(disburseMock).toHaveBeenCalled();
+      const disburseArgs = disburseMock.mock.calls[0][0];
+      expect(disburseArgs.amount).toBe(12925);
+    });
+
+    it("should fail Pretium offramp when metadata is missing required fields", async () => {
+      const dueSchedule = makeFakeSchedule({
+        paymentType: "offramp",
+        isOfframp: true,
+        offrampProvider: "pretium",
+        amount: "10",
+        offrampMetadata: {
+          // Missing country, phoneNumber, mobileNetwork
+        },
+      });
+      const failedExecution = makeFakeExecution({
+        status: "failed",
+        error: "missing required metadata",
+      });
+
+      const mockDb = makeMockDb({
+        selectResult: [dueSchedule],
+        insertResult: [failedExecution],
+      });
+
+      const MockDbLayer = Layer.succeed(DatabaseService, {
+        db: mockDb as any,
+        pool: {} as any,
+      });
+      const MockTxServiceLayer = Layer.succeed(TransactionService, {
+        submitContractTransaction: () => Effect.succeed(makeFakeTx()),
+        submitRawTransaction: () => Effect.succeed(makeFakeTx()),
+        getTransaction: () => Effect.succeed(makeFakeTx()),
+        listTransactions: () => Effect.succeed([makeFakeTx()]),
+      });
+      const MockConfigLayer = Layer.succeed(ConfigService, {
+        databaseUrl: "postgres://test",
+        privyAppId: "test",
+        privyAppSecret: "test",
+        coinmarketcapApiKey: "test",
+        adminApiKey: "test",
+        defaultChainId: 1,
+        port: 3000,
+        serverBaseUrl: "http://localhost:3000",
+      } as any);
+      const MockPretiumLayer = Layer.succeed(PretiumService, {
+        disburse: () => Effect.succeed({} as any),
+        getTransactionStatus: () => Effect.succeed({} as any),
+        validatePhoneWithMno: () => Effect.succeed({} as any),
+        validateBankAccount: () => Effect.succeed({} as any),
+        getSupportedCountries: () => SUPPORTED_COUNTRIES,
+        getSettlementAddress: () => SETTLEMENT_ADDRESS,
+        getCountryPaymentConfig: () => undefined,
+        isCountrySupported: () => true,
+      } as any);
+      const MockExchangeRateLayer = Layer.succeed(ExchangeRateService, {
+        getExchangeRate: () => Effect.succeed({} as any),
+        convertUsdcToFiat: () => Effect.succeed({} as any),
+        convertFiatToUsdc: () => Effect.succeed({} as any),
+        clearCache: () => Effect.succeed(undefined),
+      });
+
+      const layer = RecurringPaymentServiceLive.pipe(
+        Layer.provide(MockDbLayer),
+        Layer.provide(MockTxServiceLayer),
+        Layer.provide(MockConfigLayer),
+        Layer.provide(OfframpAdapterRegistryLive),
+        Layer.provide(MockPretiumLayer),
+        Layer.provide(MockExchangeRateLayer)
+      );
+
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const rpService = yield* RecurringPaymentService;
+          return yield* rpService.processDuePayments();
+        }).pipe(Effect.provide(layer))
+      );
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.status).toBe("failed");
+    });
+
+    it("should fail Pretium offramp when country is unsupported", async () => {
+      const dueSchedule = makeFakeSchedule({
+        paymentType: "offramp",
+        isOfframp: true,
+        offrampProvider: "pretium",
+        amount: "10",
+        offrampMetadata: {
+          country: "XX",
+          phoneNumber: "254712345678",
+          mobileNetwork: "Safaricom",
+        },
+      });
+      const failedExecution = makeFakeExecution({
+        status: "failed",
+        error: "Country XX is not supported by Pretium",
+      });
+
+      const mockDb = makeMockDb({
+        selectResult: [dueSchedule],
+        insertResult: [failedExecution],
+      });
+
+      const MockDbLayer = Layer.succeed(DatabaseService, {
+        db: mockDb as any,
+        pool: {} as any,
+      });
+      const MockTxServiceLayer = Layer.succeed(TransactionService, {
+        submitContractTransaction: () => Effect.succeed(makeFakeTx()),
+        submitRawTransaction: () => Effect.succeed(makeFakeTx()),
+        getTransaction: () => Effect.succeed(makeFakeTx()),
+        listTransactions: () => Effect.succeed([makeFakeTx()]),
+      });
+      const MockConfigLayer = Layer.succeed(ConfigService, {
+        databaseUrl: "postgres://test",
+        privyAppId: "test",
+        privyAppSecret: "test",
+        coinmarketcapApiKey: "test",
+        adminApiKey: "test",
+        defaultChainId: 1,
+        port: 3000,
+        serverBaseUrl: "http://localhost:3000",
+      } as any);
+      const MockPretiumLayer = Layer.succeed(PretiumService, {
+        disburse: () => Effect.succeed({} as any),
+        getTransactionStatus: () => Effect.succeed({} as any),
+        validatePhoneWithMno: () => Effect.succeed({} as any),
+        validateBankAccount: () => Effect.succeed({} as any),
+        getSupportedCountries: () => SUPPORTED_COUNTRIES,
+        getSettlementAddress: () => SETTLEMENT_ADDRESS,
+        getCountryPaymentConfig: () => undefined,
+        isCountrySupported: () => false,
+      } as any);
+      const MockExchangeRateLayer = Layer.succeed(ExchangeRateService, {
+        getExchangeRate: () => Effect.succeed({} as any),
+        convertUsdcToFiat: () => Effect.succeed({} as any),
+        convertFiatToUsdc: () => Effect.succeed({} as any),
+        clearCache: () => Effect.succeed(undefined),
+      });
+
+      const layer = RecurringPaymentServiceLive.pipe(
+        Layer.provide(MockDbLayer),
+        Layer.provide(MockTxServiceLayer),
+        Layer.provide(MockConfigLayer),
+        Layer.provide(OfframpAdapterRegistryLive),
+        Layer.provide(MockPretiumLayer),
+        Layer.provide(MockExchangeRateLayer)
+      );
+
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const rpService = yield* RecurringPaymentService;
+          return yield* rpService.processDuePayments();
+        }).pipe(Effect.provide(layer))
+      );
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.status).toBe("failed");
+    });
+
+    it("should fail Pretium offramp when USDC transfer fails", async () => {
+      const dueSchedule = makeFakeSchedule({
+        paymentType: "offramp",
+        isOfframp: true,
+        offrampProvider: "pretium",
+        tokenContractName: "usdc",
+        amount: "10",
+        offrampMetadata: {
+          country: "KE",
+          phoneNumber: "254712345678",
+          mobileNetwork: "Safaricom",
+        },
+      });
+      const failedExecution = makeFakeExecution({
+        status: "failed",
+        error: "USDC transfer to Pretium settlement failed",
+      });
+
+      const mockDb = makeMockDb({
+        selectResult: [dueSchedule],
+        insertResult: [failedExecution],
+      });
+
+      const MockDbLayer = Layer.succeed(DatabaseService, {
+        db: mockDb as any,
+        pool: {} as any,
+      });
+      const MockTxServiceLayer = Layer.succeed(TransactionService, {
+        submitContractTransaction: () =>
+          Effect.fail(new TransactionError({ message: "contract tx failed" })),
+        submitRawTransaction: () => Effect.succeed(makeFakeTx()),
+        getTransaction: () => Effect.succeed(makeFakeTx()),
+        listTransactions: () => Effect.succeed([makeFakeTx()]),
+      });
+      const MockConfigLayer = Layer.succeed(ConfigService, {
+        databaseUrl: "postgres://test",
+        privyAppId: "test",
+        privyAppSecret: "test",
+        coinmarketcapApiKey: "test",
+        adminApiKey: "test",
+        defaultChainId: 1,
+        port: 3000,
+        serverBaseUrl: "http://localhost:3000",
+      } as any);
+      const MockPretiumLayer = Layer.succeed(PretiumService, {
+        disburse: () => Effect.succeed({} as any),
+        getTransactionStatus: () => Effect.succeed({} as any),
+        validatePhoneWithMno: () => Effect.succeed({} as any),
+        validateBankAccount: () => Effect.succeed({} as any),
+        getSupportedCountries: () => SUPPORTED_COUNTRIES,
+        getSettlementAddress: () => SETTLEMENT_ADDRESS,
+        getCountryPaymentConfig: () => undefined,
+        isCountrySupported: () => true,
+      } as any);
+      const MockExchangeRateLayer = Layer.succeed(ExchangeRateService, {
+        getExchangeRate: () => Effect.succeed({} as any),
+        convertUsdcToFiat: () =>
+          Effect.succeed({ amount: 1292.5, exchangeRate: 129.25 }),
+        convertFiatToUsdc: () => Effect.succeed({} as any),
+        clearCache: () => Effect.succeed(undefined),
+      });
+
+      const layer = RecurringPaymentServiceLive.pipe(
+        Layer.provide(MockDbLayer),
+        Layer.provide(MockTxServiceLayer),
+        Layer.provide(MockConfigLayer),
+        Layer.provide(OfframpAdapterRegistryLive),
+        Layer.provide(MockPretiumLayer),
+        Layer.provide(MockExchangeRateLayer)
+      );
+
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const rpService = yield* RecurringPaymentService;
+          return yield* rpService.processDuePayments();
+        }).pipe(Effect.provide(layer))
+      );
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.status).toBe("failed");
+    });
+
+    it("should fail Pretium offramp when disburse fails", async () => {
+      const dueSchedule = makeFakeSchedule({
+        paymentType: "offramp",
+        isOfframp: true,
+        offrampProvider: "pretium",
+        tokenContractName: "usdc",
+        amount: "10",
+        offrampMetadata: {
+          country: "KE",
+          phoneNumber: "254712345678",
+          mobileNetwork: "Safaricom",
+        },
+      });
+      const failedExecution = makeFakeExecution({
+        status: "failed",
+        error: "Pretium disburse failed",
+      });
+
+      const mockDb = makeMockDb({
+        selectResult: [dueSchedule],
+        insertResult: [failedExecution],
+      });
+
+      const MockDbLayer = Layer.succeed(DatabaseService, {
+        db: mockDb as any,
+        pool: {} as any,
+      });
+      const MockTxServiceLayer = Layer.succeed(TransactionService, {
+        submitContractTransaction: () =>
+          Effect.succeed(makeFakeTx({ txHash: "0xofframphash" })),
+        submitRawTransaction: () => Effect.succeed(makeFakeTx()),
+        getTransaction: () => Effect.succeed(makeFakeTx()),
+        listTransactions: () => Effect.succeed([makeFakeTx()]),
+      });
+      const MockConfigLayer = Layer.succeed(ConfigService, {
+        databaseUrl: "postgres://test",
+        privyAppId: "test",
+        privyAppSecret: "test",
+        coinmarketcapApiKey: "test",
+        adminApiKey: "test",
+        defaultChainId: 1,
+        port: 3000,
+        serverBaseUrl: "http://localhost:3000",
+      } as any);
+
+      const MockPretiumLayer = Layer.succeed(PretiumService, {
+        disburse: () =>
+          Effect.fail(
+            new PretiumError({
+              message: "Disburse request failed",
+              code: "API_ERROR",
+            })
+          ),
+        getTransactionStatus: () => Effect.succeed({} as any),
+        validatePhoneWithMno: () => Effect.succeed({} as any),
+        validateBankAccount: () => Effect.succeed({} as any),
+        getSupportedCountries: () => SUPPORTED_COUNTRIES,
+        getSettlementAddress: () => SETTLEMENT_ADDRESS,
+        getCountryPaymentConfig: () => undefined,
+        isCountrySupported: () => true,
+      } as any);
+      const MockExchangeRateLayer = Layer.succeed(ExchangeRateService, {
+        getExchangeRate: () => Effect.succeed({} as any),
+        convertUsdcToFiat: () =>
+          Effect.succeed({ amount: 1292.5, exchangeRate: 129.25 }),
+        convertFiatToUsdc: () => Effect.succeed({} as any),
+        clearCache: () => Effect.succeed(undefined),
+      });
+
+      const layer = RecurringPaymentServiceLive.pipe(
+        Layer.provide(MockDbLayer),
+        Layer.provide(MockTxServiceLayer),
+        Layer.provide(MockConfigLayer),
+        Layer.provide(OfframpAdapterRegistryLive),
+        Layer.provide(MockPretiumLayer),
+        Layer.provide(MockExchangeRateLayer)
       );
 
       const result = await Effect.runPromise(
