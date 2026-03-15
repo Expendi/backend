@@ -23,6 +23,7 @@ export function createSplitExpenseRoutes(runtime: AppRuntime) {
               totalAmount: string;
               chainId: number;
               transactionId?: string | null;
+              categoryId?: string | null;
               shares: { userId: string; amount: string }[];
             }>(),
           catch: () => new Error("Invalid request body"),

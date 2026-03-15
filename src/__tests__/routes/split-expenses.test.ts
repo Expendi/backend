@@ -25,6 +25,7 @@ function makeFakeExpense(overrides?: Partial<SplitExpense>): SplitExpense {
     totalAmount: "50000000",
     chainId: 8453,
     transactionId: null,
+    categoryId: null,
     status: "active",
     createdAt: now,
     updatedAt: now,
@@ -152,6 +153,36 @@ describe("Split Expense Routes", () => {
       expect(body.success).toBe(true);
       expect(body.data.title).toBe("Dinner");
       expect(body.data.shares).toHaveLength(2);
+
+      await runtime.dispose();
+    });
+
+    it("should create a split expense with a categoryId", async () => {
+      const expense = makeFakeExpense({ categoryId: "cat-1" });
+      const runtime = makeTestRuntime({
+        createResult: makeFakeExpenseWithShares({ ...expense }),
+      });
+      const app = makeApp(runtime);
+
+      const res = await app.request("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Dinner",
+          tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          tokenSymbol: "USDC",
+          tokenDecimals: 6,
+          totalAmount: "50000000",
+          chainId: 8453,
+          categoryId: "cat-1",
+          shares: [{ userId: "user-2", amount: "25000000" }],
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data.categoryId).toBe("cat-1");
 
       await runtime.dispose();
     });

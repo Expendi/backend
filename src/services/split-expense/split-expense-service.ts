@@ -44,6 +44,7 @@ export interface CreateSplitExpenseParams {
   readonly totalAmount: string;
   readonly chainId: number;
   readonly transactionId?: string | null;
+  readonly categoryId?: string | null;
   readonly shares: readonly { userId: string; amount: string }[];
 }
 
@@ -219,6 +220,7 @@ export const SplitExpenseServiceLive: Layer.Layer<
                   totalAmount: params.totalAmount,
                   chainId: params.chainId,
                   transactionId: params.transactionId ?? undefined,
+                  categoryId: params.categoryId ?? undefined,
                 })
                 .returning(),
             catch: (error) =>
@@ -409,6 +411,7 @@ export const SplitExpenseServiceLive: Layer.Layer<
             to: expense.tokenAddress as `0x${string}`,
             data: transferData,
             userId,
+            categoryId: expense.categoryId ?? undefined,
           });
 
           // 5. Update share status
