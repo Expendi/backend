@@ -348,15 +348,19 @@ export function createPretiumRoutes(runtime: AppRuntime) {
           countryConfig.currency
         );
 
+        // Subtract fee from gross amount — Pretium expects the net amount
+        const fee = body.fee ?? 0;
+        const netAmount = Math.max(0, conversion.amount - fee);
+
         // Call Pretium disburse with the on-chain tx hash
         const disburseResult = yield* pretium.disburse({
           country,
-          amount: conversion.amount,
+          amount: netAmount,
           phoneNumber: body.phoneNumber,
           mobileNetwork: body.mobileNetwork,
           transactionHash: transferTx.txHash!,
           callbackUrl,
-          fee: body.fee,
+          fee,
           paymentType: body.paymentType as FiatPaymentType | undefined,
           accountNumber: body.accountNumber,
           accountName: body.accountName,
@@ -385,9 +389,9 @@ export function createPretiumRoutes(runtime: AppRuntime) {
                 countryCode: country,
                 fiatCurrency: countryConfig.currency,
                 usdcAmount: String(body.usdcAmount),
-                fiatAmount: String(conversion.amount),
+                fiatAmount: String(netAmount),
                 exchangeRate: String(conversion.exchangeRate),
-                fee: body.fee ? String(body.fee) : "0",
+                fee: String(fee),
                 paymentType,
                 status: "pending",
                 onChainTxHash: transferTx.txHash!,
