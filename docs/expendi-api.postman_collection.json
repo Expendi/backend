@@ -504,6 +504,40 @@
 								"description": "Transfers tokens between the authenticated user's own wallets (user, server, agent). The backend resolves wallet IDs and addresses from the user's profile. Amount is in token units (e.g. 1 USDC = 1000000). Token defaults to 'usdc' if omitted."
 							},
 							"response": []
+						},
+						{
+							"name": "Get Incoming Deposits",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/api/wallets/deposits",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"wallets",
+										"deposits"
+									],
+									"query": [
+										{
+											"key": "chainId",
+											"value": "8453",
+											"description": "EVM chain ID (defaults to DEFAULT_CHAIN_ID).",
+											"disabled": true
+										},
+										{
+											"key": "blocks",
+											"value": "100000",
+											"description": "Number of recent blocks to scan (default: 100000).",
+											"disabled": true
+										}
+									]
+								},
+								"description": "Scan recent on-chain blocks for incoming ERC-20 (USDC) Transfer events to any of the user's wallets. Returns deposit details including sender, amount, block number, and transaction hash."
+							},
+							"response": []
 						}
 					],
 					"description": "Public wallet endpoints. Requires Privy auth. Users can only access their own wallets. User wallet creation uses the userId from the auth context."
@@ -973,6 +1007,65 @@
 							"response": []
 						},
 						{
+							"name": "Get Category Limit",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/api/categories/{{categoryId}}/limit",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"categories",
+										"{{categoryId}}",
+										"limit"
+									],
+									"query": [
+										{
+											"key": "tokenAddress",
+											"value": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+											"description": "Optional: filter by token address. Returns single limit if set, array if omitted.",
+											"disabled": true
+										}
+									]
+								},
+								"description": "Get the spending limit(s) for a specific category. Optionally filter by tokenAddress to get a single limit."
+							},
+							"response": []
+						},
+						{
+							"name": "Set Category Limit",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/categories/{{categoryId}}/limit",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"categories",
+										"{{categoryId}}",
+										"limit"
+									]
+								},
+								"description": "Set or update a monthly spending limit for a category (upsert by userId + categoryId + tokenAddress).",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"monthlyLimit\": \"500000000\",\n  \"tokenAddress\": \"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\",\n  \"tokenSymbol\": \"USDC\",\n  \"tokenDecimals\": 6\n}"
+								}
+							},
+							"response": []
+						},
+						{
 							"name": "Remove Category Limit",
 							"request": {
 								"method": "DELETE",
@@ -989,7 +1082,7 @@
 										"limit"
 									]
 								},
-								"description": "Remove the spending limit for a specific category."
+								"description": "Remove the spending limit for a specific category. Optionally filter by tokenAddress query param."
 							},
 							"response": []
 						}

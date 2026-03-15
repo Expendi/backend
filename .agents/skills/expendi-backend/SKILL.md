@@ -143,6 +143,8 @@ const { profile, wallets } = res.data;
 | GET | `/api/profile/wallets` | Privy | -- | `{ user: "0x...", server: "0x...", agent: "0x..." }` (addresses only) |
 | PUT | `/api/profile/username` | Privy | `{ username: string }` | Updated profile. Username: 3-20 chars, `^[a-z0-9_]+$`. |
 | GET | `/api/profile/resolve/:username` | Privy | -- | `{ username, userId, address }` -- resolve username to wallet address |
+| GET | `/api/profile/preferences` | Privy | -- | User preferences object (phoneNumber, mobileNetwork, country, etc.) |
+| PATCH | `/api/profile/preferences` | Privy | `Partial<UserPreferences>` | Merged preferences object. Only provided fields are updated; existing fields preserved. |
 
 ### 5.3 Wallets
 
@@ -153,6 +155,7 @@ const { profile, wallets } = res.data;
 | POST | `/api/wallets/user` | Privy | -- | `{ address: "0x...", type: "user" }` |
 | POST | `/api/wallets/:id/sign` | Privy | `{ message: string }` | `{ signature: "0x..." }` |
 | POST | `/api/wallets/transfer` | Privy | `{ from, to, amount, token?, chainId?, categoryId? }` | Transaction result |
+| GET | `/api/wallets/deposits` | Privy | Query: `chainId?`, `blocks?` | Array of incoming ERC-20 deposits (scanned from recent on-chain blocks) |
 
 **Wallet object shape:**
 ```typescript
@@ -1491,6 +1494,20 @@ await request(`/api/split-expenses/${expense.id}/pay`, {
 
 // List your split expenses
 const expenses = await request("/api/split-expenses");
+```
+
+### 7.15 User Preferences
+
+```typescript
+// Get user preferences
+const prefs = await request("/api/profile/preferences");
+// prefs => { phoneNumber: "+254700000000", mobileNetwork: "Safaricom", country: "KE" }
+
+// Update preferences (merge — only provided fields are changed)
+const updated = await request("/api/profile/preferences", {
+  method: "PATCH",
+  body: { phoneNumber: "+254700000000", mobileNetwork: "Safaricom", country: "KE" },
+});
 ```
 
 ---
