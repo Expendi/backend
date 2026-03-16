@@ -213,6 +213,49 @@ describe("Category Routes", () => {
     });
   });
 
+  describe("POST /batch", () => {
+    it("should batch create categories", async () => {
+      const cats = [
+        makeFakeCategory({ id: "cat-1", name: "Food" }),
+        makeFakeCategory({ id: "cat-2", name: "Transport" }),
+      ];
+      const runtime = makeTestRuntime({ insertResult: cats });
+      const app = makeApp(runtime);
+
+      const res = await app.request("/batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify([
+          { name: "Food" },
+          { name: "Transport" },
+        ]),
+      });
+
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(Array.isArray(body.data)).toBe(true);
+      expect(body.data).toHaveLength(2);
+
+      await runtime.dispose();
+    });
+
+    it("should return 400 for empty array", async () => {
+      const runtime = makeTestRuntime();
+      const app = makeApp(runtime);
+
+      const res = await app.request("/batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify([]),
+      });
+
+      expect(res.status).toBe(400);
+
+      await runtime.dispose();
+    });
+  });
+
   describe("PUT /:id", () => {
     it("should update a category name", async () => {
       const updatedCat = makeFakeCategory({ name: "Updated Name" });

@@ -509,6 +509,48 @@ export function createCategoryRoutes(runtime: AppRuntime) {
     )
   );
 
+  // Batch create categories -- for onboarding flow
+  app.post("/batch", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const userId = c.get("userId");
+        const body = yield* Effect.tryPromise({
+          try: () =>
+            c.req.json<{ name: string; description?: string }[]>(),
+          catch: () => new Error("Invalid request body"),
+        });
+
+        if (!Array.isArray(body) || body.length === 0) {
+          return yield* Effect.fail(
+            new Error("Request body must be a non-empty array")
+          );
+        }
+
+        const { db } = yield* DatabaseService;
+        const values = body.map((item) => ({
+          name: item.name,
+          userId,
+          description: item.description ?? null,
+        }));
+
+        const results = yield* Effect.tryPromise({
+          try: () =>
+            db
+              .insert(transactionCategories)
+              .values(values)
+              .returning(),
+          catch: (error) =>
+            new Error(`Failed to batch create categories: ${error}`),
+        });
+
+        return results;
+      }),
+      c,
+      201
+    )
+  );
+
   // Update a category -- only if the authenticated user owns it
   app.put("/:id", (c) =>
     runEffect(
