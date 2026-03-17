@@ -29,6 +29,19 @@ export class SwapAutomationError extends Data.TaggedError(
 
 // ── Types ────────────────────────────────────────────────────────────
 
+/**
+ * Indicator types that determine when a swap automation triggers.
+ *
+ * - `price_above`  — triggers when `currentPrice >= thresholdValue` (thresholdValue is in USD)
+ * - `price_below`  — triggers when `currentPrice <= thresholdValue` (thresholdValue is in USD)
+ * - `percent_change_up`   — triggers when `((current - reference) / reference * 100) >= thresholdValue`
+ *   (thresholdValue is a percentage point, e.g. 5 = 5%)
+ * - `percent_change_down` — triggers when `((reference - current) / reference * 100) >= thresholdValue`
+ *   (thresholdValue is a percentage point, e.g. 5 = 5%)
+ *
+ * For `percent_change_*` variants, `referencePrice` is automatically snapshotted
+ * at automation creation time from the current market price of `indicatorToken`.
+ */
 export type IndicatorType =
   | "price_above"
   | "price_below"
@@ -36,20 +49,35 @@ export type IndicatorType =
   | "percent_change_down";
 
 export interface CreateAutomationParams {
+  /** User who owns this automation */
   readonly userId: string;
+  /** Wallet to execute swaps from */
   readonly walletId: string;
+  /** Wallet type — only server and agent wallets support automated signing */
   readonly walletType: "server" | "agent";
+  /** Contract address of the token to sell (use 0x0...0 for native ETH) */
   readonly tokenIn: string;
+  /** Contract address of the token to buy */
   readonly tokenOut: string;
+  /** Amount of tokenIn to swap per execution (in token base units, e.g. wei) */
   readonly amount: string;
+  /** Max acceptable slippage as a percentage (default: 0.5 = 0.5%) */
   readonly slippageTolerance?: number;
+  /** Chain ID (default: Base) */
   readonly chainId?: number;
+  /** What price condition triggers the swap — see IndicatorType */
   readonly indicatorType: IndicatorType;
+  /** Token symbol to monitor for price (e.g. "ETH", "USDC") */
   readonly indicatorToken: string;
+  /** Trigger threshold — USD price for price_above/below, percentage for percent_change_* */
   readonly thresholdValue: number;
+  /** Total number of times this automation can execute before completing (default: 1) */
   readonly maxExecutions?: number;
+  /** Max executions per UTC day — null means unlimited (default: null) */
   readonly maxExecutionsPerDay?: number;
+  /** Minimum seconds between condition checks to avoid rapid re-triggering (default: 60) */
   readonly cooldownSeconds?: number;
+  /** Consecutive failures before the automation is marked "failed" (default: 3) */
   readonly maxRetries?: number;
 }
 
@@ -66,35 +94,43 @@ export interface UpdateAutomationParams {
 // ── Service interface ────────────────────────────────────────────────
 
 export interface SwapAutomationServiceApi {
+  /** Create a new swap automation. For percent_change indicators, snapshots the current price as referencePrice. */
   readonly createAutomation: (
     params: CreateAutomationParams
   ) => Effect.Effect<SwapAutomation, SwapAutomationError>;
 
+  /** Retrieve a single automation by ID, or undefined if not found. */
   readonly getAutomation: (
     id: string
   ) => Effect.Effect<SwapAutomation | undefined, SwapAutomationError>;
 
+  /** List all automations belonging to a user, ordered by creation date. */
   readonly listByUser: (
     userId: string
   ) => Effect.Effect<ReadonlyArray<SwapAutomation>, SwapAutomationError>;
 
+  /** Update mutable fields (threshold, amount, slippage, limits) on an existing automation. */
   readonly updateAutomation: (
     id: string,
     params: UpdateAutomationParams
   ) => Effect.Effect<SwapAutomation, SwapAutomationError>;
 
+  /** Pause an active automation — it will not be evaluated until resumed. */
   readonly pauseAutomation: (
     id: string
   ) => Effect.Effect<SwapAutomation, SwapAutomationError>;
 
+  /** Resume a paused automation and reset its consecutive failure counter. */
   readonly resumeAutomation: (
     id: string
   ) => Effect.Effect<SwapAutomation, SwapAutomationError>;
 
+  /** Permanently cancel an automation — it cannot be resumed. */
   readonly cancelAutomation: (
     id: string
   ) => Effect.Effect<SwapAutomation, SwapAutomationError>;
 
+  /** Retrieve execution history for an automation (most recent first), capped at `limit`. */
   readonly getExecutionHistory: (
     automationId: string,
     limit?: number
@@ -103,6 +139,12 @@ export interface SwapAutomationServiceApi {
     SwapAutomationError
   >;
 
+  /**
+   * Poll-based processor: fetches all active automations, checks price conditions,
+   * and executes swaps where conditions are met. Respects cooldownSeconds,
+   * maxExecutions, and maxExecutionsPerDay limits. Not real-time — latency
+   * depends on how often this method is called.
+   */
   readonly processDueAutomations: () => Effect.Effect<
     ReadonlyArray<SwapAutomationExecution>,
     SwapAutomationError
@@ -117,6 +159,16 @@ export class SwapAutomationService extends Context.Tag(
 
 const ETH_ADDRESS = "0x0000000000000000000000000000000000000000";
 
+/**
+ * Evaluate whether a swap automation's price condition is satisfied.
+ *
+ * - `price_above`:  currentPrice >= thresholdValue
+ * - `price_below`:  currentPrice <= thresholdValue
+ * - `percent_change_up`:  ((currentPrice - referencePrice) / referencePrice) * 100 >= thresholdValue
+ * - `percent_change_down`: ((referencePrice - currentPrice) / referencePrice) * 100 >= thresholdValue
+ *
+ * For percent_change variants, returns false if referencePrice is null or zero (division guard).
+ */
 function isConditionMet(
   indicatorType: IndicatorType,
   thresholdValue: number,

@@ -4,6 +4,32 @@ import { type AppRuntime, runEffect } from "./effect-handler.js";
 import { SwapAutomationService } from "../services/swap-automation/swap-automation-service.js";
 import type { AuthVariables } from "../middleware/auth.js";
 
+/**
+ * Swap Automation Routes
+ *
+ * A swap automation monitors the price of a token (`indicatorToken`) and automatically
+ * executes a Uniswap swap (tokenIn → tokenOut) when a price condition is met.
+ *
+ * ## Lifecycle
+ *   active → triggered   (maxExecutions reached — completed successfully)
+ *   active → failed      (maxRetries consecutive failures)
+ *   active → paused      (user-initiated via POST /:id/pause)
+ *   active → cancelled   (user-initiated via POST /:id/cancel — permanent)
+ *   paused → active      (user-initiated via POST /:id/resume — resets failure counter)
+ *
+ * ## Rate limiting
+ * Three knobs control execution frequency:
+ *   - `cooldownSeconds` — minimum gap between price checks for this automation.
+ *     Prevents rapid re-evaluation on every polling cycle.
+ *   - `maxExecutions` — lifetime cap on successful executions. Once reached,
+ *     the automation transitions to "triggered" status.
+ *   - `maxExecutionsPerDay` — optional per-UTC-day cap. If set, the automation
+ *     is skipped for the rest of the day once the limit is hit.
+ *
+ * ## Important caveat
+ * Automations are not real-time. They only execute when `processDueAutomations()`
+ * is called (e.g. via a cron job). The polling interval determines latency.
+ */
 export function createSwapAutomationRoutes(runtime: AppRuntime) {
   const app = new Hono<{ Variables: AuthVariables }>();
 
