@@ -101,6 +101,8 @@ export const recurringPaymentExecutions = pgTable(
     transactionId: text("transaction_id"),
     status: executionStatusEnum("status").notNull(),
     error: text("error"),
+    feeAmount: text("fee_amount"),
+    feeCurrency: text("fee_currency"),
     executedAt: timestamp("executed_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

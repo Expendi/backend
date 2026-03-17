@@ -18,6 +18,7 @@ import type {
   OnrampSupportedCountry,
   OnrampAsset,
 } from "../services/pretium/pretium-service.js";
+import { getFiatDisbursementFee, getAllFiatFeeTiers } from "../services/pretium/fee-tiers.js";
 import {
   ONRAMP_SUPPORTED_COUNTRIES,
   ONRAMP_SUPPORTED_ASSETS,
@@ -285,7 +286,6 @@ export function createPretiumRoutes(runtime: AppRuntime) {
               bankCode?: string;
               bankName?: string;
               callbackUrl?: string;
-              fee?: number;
               categoryId?: string;
             }>(),
           catch: () => new Error("Invalid request body"),
@@ -348,14 +348,13 @@ export function createPretiumRoutes(runtime: AppRuntime) {
           countryConfig.currency
         );
 
-        // Subtract fee from gross amount — Pretium expects the net amount
-        const fee = body.fee ?? 0;
-        const netAmount = Math.max(0, conversion.amount - fee);
+        // Compute fee server-side from tiered schedule
+        const fee = getFiatDisbursementFee(conversion.amount);
 
-        // Call Pretium disburse with the on-chain tx hash
+        // Call Pretium disburse — pass gross amount, Pretium deducts the fee
         const disburseResult = yield* pretium.disburse({
           country,
-          amount: netAmount,
+          amount: conversion.amount,
           phoneNumber: body.phoneNumber,
           mobileNetwork: body.mobileNetwork,
           transactionHash: transferTx.txHash!,
@@ -389,7 +388,7 @@ export function createPretiumRoutes(runtime: AppRuntime) {
                 countryCode: country,
                 fiatCurrency: countryConfig.currency,
                 usdcAmount: String(body.usdcAmount),
-                fiatAmount: String(netAmount),
+                fiatAmount: String(conversion.amount - fee),
                 exchangeRate: String(conversion.exchangeRate),
                 fee: String(fee),
                 paymentType,
@@ -423,6 +422,8 @@ export function createPretiumRoutes(runtime: AppRuntime) {
         return {
           transaction: record,
           pretiumResponse: disburseResult,
+          appliedFee: fee,
+          feeCurrency: countryConfig.currency,
         };
       }),
       c,
@@ -868,6 +869,41 @@ export function createPretiumRoutes(runtime: AppRuntime) {
         });
 
         return results;
+      }),
+      c
+    )
+  );
+
+  // ── Fee Schedule ───────────────────────────────────────────────────
+
+  /** Get the full fee tier schedule */
+  app.get("/fee-tiers", (c) =>
+    runEffect(
+      runtime,
+      Effect.succeed(getAllFiatFeeTiers()),
+      c
+    )
+  );
+
+  /** Estimate fee for a given fiat amount */
+  app.get("/fee-estimate", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const amountStr = c.req.query("amount");
+        if (!amountStr) {
+          return yield* Effect.fail(new Error("amount query parameter is required"));
+        }
+        const amount = parseFloat(amountStr);
+        if (isNaN(amount) || amount < 0) {
+          return yield* Effect.fail(new Error("amount must be a positive number"));
+        }
+        const fee = getFiatDisbursementFee(amount);
+        return {
+          grossAmount: amount,
+          fee,
+          netAmount: amount - fee,
+        };
       }),
       c
     )

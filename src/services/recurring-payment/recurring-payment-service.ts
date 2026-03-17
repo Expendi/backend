@@ -24,6 +24,7 @@ import {
   type FiatPaymentType,
 } from "../pretium/pretium-service.js";
 import { ExchangeRateService } from "../pretium/exchange-rate-service.js";
+import { getFiatDisbursementFee } from "../pretium/fee-tiers.js";
 
 // ── Error type ───────────────────────────────────────────────────────
 
@@ -201,6 +202,8 @@ export const RecurringPaymentServiceLive: Layer.Layer<
       Effect.gen(function* () {
         let transactionId: string | undefined;
         let executionError: string | undefined;
+        let feeAmount: string | undefined;
+        let feeCurrency: string | undefined;
 
         // Attempt the payment
         const paymentResult = yield* Effect.gen(function* () {
@@ -348,6 +351,11 @@ export const RecurringPaymentServiceLive: Layer.Layer<
                 (meta.callbackUrl as string) ||
                 `${config.serverBaseUrl}/webhooks/pretium`;
 
+              // Compute fee server-side from tiered schedule
+              const fee = getFiatDisbursementFee(fiatAmount);
+              feeAmount = String(fee);
+              feeCurrency = countryConfig.currency;
+
               const disburseResult = yield* pretium
                 .disburse({
                   country: country as SupportedCountry,
@@ -356,7 +364,7 @@ export const RecurringPaymentServiceLive: Layer.Layer<
                   mobileNetwork,
                   transactionHash: transferTx.txHash!,
                   callbackUrl,
-                  fee: (meta.fee as number) || undefined,
+                  fee,
                   paymentType: (meta.paymentType as FiatPaymentType) || undefined,
                   accountNumber: meta.accountNumber as string | undefined,
                   accountName: meta.accountName as string | undefined,
@@ -534,6 +542,8 @@ export const RecurringPaymentServiceLive: Layer.Layer<
           transactionId: transactionId ?? null,
           status: paymentResult.success ? "success" : "failed",
           error: executionError ?? null,
+          feeAmount: feeAmount ?? null,
+          feeCurrency: feeCurrency ?? null,
         };
 
         const [execution] = yield* Effect.tryPromise({
