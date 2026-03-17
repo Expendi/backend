@@ -20,7 +20,7 @@ export const splitExpenses = pgTable("split_expenses", {
   tokenDecimals: integer("token_decimals").notNull(),
   totalAmount: text("total_amount").notNull(),
   chainId: integer("chain_id").notNull().default(8453),
-  transactionId: text("transaction_id").references(() => transactions.id),
+  transactionId: text("transaction_id"),
   categoryId: text("category_id").references(() => transactionCategories.id),
   status: splitExpenseStatusEnum("status").default("active").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
