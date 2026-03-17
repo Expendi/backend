@@ -50,6 +50,19 @@ export function createSplitExpenseRoutes(runtime: AppRuntime) {
     )
   );
 
+  // GET /api/split-expenses/owed — List expenses the user owes (pending shares)
+  app.get("/owed", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const userId = c.get("userId");
+        const service = yield* SplitExpenseService;
+        return yield* service.listOwed(userId);
+      }),
+      c
+    )
+  );
+
   // GET /api/split-expenses/:id — Get single expense with shares
   app.get("/:id", (c) =>
     runEffect(

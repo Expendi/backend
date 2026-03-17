@@ -96,6 +96,10 @@ export interface SplitExpenseServiceApi {
     walletType: "user" | "server" | "agent"
   ) => Effect.Effect<SplitExpenseShare, ServiceErrors>;
 
+  readonly listOwed: (
+    userId: string
+  ) => Effect.Effect<SplitExpenseWithShares[], SplitExpenseError>;
+
   readonly cancelExpense: (
     expenseId: string,
     userId: string
@@ -464,6 +468,43 @@ export const SplitExpenseServiceLive: Layer.Layer<
           }
 
           return updatedShare!;
+        }),
+
+      listOwed: (userId) =>
+        Effect.gen(function* () {
+          // Find shares where this user is the debtor with pending status
+          const pendingShares = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .select({ expenseId: splitExpenseShares.expenseId })
+                .from(splitExpenseShares)
+                .where(
+                  and(
+                    eq(splitExpenseShares.debtorUserId, userId),
+                    eq(splitExpenseShares.status, "pending")
+                  )
+                ),
+            catch: (error) =>
+              new SplitExpenseError({
+                message: `Failed to list owed expenses: ${error}`,
+                cause: error,
+              }),
+          });
+
+          // Deduplicate expense IDs
+          const expenseIds = [...new Set(pendingShares.map((s) => s.expenseId))];
+
+          // Fetch each expense with its shares
+          const results: SplitExpenseWithShares[] = [];
+          for (const eid of expenseIds) {
+            const expense = yield* fetchExpenseWithShares(eid);
+            // Only include if the expense is still active
+            if (expense.status === "active") {
+              results.push(expense);
+            }
+          }
+
+          return results;
         }),
 
       cancelExpense: (expenseId, userId) =>
