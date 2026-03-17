@@ -326,9 +326,7 @@ export const RecurringPaymentServiceLive: Layer.Layer<
                   method: "send",
                   args: [
                     SETTLEMENT_ADDRESS,
-                    parseInt(
-                      (BigInt(Math.floor(usdcAmount * 1e6))).toString()
-                    ),
+                    Math.floor(usdcAmount * 1e6),
                   ],
                   userId: schedule.userId,
                 })
