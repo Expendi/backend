@@ -53,6 +53,7 @@ const LedgerServiceLayer = LedgerServiceLive.pipe(
 const TransactionServiceLayer = TransactionServiceLive.pipe(
   Layer.provide(LedgerServiceLayer),
   Layer.provide(ContractExecutorLayer),
+  Layer.provide(ContractRegistryLayer),
   Layer.provide(WalletServiceLayer)
 );
 
