@@ -14,6 +14,8 @@ import {
   ContractExecutor,
   ContractExecutionError,
 } from "../../../services/contract/contract-executor.js";
+import { ContractRegistry } from "../../../services/contract/contract-registry.js";
+import { WalletService } from "../../../services/wallet/wallet-service.js";
 import { ConfigService } from "../../../config.js";
 import type {
   YieldVault,
@@ -180,10 +182,10 @@ function makeTestLayers(opts?: {
     submitContractTransaction: () =>
       opts?.submitContractFail
         ? Effect.fail(new TransactionError({ message: "contract tx failed" }))
-        : Effect.succeed(makeFakeTx()),
-    submitRawTransaction: () => Effect.succeed(makeFakeTx()),
-    getTransaction: () => Effect.succeed(makeFakeTx()),
-    listTransactions: () => Effect.succeed([makeFakeTx()]),
+        : Effect.succeed(makeFakeTx({ txHash: null })),
+    submitRawTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+    getTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+    listTransactions: () => Effect.succeed([makeFakeTx({ txHash: null })]),
   });
 
   const MockContractExecutorLayer = Layer.succeed(ContractExecutor, {
@@ -199,7 +201,7 @@ function makeTestLayers(opts?: {
         ? Effect.fail(
             new ContractExecutionError({ message: "read failed" })
           )
-        : Effect.succeed(opts?.readContractResult ?? [0n, 0n]),
+        : Effect.succeed(opts?.readContractResult ?? { depositor: "0x1111" }),
   });
 
   const MockConfigLayer = Layer.succeed(ConfigService, {
@@ -212,11 +214,31 @@ function makeTestLayers(opts?: {
     port: 3000,
   });
 
+  const MockContractRegistryLayer = Layer.succeed(ContractRegistry, {
+    register: () => Effect.void,
+    get: () => Effect.succeed({} as any),
+    list: () => Effect.succeed([]),
+    remove: () => Effect.succeed(true),
+  });
+
+  const MockWalletServiceLayer = Layer.succeed(WalletService, {
+    createUserWallet: () => Effect.succeed({} as any),
+    createServerWallet: () => Effect.succeed({} as any),
+    createAgentWallet: () => Effect.succeed({} as any),
+    getWallet: () => Effect.succeed({
+      getAddress: () => Effect.succeed("0x1111" as `0x${string}`),
+      sign: () => Effect.succeed("0xsig" as `0x${string}`),
+      sendTransaction: () => Effect.succeed("0xhash" as `0x${string}`),
+    }),
+  });
+
   return {
     layer: YieldServiceLive.pipe(
       Layer.provide(MockDbLayer),
       Layer.provide(MockTxServiceLayer),
       Layer.provide(MockContractExecutorLayer),
+      Layer.provide(MockContractRegistryLayer),
+      Layer.provide(MockWalletServiceLayer),
       Layer.provide(MockConfigLayer)
     ),
   };
@@ -500,10 +522,10 @@ describe("YieldService", () => {
         pool: {} as any,
       });
       const MockTxServiceLayer = Layer.succeed(TransactionService, {
-        submitContractTransaction: () => Effect.succeed(makeFakeTx()),
-        submitRawTransaction: () => Effect.succeed(makeFakeTx()),
-        getTransaction: () => Effect.succeed(makeFakeTx()),
-        listTransactions: () => Effect.succeed([makeFakeTx()]),
+        submitContractTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        submitRawTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        getTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        listTransactions: () => Effect.succeed([makeFakeTx({ txHash: null })]),
       });
       const MockContractExecutorLayer = Layer.succeed(ContractExecutor, {
         execute: () =>
@@ -513,7 +535,7 @@ describe("YieldService", () => {
             method: "test",
             chainId: 1,
           }),
-        readContract: () => Effect.succeed([0n, 0n]),
+        readContract: () => Effect.succeed({ depositor: "0x1111" }),
       });
       const MockConfigLayer = Layer.succeed(ConfigService, {
         databaseUrl: "postgres://test",
@@ -525,10 +547,29 @@ describe("YieldService", () => {
         port: 3000,
       });
 
+      const MockContractRegistryLayer = Layer.succeed(ContractRegistry, {
+        register: () => Effect.void,
+        get: () => Effect.succeed({} as any),
+        list: () => Effect.succeed([]),
+        remove: () => Effect.succeed(true),
+      });
+      const MockWalletServiceLayer = Layer.succeed(WalletService, {
+        createUserWallet: () => Effect.succeed({} as any),
+        createServerWallet: () => Effect.succeed({} as any),
+        createAgentWallet: () => Effect.succeed({} as any),
+        getWallet: () => Effect.succeed({
+          getAddress: () => Effect.succeed("0x1111" as `0x${string}`),
+          sign: () => Effect.succeed("0xsig" as `0x${string}`),
+          sendTransaction: () => Effect.succeed("0xhash" as `0x${string}`),
+        }),
+      });
+
       const layer = YieldServiceLive.pipe(
         Layer.provide(MockDbLayer),
         Layer.provide(MockTxServiceLayer),
         Layer.provide(MockContractExecutorLayer),
+        Layer.provide(MockContractRegistryLayer),
+        Layer.provide(MockWalletServiceLayer),
         Layer.provide(MockConfigLayer)
       );
 
@@ -559,10 +600,10 @@ describe("YieldService", () => {
         pool: {} as any,
       });
       const MockTxServiceLayer = Layer.succeed(TransactionService, {
-        submitContractTransaction: () => Effect.succeed(makeFakeTx()),
-        submitRawTransaction: () => Effect.succeed(makeFakeTx()),
-        getTransaction: () => Effect.succeed(makeFakeTx()),
-        listTransactions: () => Effect.succeed([makeFakeTx()]),
+        submitContractTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        submitRawTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        getTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        listTransactions: () => Effect.succeed([makeFakeTx({ txHash: null })]),
       });
       const MockContractExecutorLayer = Layer.succeed(ContractExecutor, {
         execute: () =>
@@ -572,7 +613,7 @@ describe("YieldService", () => {
             method: "test",
             chainId: 1,
           }),
-        readContract: () => Effect.succeed([0n, 0n]),
+        readContract: () => Effect.succeed({ depositor: "0x1111" }),
       });
       const MockConfigLayer = Layer.succeed(ConfigService, {
         databaseUrl: "postgres://test",
@@ -584,10 +625,29 @@ describe("YieldService", () => {
         port: 3000,
       });
 
+      const MockContractRegistryLayer = Layer.succeed(ContractRegistry, {
+        register: () => Effect.void,
+        get: () => Effect.succeed({} as any),
+        list: () => Effect.succeed([]),
+        remove: () => Effect.succeed(true),
+      });
+      const MockWalletServiceLayer = Layer.succeed(WalletService, {
+        createUserWallet: () => Effect.succeed({} as any),
+        createServerWallet: () => Effect.succeed({} as any),
+        createAgentWallet: () => Effect.succeed({} as any),
+        getWallet: () => Effect.succeed({
+          getAddress: () => Effect.succeed("0x1111" as `0x${string}`),
+          sign: () => Effect.succeed("0xsig" as `0x${string}`),
+          sendTransaction: () => Effect.succeed("0xhash" as `0x${string}`),
+        }),
+      });
+
       const layer = YieldServiceLive.pipe(
         Layer.provide(MockDbLayer),
         Layer.provide(MockTxServiceLayer),
         Layer.provide(MockContractExecutorLayer),
+        Layer.provide(MockContractRegistryLayer),
+        Layer.provide(MockWalletServiceLayer),
         Layer.provide(MockConfigLayer)
       );
 
@@ -826,10 +886,10 @@ describe("YieldService", () => {
         pool: {} as any,
       });
       const MockTxServiceLayer = Layer.succeed(TransactionService, {
-        submitContractTransaction: () => Effect.succeed(makeFakeTx()),
-        submitRawTransaction: () => Effect.succeed(makeFakeTx()),
-        getTransaction: () => Effect.succeed(makeFakeTx()),
-        listTransactions: () => Effect.succeed([makeFakeTx()]),
+        submitContractTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        submitRawTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        getTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        listTransactions: () => Effect.succeed([makeFakeTx({ txHash: null })]),
       });
       const MockContractExecutorLayer = Layer.succeed(ContractExecutor, {
         execute: () =>
@@ -839,7 +899,7 @@ describe("YieldService", () => {
             method: "test",
             chainId: 1,
           }),
-        readContract: () => Effect.succeed([0n, 0n]),
+        readContract: () => Effect.succeed({ depositor: "0x1111" }),
       });
       const MockConfigLayer = Layer.succeed(ConfigService, {
         databaseUrl: "postgres://test",
@@ -851,10 +911,29 @@ describe("YieldService", () => {
         port: 3000,
       });
 
+      const MockContractRegistryLayer = Layer.succeed(ContractRegistry, {
+        register: () => Effect.void,
+        get: () => Effect.succeed({} as any),
+        list: () => Effect.succeed([]),
+        remove: () => Effect.succeed(true),
+      });
+      const MockWalletServiceLayer = Layer.succeed(WalletService, {
+        createUserWallet: () => Effect.succeed({} as any),
+        createServerWallet: () => Effect.succeed({} as any),
+        createAgentWallet: () => Effect.succeed({} as any),
+        getWallet: () => Effect.succeed({
+          getAddress: () => Effect.succeed("0x1111" as `0x${string}`),
+          sign: () => Effect.succeed("0xsig" as `0x${string}`),
+          sendTransaction: () => Effect.succeed("0xhash" as `0x${string}`),
+        }),
+      });
+
       const layer = YieldServiceLive.pipe(
         Layer.provide(MockDbLayer),
         Layer.provide(MockTxServiceLayer),
         Layer.provide(MockContractExecutorLayer),
+        Layer.provide(MockContractRegistryLayer),
+        Layer.provide(MockWalletServiceLayer),
         Layer.provide(MockConfigLayer)
       );
 
@@ -886,10 +965,10 @@ describe("YieldService", () => {
         pool: {} as any,
       });
       const MockTxServiceLayer = Layer.succeed(TransactionService, {
-        submitContractTransaction: () => Effect.succeed(makeFakeTx()),
-        submitRawTransaction: () => Effect.succeed(makeFakeTx()),
-        getTransaction: () => Effect.succeed(makeFakeTx()),
-        listTransactions: () => Effect.succeed([makeFakeTx()]),
+        submitContractTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        submitRawTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        getTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        listTransactions: () => Effect.succeed([makeFakeTx({ txHash: null })]),
       });
       const MockContractExecutorLayer = Layer.succeed(ContractExecutor, {
         execute: () =>
@@ -899,7 +978,7 @@ describe("YieldService", () => {
             method: "test",
             chainId: 1,
           }),
-        readContract: () => Effect.succeed([0n, 0n]),
+        readContract: () => Effect.succeed({ depositor: "0x1111" }),
       });
       const MockConfigLayer = Layer.succeed(ConfigService, {
         databaseUrl: "postgres://test",
@@ -911,10 +990,29 @@ describe("YieldService", () => {
         port: 3000,
       });
 
+      const MockContractRegistryLayer = Layer.succeed(ContractRegistry, {
+        register: () => Effect.void,
+        get: () => Effect.succeed({} as any),
+        list: () => Effect.succeed([]),
+        remove: () => Effect.succeed(true),
+      });
+      const MockWalletServiceLayer = Layer.succeed(WalletService, {
+        createUserWallet: () => Effect.succeed({} as any),
+        createServerWallet: () => Effect.succeed({} as any),
+        createAgentWallet: () => Effect.succeed({} as any),
+        getWallet: () => Effect.succeed({
+          getAddress: () => Effect.succeed("0x1111" as `0x${string}`),
+          sign: () => Effect.succeed("0xsig" as `0x${string}`),
+          sendTransaction: () => Effect.succeed("0xhash" as `0x${string}`),
+        }),
+      });
+
       const layer = YieldServiceLive.pipe(
         Layer.provide(MockDbLayer),
         Layer.provide(MockTxServiceLayer),
         Layer.provide(MockContractExecutorLayer),
+        Layer.provide(MockContractRegistryLayer),
+        Layer.provide(MockWalletServiceLayer),
         Layer.provide(MockConfigLayer)
       );
 
@@ -970,10 +1068,10 @@ describe("YieldService", () => {
         pool: {} as any,
       });
       const MockTxServiceLayer = Layer.succeed(TransactionService, {
-        submitContractTransaction: () => Effect.succeed(makeFakeTx()),
-        submitRawTransaction: () => Effect.succeed(makeFakeTx()),
-        getTransaction: () => Effect.succeed(makeFakeTx()),
-        listTransactions: () => Effect.succeed([makeFakeTx()]),
+        submitContractTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        submitRawTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        getTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        listTransactions: () => Effect.succeed([makeFakeTx({ txHash: null })]),
       });
       const MockContractExecutorLayer = Layer.succeed(ContractExecutor, {
         execute: () =>
@@ -983,7 +1081,7 @@ describe("YieldService", () => {
             method: "test",
             chainId: 1,
           }),
-        readContract: () => Effect.succeed([0n, 0n]),
+        readContract: () => Effect.succeed({ depositor: "0x1111" }),
       });
       const MockConfigLayer = Layer.succeed(ConfigService, {
         databaseUrl: "postgres://test",
@@ -995,10 +1093,29 @@ describe("YieldService", () => {
         port: 3000,
       });
 
+      const MockContractRegistryLayer = Layer.succeed(ContractRegistry, {
+        register: () => Effect.void,
+        get: () => Effect.succeed({} as any),
+        list: () => Effect.succeed([]),
+        remove: () => Effect.succeed(true),
+      });
+      const MockWalletServiceLayer = Layer.succeed(WalletService, {
+        createUserWallet: () => Effect.succeed({} as any),
+        createServerWallet: () => Effect.succeed({} as any),
+        createAgentWallet: () => Effect.succeed({} as any),
+        getWallet: () => Effect.succeed({
+          getAddress: () => Effect.succeed("0x1111" as `0x${string}`),
+          sign: () => Effect.succeed("0xsig" as `0x${string}`),
+          sendTransaction: () => Effect.succeed("0xhash" as `0x${string}`),
+        }),
+      });
+
       const layer = YieldServiceLive.pipe(
         Layer.provide(MockDbLayer),
         Layer.provide(MockTxServiceLayer),
         Layer.provide(MockContractExecutorLayer),
+        Layer.provide(MockContractRegistryLayer),
+        Layer.provide(MockWalletServiceLayer),
         Layer.provide(MockConfigLayer)
       );
 

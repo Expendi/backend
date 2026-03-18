@@ -13,7 +13,10 @@ import {
   ContractExecutor,
   ContractExecutionError,
 } from "../../../services/contract/contract-executor.js";
-import { ContractNotFoundError } from "../../../services/contract/contract-registry.js";
+import {
+  ContractRegistry,
+  ContractNotFoundError,
+} from "../../../services/contract/contract-registry.js";
 import {
   WalletService,
   WalletError,
@@ -133,10 +136,18 @@ function makeTestLayers(opts?: {
           }),
   });
 
+  const MockContractRegistryLayer = Layer.succeed(ContractRegistry, {
+    register: () => Effect.void,
+    get: () => Effect.succeed({} as any),
+    list: () => Effect.succeed([]),
+    remove: () => Effect.succeed(true),
+  });
+
   return {
     layer: TransactionServiceLive.pipe(
       Layer.provide(MockLedgerLayer),
       Layer.provide(MockExecutorLayer),
+      Layer.provide(MockContractRegistryLayer),
       Layer.provide(MockWalletServiceLayer)
     ),
     markFailedFn,
