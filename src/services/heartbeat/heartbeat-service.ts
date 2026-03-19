@@ -1,6 +1,7 @@
 import { Effect, Context, Layer, Data, Schedule, Ref } from "effect";
 import { createPublicClient, http, parseAbiItem, type Chain } from "viem";
 import { mainnet, sepolia, polygon, arbitrum, optimism, base } from "viem/chains";
+import { ConfigService } from "../../config.js";
 import {
   AdapterService,
   type AdapterError,
@@ -72,12 +73,13 @@ const CHAIN_MAP: Record<number, Chain> = {
 export const HeartbeatServiceLive: Layer.Layer<
   HeartbeatService,
   never,
-  AdapterService | TransactionService
+  AdapterService | TransactionService | ConfigService
 > = Layer.effect(
   HeartbeatService,
   Effect.gen(function* () {
     const adapters = yield* AdapterService;
     const txService = yield* TransactionService;
+    const config = yield* ConfigService;
     const conditionsRef = yield* Ref.make<Map<string, HeartbeatCondition>>(
       new Map()
     );
@@ -87,7 +89,8 @@ export const HeartbeatServiceLive: Layer.Layer<
         const params = condition.params;
         const chainId = (params.chainId as number) ?? 1;
         const chain = CHAIN_MAP[chainId] ?? mainnet;
-        const client = createPublicClient({ chain, transport: http() });
+        const rpcUrl = chainId === 8453 && config.baseRpcUrl ? config.baseRpcUrl : undefined;
+        const client = createPublicClient({ chain, transport: http(rpcUrl) });
 
         const address = params.address as `0x${string}`;
         const threshold = BigInt(params.threshold as string);
@@ -130,7 +133,8 @@ export const HeartbeatServiceLive: Layer.Layer<
         const params = condition.params;
         const chainId = (params.chainId as number) ?? 1;
         const chain = CHAIN_MAP[chainId] ?? mainnet;
-        const client = createPublicClient({ chain, transport: http() });
+        const rpcUrl = chainId === 8453 && config.baseRpcUrl ? config.baseRpcUrl : undefined;
+        const client = createPublicClient({ chain, transport: http(rpcUrl) });
 
         const contractAddress = params.contractAddress as `0x${string}`;
         const eventSignature = params.eventSignature as string;

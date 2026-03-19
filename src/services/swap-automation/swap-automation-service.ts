@@ -15,8 +15,8 @@ import { UniswapService, BASE_CHAIN_ID } from "../uniswap/uniswap-service.js";
 import { AdapterService, type PriceData } from "../adapters/adapter-service.js";
 import { WalletService } from "../wallet/wallet-service.js";
 import { ConfigService } from "../../config.js";
-import { createPublicClient, http, erc20Abi, type Hash } from "viem";
-import { base } from "viem/chains";
+import { erc20Abi, type Hash } from "viem";
+import { createBasePublicClient } from "../chain/public-client.js";
 
 // ── Error type ───────────────────────────────────────────────────────
 
@@ -169,12 +169,9 @@ export const SwapAutomationServiceLive: Layer.Layer<
     const uniswap = yield* UniswapService;
     const adapter = yield* AdapterService;
     const walletService = yield* WalletService;
-    // ConfigService dependency kept for layer composition
+    const config = yield* ConfigService;
 
-    const publicClient = createPublicClient({
-      chain: base,
-      transport: http(),
-    });
+    const publicClient = createBasePublicClient(config.baseRpcUrl || undefined);
 
     // Check if the wallet has enough balance of tokenIn
     const checkBalance = (

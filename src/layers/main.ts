@@ -43,7 +43,8 @@ const ContractRegistryLayer = ContractRegistryLive;
 
 const ContractExecutorLayer = ContractExecutorLive.pipe(
   Layer.provide(ContractRegistryLayer),
-  Layer.provide(WalletServiceLayer)
+  Layer.provide(WalletServiceLayer),
+  Layer.provide(ConfigLayer)
 );
 
 const LedgerServiceLayer = LedgerServiceLive.pipe(
@@ -68,7 +69,8 @@ const JobberServiceLayer = JobberServiceLive.pipe(
 
 const HeartbeatServiceLayer = HeartbeatServiceLive.pipe(
   Layer.provide(AdapterServiceLayer),
-  Layer.provide(TransactionServiceLayer)
+  Layer.provide(TransactionServiceLayer),
+  Layer.provide(ConfigLayer)
 );
 
 const OnboardingServiceLayer = OnboardingServiceLive.pipe(

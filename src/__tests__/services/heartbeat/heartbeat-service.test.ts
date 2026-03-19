@@ -15,6 +15,7 @@ import {
   TransactionService,
   TransactionError,
 } from "../../../services/transaction/transaction-service.js";
+import { ConfigService } from "../../../config.js";
 import type { Transaction } from "../../../db/schema/index.js";
 
 const now = new Date("2025-01-15T12:00:00Z");
@@ -122,9 +123,26 @@ function makeTestLayers(opts?: {
     listTransactions: () => Effect.succeed([]),
   });
 
+  const MockConfigLayer = Layer.succeed(ConfigService, {
+    databaseUrl: "",
+    privyAppId: "",
+    privyAppSecret: "",
+    coinmarketcapApiKey: "",
+    adminApiKey: "",
+    defaultChainId: 1,
+    port: 3000,
+    pretiumApiKey: "",
+    pretiumBaseUri: "",
+    serverBaseUrl: "",
+    uniswapApiKey: "",
+    approvalTokenSecret: "",
+    baseRpcUrl: "",
+  });
+
   return HeartbeatServiceLive.pipe(
     Layer.provide(MockAdapterLayer),
-    Layer.provide(MockTxServiceLayer)
+    Layer.provide(MockTxServiceLayer),
+    Layer.provide(MockConfigLayer)
   );
 }
 
