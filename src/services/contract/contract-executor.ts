@@ -15,6 +15,7 @@ import {
   WalletService,
   WalletError,
 } from "../wallet/wallet-service.js";
+import { ConfigService } from "../../config.js";
 import type { ContractExecutionRequest } from "./types.js";
 
 export class ContractExecutionError extends Data.TaggedError(
@@ -69,12 +70,13 @@ function getChain(chainId: number): Chain {
 export const ContractExecutorLive: Layer.Layer<
   ContractExecutor,
   never,
-  ContractRegistry | WalletService
+  ContractRegistry | WalletService | ConfigService
 > = Layer.effect(
   ContractExecutor,
   Effect.gen(function* () {
     const registry = yield* ContractRegistry;
     const walletService = yield* WalletService;
+    const config = yield* ConfigService;
 
     return {
       execute: (
@@ -143,9 +145,10 @@ export const ContractExecutorLive: Layer.Layer<
         Effect.gen(function* () {
           const connector = yield* registry.get(contractName, chainId);
           const chain = getChain(chainId);
+          const rpcUrl = chainId === 8453 && config.baseRpcUrl ? config.baseRpcUrl : undefined;
           const client = createPublicClient({
             chain,
-            transport: http(),
+            transport: http(rpcUrl),
           });
 
           const methodEntry = connector.methods?.[method];

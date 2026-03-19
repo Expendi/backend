@@ -2,13 +2,11 @@ import { Hono } from "hono";
 import { Effect } from "effect";
 import { eq, and, gte, sql } from "drizzle-orm";
 import {
-  createPublicClient,
-  http,
   parseAbiItem,
   formatUnits,
   type Address,
 } from "viem";
-import { base, baseSepolia } from "viem/chains";
+import { createBasePublicClient } from "../services/chain/public-client.js";
 import { type AppRuntime, runEffect } from "./effect-handler.js";
 import { WalletService } from "../services/wallet/wallet-service.js";
 import { WalletResolver } from "../services/wallet/wallet-resolver.js";
@@ -75,10 +73,7 @@ export function createWalletRoutes(runtime: AppRuntime) {
             w.address !== null && w.address !== ""
         );
 
-        const publicClient = createPublicClient({
-          chain: base,
-          transport: http(),
-        });
+        const publicClient = createBasePublicClient(config.baseRpcUrl || undefined);
 
         const results = yield* Effect.forEach(
           walletsWithAddress,
@@ -134,7 +129,6 @@ export function createWalletRoutes(runtime: AppRuntime) {
         const { db } = yield* DatabaseService;
 
         const chainId = Number(c.req.query("chainId") ?? config.defaultChainId);
-        const chain = chainId === 84532 ? baseSepolia : base;
 
         const blocksParam = c.req.query("blocks");
         const blocks = blocksParam ? BigInt(blocksParam) : 100_000n;
@@ -175,10 +169,7 @@ export function createWalletRoutes(runtime: AppRuntime) {
           },
         ];
 
-        const publicClient = createPublicClient({
-          chain,
-          transport: http(),
-        });
+        const publicClient = createBasePublicClient(config.baseRpcUrl || undefined, chainId);
 
         const currentBlock = yield* Effect.tryPromise({
           try: () => publicClient.getBlockNumber(),

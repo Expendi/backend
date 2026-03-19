@@ -13,6 +13,7 @@ export interface AppConfig {
   readonly serverBaseUrl: string;
   readonly uniswapApiKey: string;
   readonly approvalTokenSecret: string;
+  readonly baseRpcUrl: string;
 }
 
 export class ConfigService extends Context.Tag("ConfigService")<
@@ -51,6 +52,8 @@ export const ConfigLive: Layer.Layer<ConfigService, ConfigError.ConfigError> =
         "dev-approval-secret-change-in-production"
       );
 
+      const baseRpcUrl = yield* Config.withDefault(Config.string("BASE_RPC_URL"), "");
+
       return {
         databaseUrl,
         privyAppId,
@@ -64,6 +67,7 @@ export const ConfigLive: Layer.Layer<ConfigService, ConfigError.ConfigError> =
         serverBaseUrl,
         uniswapApiKey,
         approvalTokenSecret,
+        baseRpcUrl,
       };
     })
   );

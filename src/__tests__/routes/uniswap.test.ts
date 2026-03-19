@@ -7,19 +7,16 @@ import {
   BASE_CHAIN_ID,
 } from "../../services/uniswap/uniswap-service.js";
 import { TransactionService } from "../../services/transaction/transaction-service.js";
+import { ConfigService } from "../../config.js";
 import { DatabaseService } from "../../db/client.js";
 
-// Mock viem to prevent real RPC calls
-vi.mock("viem", async () => {
-  const actual = await vi.importActual("viem");
-  return {
-    ...actual,
-    createPublicClient: () => ({
-      readContract: vi.fn().mockResolvedValue(BigInt("1000000000000000000000")),
-      waitForTransactionReceipt: vi.fn().mockResolvedValue({ status: "success" }),
-    }),
-  };
-});
+// Mock the shared public client helper to prevent real RPC calls
+vi.mock("../../services/chain/public-client.js", () => ({
+  createBasePublicClient: () => ({
+    readContract: vi.fn().mockResolvedValue(BigInt("1000000000000000000000")),
+    waitForTransactionReceipt: vi.fn().mockResolvedValue({ status: "success" }),
+  }),
+}));
 
 // Mock global fetch to prevent real HTTP calls
 const originalFetch = globalThis.fetch;
@@ -148,10 +145,27 @@ function makeTestRuntime(opts?: {
     pool: {} as any,
   });
 
+  const MockConfigLayer = Layer.succeed(ConfigService, {
+    databaseUrl: "",
+    privyAppId: "",
+    privyAppSecret: "",
+    coinmarketcapApiKey: "",
+    adminApiKey: "",
+    defaultChainId: 1,
+    port: 3000,
+    pretiumApiKey: "",
+    pretiumBaseUri: "",
+    serverBaseUrl: "",
+    uniswapApiKey: "",
+    approvalTokenSecret: "",
+    baseRpcUrl: "",
+  });
+
   const testLayer = Layer.mergeAll(
     MockUniswapLayer,
     MockTransactionLayer,
-    MockDatabaseLayer
+    MockDatabaseLayer,
+    MockConfigLayer
   );
 
   return ManagedRuntime.make(testLayer);

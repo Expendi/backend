@@ -2,22 +2,19 @@ import { Hono } from "hono";
 import { Effect } from "effect";
 import { eq } from "drizzle-orm";
 import {
-  createPublicClient,
-  http,
   encodeFunctionData,
   maxUint256,
   type Hash,
 } from "viem";
-import { base } from "viem/chains";
 import { erc20Abi } from "viem";
 import { type AppRuntime, runEffect } from "./effect-handler.js";
 import { UniswapService, BASE_CHAIN_ID } from "../services/uniswap/uniswap-service.js";
 import { TransactionService } from "../services/transaction/transaction-service.js";
+import { ConfigService } from "../config.js";
 import { DatabaseService } from "../db/client.js";
 import { wallets } from "../db/schema/index.js";
 import type { AuthVariables } from "../middleware/auth.js";
-
-const publicClient = createPublicClient({ chain: base, transport: http() });
+import { createBasePublicClient } from "../services/chain/public-client.js";
 
 // Permit2 canonical address (same on all chains)
 const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78BA3" as const;
@@ -62,10 +59,11 @@ const permit2Abi = [
   },
 ] as const;
 
-const waitForConfirmation = (txHash: Hash) =>
+const waitForConfirmation = (txHash: Hash, rpcUrl?: string) =>
   Effect.tryPromise({
     try: async () => {
-      const receipt = await publicClient.waitForTransactionReceipt({
+      const client = createBasePublicClient(rpcUrl);
+      const receipt = await client.waitForTransactionReceipt({
         hash: txHash,
         confirmations: 1,
         timeout: 60_000,
@@ -189,6 +187,8 @@ export function createUniswapRoutes(runtime: AppRuntime) {
         const wallet = yield* resolveWalletAddress(body.walletId);
         const uniswap = yield* UniswapService;
         const txService = yield* TransactionService;
+        const config = yield* ConfigService;
+        const publicClient = createBasePublicClient(config.baseRpcUrl || undefined);
 
         let approvalTxId: string | undefined;
 
@@ -234,7 +234,7 @@ export function createUniswapRoutes(runtime: AppRuntime) {
               sponsor: true,
             });
 
-            yield* waitForConfirmation(erc20ApproveTx.txHash as Hash);
+            yield* waitForConfirmation(erc20ApproveTx.txHash as Hash, config.baseRpcUrl || undefined);
           }
 
           // Step 1b: Check Permit2 allowance for Universal Router
@@ -271,7 +271,7 @@ export function createUniswapRoutes(runtime: AppRuntime) {
             });
             approvalTxId = permit2ApproveTx.id;
 
-            yield* waitForConfirmation(permit2ApproveTx.txHash as Hash);
+            yield* waitForConfirmation(permit2ApproveTx.txHash as Hash, config.baseRpcUrl || undefined);
           }
         }
 

@@ -8,6 +8,7 @@ import {
   type Chain,
 } from "viem";
 import { mainnet, base, polygon, arbitrum, optimism } from "viem/chains";
+import { createBasePublicClient } from "../chain/public-client.js";
 import { DatabaseService } from "../../db/client.js";
 import {
   yieldVaults,
@@ -450,11 +451,13 @@ export const YieldServiceLive: Layer.Layer<
           let onChainLockId = tx.txHash ?? "pending";
 
           if (tx.txHash) {
-            const chainMap: Record<number, Chain> = {
-              1: mainnet, 8453: base, 137: polygon, 42161: arbitrum, 10: optimism,
-            };
-            const chain = chainMap[chainId] ?? base;
-            const publicClient = createPublicClient({ chain, transport: http() });
+            const isBase = chainId === 8453 || chainId === 84532;
+            const publicClient = isBase
+              ? createBasePublicClient(config.baseRpcUrl || undefined, chainId)
+              : createPublicClient({
+                  chain: ({ 1: mainnet, 137: polygon, 42161: arbitrum, 10: optimism } as Record<number, Chain>)[chainId] ?? base,
+                  transport: http(),
+                });
 
             const receipt = yield* Effect.tryPromise({
               try: () => publicClient.getTransactionReceipt({ hash: tx.txHash as Hash }),
