@@ -70,7 +70,58 @@
   gap: 8px;
 }
 
-/* ─── Balance Pill ────────────────────────────────────────────────── */
+/* ─── Mode Toggle (Simple / Agent) ───────────────────────────────── */
+
+.mode-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 3px;
+  gap: 0;
+  user-select: none;
+}
+
+.mode-toggle-option {
+  position: relative;
+  z-index: 1;
+  padding: 5px 16px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: color 0.25s ease;
+  white-space: nowrap;
+}
+
+.mode-toggle-option.active {
+  color: var(--accent-text);
+}
+
+.mode-toggle-option:not(.active):hover {
+  color: var(--text-secondary);
+}
+
+.mode-toggle-indicator {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: calc(50% - 3px);
+  height: calc(100% - 6px);
+  background: var(--exo-lime);
+  border-radius: var(--radius-pill);
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+
+/* ─── Balance Pill (kept for compat) ─────────────────────────────── */
 
 .balance-pill {
   display: inline-flex;
@@ -289,6 +340,7 @@
 .shell-main {
   display: flex;
   flex-direction: column;
+  flex: 1;
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
@@ -894,7 +946,8 @@
     padding: 0 14px;
   }
 
-  .shell-logo {
+  .shell-logo,
+  .shell-logo-btn {
     font-size: 18px;
   }
 
@@ -904,6 +957,12 @@
 
   .shell-header-right .quick-action-btn {
     display: none;
+  }
+
+  /* Compact mode toggle on mobile */
+  .mode-toggle-option {
+    padding: 4px 12px;
+    font-size: 10px;
   }
 
   /* Hide context panel as separate column on mobile */

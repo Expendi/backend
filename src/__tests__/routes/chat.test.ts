@@ -199,14 +199,10 @@ describe("Chat Routes", () => {
       expect(res.status).toBe(200);
 
       const text = await res.text();
-      expect(text).toContain(
-        JSON.stringify({
-          type: "done",
-          message: { sender: "agent", text: "Error: Stream failed" },
-          tokens_in: 0,
-          tokens_out: 0,
-        }),
-      );
+      // The route now emits a dedicated error event + a done event
+      expect(text).toContain('"type":"error"');
+      expect(text).toContain('"detail":"Stream failed"');
+      expect(text).toContain('"type":"done"');
     });
 
     it("should not set system prompt when empty", async () => {

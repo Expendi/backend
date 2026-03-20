@@ -1,14 +1,17 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useApi, ApiRequestError } from "../hooks/useApi";
 import { useApprovalContext } from "../context/ApprovalContext";
 import { useDashboard } from "../context/DashboardContext";
 import { Spinner } from "../components/Spinner";
+import { BottomSheet } from "../components/BottomSheet";
+import { TokenAmountInput, toBaseUnits, fromBaseUnits } from "../components/TokenAmountInput";
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from "recharts";
 import type { GoalSaving, GoalSavingsDeposit, Category } from "../lib/types";
 import { FREQUENCY_OPTIONS } from "../lib/constants";
 import "../styles/pages.css";
+import "../styles/page-transition.css";
 
 type Tab = "goals" | "create";
 type CreateStep = "form" | "review" | "creating" | "success" | "error";
@@ -36,7 +39,20 @@ export function GoalsPage() {
   const approvalCtx = useApprovalContext();
   const { refresh } = useDashboard();
 
-  const [tab, setTab] = useState<Tab>("goals");
+  const [tab, setTabState] = useState<Tab>("goals");
+  const GOAL_TAB_ORDER: Tab[] = ["goals", "create"];
+  const prevGoalTabIdxRef = useRef(0);
+  const [goalTabSlide, setGoalTabSlide] = useState<"left" | "right" | null>(null);
+  const setTab = (newTab: Tab) => {
+    const newIdx = GOAL_TAB_ORDER.indexOf(newTab);
+    const prevIdx = prevGoalTabIdxRef.current;
+    if (newIdx !== prevIdx && newIdx >= 0) {
+      setGoalTabSlide(newIdx > prevIdx ? "right" : "left");
+      prevGoalTabIdxRef.current = newIdx;
+    }
+    setTabState(newTab);
+  };
+
   const [goals, setGoals] = useState<GoalSaving[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<GoalSaving | null>(null);
@@ -55,6 +71,10 @@ export function GoalsPage() {
 
   // Categories
   const [categories, setCategories] = useState<Category[]>([]);
+
+  // Accrued yield
+  const [accruedYield, setAccruedYield] = useState<string | null>(null);
+  const [accruedLoading, setAccruedLoading] = useState(false);
 
   // Manual deposit
   const [depositStep, setDepositStep] = useState<DepositStep>("idle");
@@ -113,6 +133,28 @@ export function GoalsPage() {
     if (selected) fetchDeposits(selected.id);
   }, [selected, fetchDeposits]);
 
+  // Fetch accrued yield when a goal is selected
+  useEffect(() => {
+    if (!selected) {
+      setAccruedYield(null);
+      return;
+    }
+    setAccruedYield(null);
+    setAccruedLoading(true);
+    let cancelled = false;
+    request<{ accruedYield: string }>(`/goal-savings/${selected.id}/accrued-yield`)
+      .then(data => {
+        if (!cancelled) setAccruedYield(data.accruedYield);
+      })
+      .catch(() => {
+        if (!cancelled) setAccruedYield(null);
+      })
+      .finally(() => {
+        if (!cancelled) setAccruedLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [selected, request]);
+
   // Create
   const handleCreate = async () => {
     setCreateStep("creating");
@@ -120,7 +162,7 @@ export function GoalsPage() {
     try {
       const body: Record<string, unknown> = {
         name,
-        targetAmount,
+        targetAmount: toBaseUnits(targetAmount, 6),
         tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
         tokenSymbol: "USDC",
         tokenDecimals: 6,
@@ -131,7 +173,7 @@ export function GoalsPage() {
         body.frequency = frequency;
         body.walletType = "server";
         body.unlockTimeOffsetSeconds = 2592000;
-        if (depositAmount) body.depositAmount = depositAmount;
+        if (depositAmount) body.depositAmount = toBaseUnits(depositAmount, 6);
       }
       await requestWithApproval("/goal-savings", { method: "POST", body });
       setCreateStep("success");
@@ -150,7 +192,7 @@ export function GoalsPage() {
     try {
       await requestWithApproval(`/goal-savings/${selected.id}/deposit`, {
         method: "POST",
-        body: { amount: manualAmount, walletType: "server" },
+        body: { amount: toBaseUnits(manualAmount, 6), walletType: "server" },
       });
       setDepositStep("success");
       fetchGoals();
@@ -209,6 +251,7 @@ export function GoalsPage() {
         <button className={`exo-tab ${tab === "create" ? "active" : ""}`} onClick={() => { setTab("create"); setCreateStep("form"); }}>Start a Goal</button>
       </div>
 
+      <div key={tab} className={`tab-content-slide ${goalTabSlide === "left" ? "slide-from-left" : goalTabSlide === "right" ? "slide-from-right" : ""}`}>
       {/* ─── GOALS TAB ─── */}
       {tab === "goals" && (
         <>
@@ -244,8 +287,8 @@ export function GoalsPage() {
                           <div className="exo-progress-fill" style={{ width: `${pct}%` }} />
                         </div>
                         <div className="goal-card-amounts">
-                          <span className="goal-card-current">{g.accumulatedAmount} {g.tokenSymbol}</span>
-                          <span className="goal-card-target">of {g.targetAmount}</span>
+                          <span className="goal-card-current">{fromBaseUnits(g.accumulatedAmount, g.tokenDecimals ?? 6)} {g.tokenSymbol}</span>
+                          <span className="goal-card-target">of {fromBaseUnits(g.targetAmount, g.tokenDecimals ?? 6)}</span>
                         </div>
                         {g.frequency && (
                           <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginTop: 6 }}>
@@ -269,8 +312,8 @@ export function GoalsPage() {
                             <span className="tag-exo" style={{ fontSize: 9 }}>{g.status}</span>
                           </div>
                           <div className="goal-card-amounts">
-                            <span className="goal-card-current">{g.accumulatedAmount} {g.tokenSymbol}</span>
-                            <span className="goal-card-target">of {g.targetAmount}</span>
+                            <span className="goal-card-current">{fromBaseUnits(g.accumulatedAmount, g.tokenDecimals ?? 6)} {g.tokenSymbol}</span>
+                            <span className="goal-card-target">of {fromBaseUnits(g.targetAmount, g.tokenDecimals ?? 6)}</span>
                           </div>
                         </div>
                       ))}
@@ -281,152 +324,157 @@ export function GoalsPage() {
             </div>
           )}
 
-          {/* Goal detail modal */}
-          {selected && (
-            <div className="exo-modal-backdrop" onClick={e => { if (e.target === e.currentTarget) { setSelected(null); setDepositStep("idle"); } }}>
-              <div className="exo-modal">
-                <div className="exo-modal-header">
-                  <span className="exo-modal-title">{selected.name}</span>
-                  <button className="exo-modal-close" onClick={() => { setSelected(null); setDepositStep("idle"); }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          {/* Goal detail tray */}
+          <BottomSheet
+            open={!!selected}
+            onClose={() => { setSelected(null); setDepositStep("idle"); }}
+            title={selected?.name}
+          >
+            {selected && (
+              <>
+                {/* Progress */}
+                <div style={{ marginBottom: 16 }}>
+                  <div className="exo-progress" style={{ height: 12 }}>
+                    <div className="exo-progress-fill" style={{ width: `${pctComplete(selected.accumulatedAmount, selected.targetAmount)}%` }} />
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 14, fontWeight: 700 }}>
+                      {fromBaseUnits(selected.accumulatedAmount, selected.tokenDecimals ?? 6)} {selected.tokenSymbol}
+                    </span>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-muted)" }}>
+                      {pctComplete(selected.accumulatedAmount, selected.targetAmount).toFixed(0)}% of {fromBaseUnits(selected.targetAmount, selected.tokenDecimals ?? 6)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="exo-review" style={{ marginBottom: 16 }}>
+                  <div className="exo-review-row"><span className="exo-review-label">Status</span><span className="exo-review-value"><span className={`tag-exo status-${selected.status}`}>{selected.status}</span></span></div>
+                  {selected.description && <div className="exo-review-row"><span className="exo-review-label">Desc</span><span className="exo-review-value">{selected.description}</span></div>}
+                  <div className="exo-review-row"><span className="exo-review-label">Automation</span><span className="exo-review-value">{formatFreq(selected.frequency)}</span></div>
+                  <div className="exo-review-row"><span className="exo-review-label">Deposits</span><span className="exo-review-value">{selected.totalDeposits}</span></div>
+                  <div className="exo-review-row">
+                    <span className="exo-review-label">Yield Earned</span>
+                    <span className="exo-review-value" style={{ color: "var(--exo-lime)" }}>
+                      {accruedLoading ? "Loading..." : accruedYield ?? "N/A"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Manual deposit */}
+                {selected.status === "active" && depositStep === "idle" && (
+                  <button className="btn-exo btn-primary" style={{ width: "100%", marginBottom: 12 }} onClick={() => setDepositStep("form")}>
+                    Deposit
                   </button>
-                </div>
-                <div className="exo-modal-body">
-                  {/* Progress */}
-                  <div style={{ marginBottom: 16 }}>
-                    <div className="exo-progress" style={{ height: 12 }}>
-                      <div className="exo-progress-fill" style={{ width: `${pctComplete(selected.accumulatedAmount, selected.targetAmount)}%` }} />
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 14, fontWeight: 700 }}>
-                        {selected.accumulatedAmount} {selected.tokenSymbol}
-                      </span>
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-muted)" }}>
-                        {pctComplete(selected.accumulatedAmount, selected.targetAmount).toFixed(0)}% of {selected.targetAmount}
-                      </span>
+                )}
+
+                {depositStep === "form" && (
+                  <div className="exo-form-card" style={{ marginBottom: 12 }}>
+                    <div className="exo-form-card-title">Manual Deposit</div>
+                    <TokenAmountInput
+                      token={selected.tokenSymbol ?? "USDC"}
+                      amount={manualAmount}
+                      onAmountChange={setManualAmount}
+                      label="Amount"
+                      placeholder="100.00"
+                      tokenFixed
+                    />
+                    <div className="exo-actions" style={{ marginTop: 12 }}>
+                      <button className="btn-exo btn-secondary" onClick={() => setDepositStep("idle")}>Cancel</button>
+                      <button className="btn-exo btn-primary" disabled={!manualAmount} onClick={handleDeposit}>Deposit</button>
                     </div>
                   </div>
+                )}
 
-                  <div className="exo-review" style={{ marginBottom: 16 }}>
-                    <div className="exo-review-row"><span className="exo-review-label">Status</span><span className="exo-review-value"><span className={`tag-exo status-${selected.status}`}>{selected.status}</span></span></div>
-                    {selected.description && <div className="exo-review-row"><span className="exo-review-label">Desc</span><span className="exo-review-value">{selected.description}</span></div>}
-                    <div className="exo-review-row"><span className="exo-review-label">Automation</span><span className="exo-review-value">{formatFreq(selected.frequency)}</span></div>
-                    <div className="exo-review-row"><span className="exo-review-label">Deposits</span><span className="exo-review-value">{selected.totalDeposits}</span></div>
+                {depositStep === "depositing" && (
+                  <div style={{ textAlign: "center", padding: 16 }}><Spinner /><p style={{ marginTop: 8, fontSize: 13, color: "var(--text-secondary)" }}>Depositing...</p></div>
+                )}
+
+                {depositStep === "success" && (
+                  <div className="msg-success" style={{ marginBottom: 12 }}>Deposit successful</div>
+                )}
+
+                {depositStep === "error" && (
+                  <div className="msg-error" style={{ marginBottom: 12 }}>{depositError}</div>
+                )}
+
+                {/* Actions */}
+                {(selected.status === "active" || selected.status === "paused") && (
+                  <div className="exo-actions" style={{ marginBottom: 16 }}>
+                    {selected.status === "active" && (
+                      <button className="btn-exo btn-secondary" disabled={actionLoading} onClick={() => handleAction(selected.id, "pause")}>Pause</button>
+                    )}
+                    {selected.status === "paused" && (
+                      <button className="btn-exo btn-primary" disabled={actionLoading} onClick={() => handleAction(selected.id, "resume")}>Resume</button>
+                    )}
+                    <button className="btn-exo btn-danger" disabled={actionLoading} onClick={() => handleAction(selected.id, "cancel")}>Cancel</button>
                   </div>
+                )}
 
-                  {/* Manual deposit */}
-                  {selected.status === "active" && depositStep === "idle" && (
-                    <button className="btn-exo btn-primary" style={{ width: "100%", marginBottom: 12 }} onClick={() => setDepositStep("form")}>
-                      Deposit
-                    </button>
-                  )}
-
-                  {depositStep === "form" && (
-                    <div className="exo-form-card" style={{ marginBottom: 12 }}>
-                      <div className="exo-form-card-title">Manual Deposit</div>
-                      <div className="form-group">
-                        <label>Amount ({selected.tokenSymbol})</label>
-                        <input className="input-exo" value={manualAmount} onChange={e => setManualAmount(e.target.value)} placeholder="100000000" inputMode="numeric" />
-                      </div>
-                      <div className="exo-actions">
-                        <button className="btn-exo btn-secondary" onClick={() => setDepositStep("idle")}>Cancel</button>
-                        <button className="btn-exo btn-primary" disabled={!manualAmount} onClick={handleDeposit}>Deposit</button>
-                      </div>
+                {/* Savings progress chart */}
+                {deposits.length >= 2 && (() => {
+                  const sorted = [...deposits]
+                    .filter(d => d.status === "confirmed")
+                    .sort((a, b) => new Date(a.depositedAt).getTime() - new Date(b.depositedAt).getTime());
+                  let cumulative = 0;
+                  const target = Number(selected.targetAmount);
+                  const chartData = sorted.map(d => {
+                    cumulative += Number(d.amount);
+                    return {
+                      date: new Date(d.depositedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+                      saved: cumulative,
+                      target,
+                    };
+                  });
+                  return (
+                    <div style={{ marginBottom: 16 }}>
+                      <div className="exo-form-card-title" style={{ marginBottom: 8 }}>Savings Progress</div>
+                      <ResponsiveContainer width="100%" height={160}>
+                        <AreaChart data={chartData}>
+                          <defs>
+                            <linearGradient id="savingsGrad" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
+                              <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                          <YAxis tick={{ fontSize: 10 }} domain={[0, Math.max(cumulative, target)]} />
+                          <Tooltip formatter={(v) => `${Number(v).toLocaleString()} raw`} />
+                          <Area type="monotone" dataKey="saved" stroke="#8b5cf6" fill="url(#savingsGrad)" strokeWidth={2} />
+                          <Area type="monotone" dataKey="target" stroke="#6b7280" strokeDasharray="5 5" fill="none" strokeWidth={1} />
+                        </AreaChart>
+                      </ResponsiveContainer>
                     </div>
-                  )}
+                  );
+                })()}
 
-                  {depositStep === "depositing" && (
-                    <div style={{ textAlign: "center", padding: 16 }}><Spinner /><p style={{ marginTop: 8, fontSize: 13, color: "var(--text-secondary)" }}>Depositing...</p></div>
-                  )}
-
-                  {depositStep === "success" && (
-                    <div className="msg-success" style={{ marginBottom: 12 }}>Deposit successful</div>
-                  )}
-
-                  {depositStep === "error" && (
-                    <div className="msg-error" style={{ marginBottom: 12 }}>{depositError}</div>
-                  )}
-
-                  {/* Actions */}
-                  {(selected.status === "active" || selected.status === "paused") && (
-                    <div className="exo-actions" style={{ marginBottom: 16 }}>
-                      {selected.status === "active" && (
-                        <button className="btn-exo btn-secondary" disabled={actionLoading} onClick={() => handleAction(selected.id, "pause")}>Pause</button>
-                      )}
-                      {selected.status === "paused" && (
-                        <button className="btn-exo btn-primary" disabled={actionLoading} onClick={() => handleAction(selected.id, "resume")}>Resume</button>
-                      )}
-                      <button className="btn-exo btn-danger" disabled={actionLoading} onClick={() => handleAction(selected.id, "cancel")}>Cancel</button>
-                    </div>
-                  )}
-
-                  {/* Savings progress chart */}
-                  {deposits.length >= 2 && (() => {
-                    // Build cumulative deposits over time
-                    const sorted = [...deposits]
-                      .filter(d => d.status === "confirmed")
-                      .sort((a, b) => new Date(a.depositedAt).getTime() - new Date(b.depositedAt).getTime());
-                    let cumulative = 0;
-                    const target = Number(selected.targetAmount);
-                    const chartData = sorted.map(d => {
-                      cumulative += Number(d.amount);
-                      return {
-                        date: new Date(d.depositedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
-                        saved: cumulative,
-                        target,
-                      };
-                    });
-                    return (
-                      <div style={{ marginBottom: 16 }}>
-                        <div className="exo-form-card-title" style={{ marginBottom: 8 }}>Savings Progress</div>
-                        <ResponsiveContainer width="100%" height={160}>
-                          <AreaChart data={chartData}>
-                            <defs>
-                              <linearGradient id="savingsGrad" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
-                                <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
-                              </linearGradient>
-                            </defs>
-                            <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-                            <YAxis tick={{ fontSize: 10 }} domain={[0, Math.max(cumulative, target)]} />
-                            <Tooltip formatter={(v) => `${Number(v).toLocaleString()} raw`} />
-                            <Area type="monotone" dataKey="saved" stroke="#8b5cf6" fill="url(#savingsGrad)" strokeWidth={2} />
-                            <Area type="monotone" dataKey="target" stroke="#6b7280" strokeDasharray="5 5" fill="none" strokeWidth={1} />
-                          </AreaChart>
-                        </ResponsiveContainer>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Deposit history */}
-                  <div className="exo-form-card-title" style={{ marginBottom: 8 }}>Deposit History</div>
-                  {depositsLoading ? (
-                    <div className="exo-inline-spinner"><Spinner /></div>
-                  ) : deposits.length === 0 ? (
-                    <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "8px 0" }}>No deposits yet</div>
-                  ) : (
-                    <div className="exo-list">
-                      {deposits.map(d => (
-                        <div key={d.id} className="exo-list-item" style={{ cursor: "default" }}>
-                          <div className="exo-list-item-left">
-                            <span className="exo-list-item-title" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <span className={`exo-status-dot ${d.status}`} />
-                              {d.depositType === "automated" ? "Auto" : "Manual"}
-                            </span>
-                            <span className="exo-list-item-sub">{formatDate(d.depositedAt)}</span>
-                          </div>
-                          <div className="exo-list-item-right">
-                            <span className="exo-list-item-value">{d.amount}</span>
-                            <span className="exo-list-item-meta">{d.status}</span>
-                          </div>
+                {/* Deposit history */}
+                <div className="exo-form-card-title" style={{ marginBottom: 8 }}>Deposit History</div>
+                {depositsLoading ? (
+                  <div className="exo-inline-spinner"><Spinner /></div>
+                ) : deposits.length === 0 ? (
+                  <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "8px 0" }}>No deposits yet</div>
+                ) : (
+                  <div className="exo-list">
+                    {deposits.map(d => (
+                      <div key={d.id} className="exo-list-item" style={{ cursor: "default" }}>
+                        <div className="exo-list-item-left">
+                          <span className="exo-list-item-title" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span className={`exo-status-dot ${d.status}`} />
+                            {d.depositType === "automated" ? "Auto" : "Manual"}
+                          </span>
+                          <span className="exo-list-item-sub">{formatDate(d.depositedAt)}</span>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
+                        <div className="exo-list-item-right">
+                          <span className="exo-list-item-value">{d.amount}</span>
+                          <span className="exo-list-item-meta">{d.status}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </BottomSheet>
         </>
       )}
 
@@ -445,10 +493,14 @@ export function GoalsPage() {
                   <label>Description (optional)</label>
                   <input className="input-exo" value={desc} onChange={e => setDesc(e.target.value)} placeholder="Saving for a down payment" />
                 </div>
-                <div className="form-group">
-                  <label>Target Amount (USDC)</label>
-                  <input className="input-exo" value={targetAmount} onChange={e => setTargetAmount(e.target.value)} placeholder="1000000000" inputMode="numeric" />
-                </div>
+                <TokenAmountInput
+                  token="USDC"
+                  amount={targetAmount}
+                  onAmountChange={setTargetAmount}
+                  label="Target Amount"
+                  placeholder="1000.00"
+                  tokenFixed
+                />
 
                 <div style={{ margin: "16px 0 8px", fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", color: "var(--text-muted)" }}>
                   Automation (optional)
@@ -463,10 +515,14 @@ export function GoalsPage() {
                     </select>
                   </div>
                   {frequency && (
-                    <div className="form-group">
-                      <label>Deposit per Cycle</label>
-                      <input className="input-exo" value={depositAmount} onChange={e => setDepositAmount(e.target.value)} placeholder="50000000" inputMode="numeric" />
-                    </div>
+                    <TokenAmountInput
+                      token="USDC"
+                      amount={depositAmount}
+                      onAmountChange={setDepositAmount}
+                      label="Deposit per Cycle"
+                      placeholder="50.00"
+                      tokenFixed
+                    />
                   )}
                 </div>
 
@@ -499,8 +555,8 @@ export function GoalsPage() {
               <div className="exo-review">
                 <div className="exo-review-row"><span className="exo-review-label">Name</span><span className="exo-review-value">{name}</span></div>
                 {desc && <div className="exo-review-row"><span className="exo-review-label">Description</span><span className="exo-review-value">{desc}</span></div>}
-                <div className="exo-review-row"><span className="exo-review-label">Target</span><span className="exo-review-value">{targetAmount} USDC</span></div>
-                <div className="exo-review-row"><span className="exo-review-label">Automation</span><span className="exo-review-value">{frequency ? `${formatFreq(frequency)}, ${depositAmount} per cycle` : "Manual"}</span></div>
+                <div className="exo-review-row"><span className="exo-review-label">Target</span><span className="exo-review-value">{Number(targetAmount).toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC</span></div>
+                <div className="exo-review-row"><span className="exo-review-label">Automation</span><span className="exo-review-value">{frequency ? `${formatFreq(frequency)}, ${Number(depositAmount).toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC per cycle` : "Manual"}</span></div>
                 {selectedCategoryName && <div className="exo-review-row"><span className="exo-review-label">Category</span><span className="exo-review-value">{selectedCategoryName}</span></div>}
               </div>
               <div className="exo-actions">
@@ -539,6 +595,7 @@ export function GoalsPage() {
           )}
         </>
       )}
+      </div>
     </div>
   );
 }

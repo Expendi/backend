@@ -29,6 +29,7 @@ import { createChatRoutes } from "./routes/chat.js";
 import { createAgentRoutes } from "./routes/agent.js";
 import { createAgentMandateRoutes } from "./routes/agent-mandates.js";
 import { createAgentActivityRoutes } from "./routes/agent-activity.js";
+import { createTokenRoutes } from "./routes/tokens.js";
 
 // Resolve the Privy client and admin API key from the Effect runtime so
 // we can hand them to the Hono middleware layer without requiring Effect
@@ -68,6 +69,7 @@ app.get("/", (c) =>
       agent: "/api/agent",
       agentMandates: "/api/agent/mandates",
       agentActivity: "/api/agent/activity",
+      tokens: "/api/tokens",
       webhooks: "/webhooks/pretium",
     },
   })
@@ -110,6 +112,7 @@ app.route("/api/chat", createChatRoutes(runtime));
 app.route("/api/agent", createAgentRoutes(runtime));
 app.route("/api/agent/mandates", createAgentMandateRoutes(runtime));
 app.route("/api/agent/activity", createAgentActivityRoutes(runtime));
+app.route("/api/tokens", createTokenRoutes(runtime));
 
 // ── Webhook routes (no auth -- called by payment providers) ────────
 

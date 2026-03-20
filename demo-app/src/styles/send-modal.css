@@ -9,13 +9,13 @@
   inset: 0;
   z-index: 1000;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
   background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   animation: sendOverlayIn 0.25s ease;
-  padding: 16px;
+  padding: 0;
 }
 
 .send-overlay.closing {
@@ -36,13 +36,14 @@
 
 .send-card {
   width: 100%;
-  max-width: 420px;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   overflow: hidden;
   animation: sendCardIn 0.3s cubic-bezier(0.22, 1, 0.36, 1);
   position: relative;
+  max-height: 92vh;
+  overflow-y: auto;
 }
 
 .send-overlay.closing .send-card {
@@ -52,22 +53,22 @@
 @keyframes sendCardIn {
   from {
     opacity: 0;
-    transform: translateY(24px) scale(0.97);
+    transform: translateY(100%);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateY(0);
   }
 }
 
 @keyframes sendCardOut {
   from {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateY(0);
   }
   to {
     opacity: 0;
-    transform: translateY(16px) scale(0.97);
+    transform: translateY(100%);
   }
 }
 
@@ -129,6 +130,10 @@
 
 .send-token-pill {
   flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 8px 16px;
   background: transparent;
   border: none;
@@ -691,48 +696,51 @@
   color: var(--text-muted);
 }
 
-/* ─── Responsive: Mobile ─────────────────────────────────────────── */
+/* ─── Responsive ─────────────────────────────────────────────────── */
 
 @media (max-width: 480px) {
-  .send-overlay {
-    align-items: flex-end;
-    padding: 0;
-  }
-
-  .send-card {
-    max-width: none;
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    max-height: 92vh;
-    overflow-y: auto;
-  }
-
-  @keyframes sendCardIn {
-    from {
-      opacity: 0;
-      transform: translateY(100%);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  @keyframes sendCardOut {
-    from {
-      opacity: 1;
-      transform: translateY(0);
-    }
-    to {
-      opacity: 0;
-      transform: translateY(100%);
-    }
-  }
-
   .send-amount-input {
     font-size: 34px;
   }
 
   .send-review-amount-value {
     font-size: 30px;
+  }
+}
+
+/* Desktop (≥768px): Centered card modal */
+@media (min-width: 768px) {
+  .send-overlay {
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+
+  .send-card {
+    max-width: 420px;
+    border-radius: var(--radius-lg);
+    max-height: 85vh;
+  }
+
+  @keyframes sendCardIn {
+    from {
+      opacity: 0;
+      transform: translateY(24px) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes sendCardOut {
+    from {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(16px) scale(0.97);
+    }
   }
 }

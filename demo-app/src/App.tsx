@@ -6,8 +6,11 @@ import { ApprovalProvider } from "./context/ApprovalContext";
 import { DashboardProvider } from "./context/DashboardContext";
 import { ChatActionsProvider } from "./context/ChatActionsContext";
 import { PreferencesProvider } from "./context/PreferencesContext";
+import { AppModeProvider } from "./context/AppModeContext";
 import { AppShell } from "./components/AppShell";
 import { Spinner } from "./components/Spinner";
+import { ConfettiCanvas } from "./components/Confetti";
+import { ToastProvider } from "./components/Toast";
 import { gloveClient } from "./lib/glove-client";
 
 import { OnboardingPage } from "./pages/OnboardingPage";
@@ -23,6 +26,12 @@ import { RecurringPaymentsPage } from "./pages/RecurringPaymentsPage";
 import { GoalsPage } from "./pages/GoalsPage";
 import { CategoriesPage } from "./pages/CategoriesPage";
 import { TransferPage } from "./pages/TransferPage";
+import { GroupsPage } from "./pages/GroupsPage";
+import { SplitExpensesPage } from "./pages/SplitExpensesPage";
+import { SwapAutomationsPage } from "./pages/SwapAutomationsPage";
+import { SecurityPage } from "./pages/SecurityPage";
+import { WalletsPage } from "./pages/WalletsPage";
+import { TransactionsPage } from "./pages/TransactionsPage";
 
 import "./styles/exo-tokens.css";
 import "./styles/components.css";
@@ -93,22 +102,33 @@ function AuthenticatedApp() {
       <PreferencesProvider>
         <DashboardProvider>
           <ChatActionsProvider>
-            <Routes>
-            <Route element={<AppShell />}>
-              <Route index element={<WalletHomePage />} />
-              <Route path="agent" element={<AgentPage />} />
-              <Route path="activity" element={<ActivityPage />} />
-              <Route path="receive" element={<ReceivePage />} />
-              <Route path="settings" element={<SettingsPage />} />
-              <Route path="buy" element={<BuyPage />} />
-              <Route path="swap" element={<SwapPage />} />
-              <Route path="earn" element={<EarnPage />} />
-              <Route path="recurring" element={<RecurringPaymentsPage />} />
-              <Route path="goals" element={<GoalsPage />} />
-              <Route path="categories" element={<CategoriesPage />} />
-              <Route path="transfer" element={<TransferPage />} />
-            </Route>
-            </Routes>
+            <AppModeProvider>
+              <ToastProvider>
+              <ConfettiCanvas />
+              <Routes>
+              <Route element={<AppShell />}>
+                <Route index element={<WalletHomePage />} />
+                <Route path="agent" element={<AgentPage />} />
+                <Route path="activity" element={<ActivityPage />} />
+                <Route path="receive" element={<ReceivePage />} />
+                <Route path="settings" element={<SettingsPage />} />
+                <Route path="buy" element={<BuyPage />} />
+                <Route path="swap" element={<SwapPage />} />
+                <Route path="earn" element={<EarnPage />} />
+                <Route path="recurring" element={<RecurringPaymentsPage />} />
+                <Route path="goals" element={<GoalsPage />} />
+                <Route path="categories" element={<CategoriesPage />} />
+                <Route path="transfer" element={<TransferPage />} />
+                <Route path="groups" element={<GroupsPage />} />
+                <Route path="split-expenses" element={<SplitExpensesPage />} />
+                <Route path="swap-automations" element={<SwapAutomationsPage />} />
+                <Route path="security" element={<SecurityPage />} />
+                <Route path="wallets" element={<WalletsPage />} />
+                <Route path="transactions" element={<TransactionsPage />} />
+              </Route>
+              </Routes>
+              </ToastProvider>
+            </AppModeProvider>
           </ChatActionsProvider>
         </DashboardProvider>
       </PreferencesProvider>

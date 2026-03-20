@@ -43,6 +43,7 @@ export interface AgentProfileServiceApi {
     userId: string,
     budget: string
   ) => Effect.Effect<AgentProfile, AgentProfileError>;
+
 }
 
 export class AgentProfileService extends Context.Tag("AgentProfileService")<
@@ -378,6 +379,7 @@ export const AgentProfileServiceLive: Layer.Layer<
 
           return updated!;
         }),
+
     };
   })
 );

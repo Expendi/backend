@@ -1,1 +1,0 @@
-ALTER TABLE "split_expenses" ADD COLUMN "category_id" text REFERENCES "transaction_categories"("id");

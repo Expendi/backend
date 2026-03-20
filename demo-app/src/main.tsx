@@ -14,7 +14,7 @@ createRoot(document.getElementById("root")!).render(
     <PrivyProvider
       appId={appId}
       config={{
-        loginMethods: ["email", "wallet", "google", "apple"],
+        loginMethods: ["email", "wallet", "google"],
         appearance: {
           theme: "dark",
         },

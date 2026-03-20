@@ -1,0 +1,350 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Tray / Bottom Sheet — iOS-quality sheet with desktop card fallback
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ─── Backdrop ──────────────────────────────────────────────────── */
+
+.tray-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 1000;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  will-change: opacity;
+}
+
+.tray-backdrop.tray-backdrop-visible {
+  opacity: 1;
+}
+
+.tray-backdrop.tray-backdrop-exiting {
+  opacity: 0;
+  transition: opacity 0.15s ease 0.25s;
+}
+
+/* ─── Sheet (Mobile <768px) ─────────────────────────────────────── */
+
+.tray-sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1001;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  border-radius: 20px 20px 0 0;
+  display: flex;
+  flex-direction: column;
+  transform: translateY(100%);
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+  max-height: 90vh;
+}
+
+.tray-sheet.tray-sheet-visible {
+  transform: translateY(0);
+}
+
+.tray-sheet.tray-sheet-exiting {
+  transform: translateY(100%);
+  transition: transform 0.25s cubic-bezier(0.55, 0, 1, 0.45);
+}
+
+.tray-sheet.tray-sheet-dragging {
+  transition: none;
+}
+
+/* Height variants */
+.tray-sheet.tray-size-small {
+  height: 30vh;
+  min-height: 220px;
+}
+
+.tray-sheet.tray-size-medium {
+  height: 50vh;
+  min-height: 340px;
+}
+
+.tray-sheet.tray-size-large {
+  height: 75vh;
+  min-height: 460px;
+}
+
+/* ─── Drag Handle ───────────────────────────────────────────────── */
+
+.tray-handle-area {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 0 2px;
+  cursor: grab;
+  touch-action: none;
+  flex-shrink: 0;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.tray-handle-area:active {
+  cursor: grabbing;
+}
+
+.tray-handle {
+  width: 32px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  transition: background 0.15s ease;
+}
+
+.tray-handle-area:hover .tray-handle {
+  background: var(--text-muted);
+}
+
+/* ─── Header ────────────────────────────────────────────────────── */
+
+.tray-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 20px 12px;
+  flex-shrink: 0;
+}
+
+.tray-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--text-primary);
+}
+
+.tray-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.tray-close:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+/* ─── Content ───────────────────────────────────────────────────── */
+
+.tray-content {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 20px 24px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  overscroll-behavior: contain;
+}
+
+/* ─── Desktop (>=768px): Centered Card Modal ────────────────────── */
+
+@media (min-width: 768px) {
+  .tray-sheet {
+    position: fixed;
+    bottom: auto;
+    left: 50%;
+    top: 50%;
+    right: auto;
+    transform: translate(-50%, -50%) scale(0.95);
+    opacity: 0;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+    max-height: 80vh;
+    width: 100%;
+    max-width: 460px;
+    height: auto;
+    min-height: 0;
+    transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+                opacity 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .tray-sheet.tray-sheet-visible {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+
+  .tray-sheet.tray-sheet-exiting {
+    transform: translate(-50%, -50%) scale(0.95);
+    opacity: 0;
+    transition: transform 0.25s ease, opacity 0.2s ease;
+  }
+
+  /* On desktop, size variants control max-height rather than fixed height */
+  .tray-sheet.tray-size-small {
+    height: auto;
+    max-height: 35vh;
+  }
+
+  .tray-sheet.tray-size-medium {
+    height: auto;
+    max-height: 60vh;
+  }
+
+  .tray-sheet.tray-size-large {
+    height: auto;
+    max-height: 80vh;
+  }
+
+  /* Hide drag handle on desktop */
+  .tray-handle-area {
+    display: none;
+  }
+
+  .tray-header {
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .tray-content {
+    padding-bottom: 24px;
+  }
+}
+
+/* ─── Step Indicator ────────────────────────────────────────────── */
+
+.step-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 0 16px;
+}
+
+.step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.step-dot.step-dot-completed {
+  background: var(--text-muted);
+  border-color: var(--text-muted);
+}
+
+.step-dot.step-dot-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  transform: scale(1.2);
+}
+
+/* ─── Step Transition Wrappers ──────────────────────────────────── */
+
+.step-transition-forward {
+  animation: step-slide-in-right 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.step-transition-backward {
+  animation: step-slide-in-left 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes step-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes step-slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ─── Collapsible Section ───────────────────────────────────────── */
+
+.collapsible-section {
+  margin-bottom: 4px;
+}
+
+.collapsible-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 14px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  transition: all 0.2s ease;
+}
+
+.collapsible-header:hover {
+  border-color: var(--text-muted);
+}
+
+.collapsible-header.collapsible-open {
+  border-radius: var(--radius) var(--radius) 0 0;
+  border-bottom-color: transparent;
+}
+
+.collapsible-chevron {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.collapsible-chevron.collapsible-chevron-open {
+  transform: rotate(180deg);
+}
+
+.collapsible-body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.collapsible-body.collapsible-body-open {
+  max-height: 800px;
+}
+
+.collapsible-body-inner {
+  padding: 0 16px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.25s ease 0.1s, transform 0.25s ease 0.1s;
+}
+
+.collapsible-body-open .collapsible-body-inner {
+  opacity: 1;
+  transform: translateY(0);
+}

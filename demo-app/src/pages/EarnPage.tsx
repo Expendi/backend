@@ -1,21 +1,17 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useApi, ApiRequestError } from "../hooks/useApi";
 import { useDashboard } from "../context/DashboardContext";
 import { useApprovalContext } from "../context/ApprovalContext";
 import { Spinner } from "../components/Spinner";
+import { BottomSheet } from "../components/BottomSheet";
+import { TokenAmountInput, toBaseUnits, formatHumanAmount } from "../components/TokenAmountInput";
 import type { YieldVault, YieldPosition, YieldPortfolio } from "../lib/types";
 import "../styles/pages.css";
+import "../styles/page-transition.css";
 
 type Tab = "vaults" | "positions" | "portfolio";
 type DepositStep = "idle" | "form" | "review" | "depositing" | "success" | "error";
 type WithdrawStep = "idle" | "confirm" | "withdrawing" | "success" | "error";
-
-function formatTokenAmount(raw: string, decimals: number): string {
-  const num = Number(raw) / 10 ** decimals;
-  if (num === 0) return "0";
-  if (num < 0.01) return "<0.01";
-  return num.toLocaleString(undefined, { maximumFractionDigits: 4 });
-}
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
@@ -26,7 +22,20 @@ export function EarnPage() {
   const { walletBalances, refresh } = useDashboard();
   const approvalCtx = useApprovalContext();
 
-  const [tab, setTab] = useState<Tab>("vaults");
+  const [tab, setTabState] = useState<Tab>("vaults");
+  const EARN_TAB_ORDER: Tab[] = ["vaults", "positions", "portfolio"];
+  const prevEarnTabIdxRef = useRef(0);
+  const [earnTabSlide, setEarnTabSlide] = useState<"left" | "right" | null>(null);
+  const setTab = (newTab: Tab) => {
+    const newIdx = EARN_TAB_ORDER.indexOf(newTab);
+    const prevIdx = prevEarnTabIdxRef.current;
+    if (newIdx !== prevIdx && newIdx >= 0) {
+      setEarnTabSlide(newIdx > prevIdx ? "right" : "left");
+      prevEarnTabIdxRef.current = newIdx;
+    }
+    setTabState(newTab);
+  };
+
   const [vaults, setVaults] = useState<YieldVault[]>([]);
   const [positions, setPositions] = useState<YieldPosition[]>([]);
   const [portfolio, setPortfolio] = useState<YieldPortfolio | null>(null);
@@ -43,6 +52,10 @@ export function EarnPage() {
   const [withdrawStep, setWithdrawStep] = useState<WithdrawStep>("idle");
   const [selectedPosition, setSelectedPosition] = useState<YieldPosition | null>(null);
   const [withdrawError, setWithdrawError] = useState("");
+
+  // Accrued yield
+  const [accruedYield, setAccruedYield] = useState<string | null>(null);
+  const [accruedLoading, setAccruedLoading] = useState(false);
 
   const requestWithApproval = useCallback(
     async <T,>(path: string, options?: { method?: "GET" | "POST"; body?: unknown }) => {
@@ -89,6 +102,28 @@ export function EarnPage() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
+  // Fetch accrued yield when a position is selected
+  useEffect(() => {
+    if (!selectedPosition) {
+      setAccruedYield(null);
+      return;
+    }
+    setAccruedYield(null);
+    setAccruedLoading(true);
+    let cancelled = false;
+    request<{ accruedYield: string }>(`/yield/positions/${selectedPosition.id}/accrued-yield`)
+      .then(data => {
+        if (!cancelled) setAccruedYield(data.accruedYield);
+      })
+      .catch(() => {
+        if (!cancelled) setAccruedYield(null);
+      })
+      .finally(() => {
+        if (!cancelled) setAccruedLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [selectedPosition, request]);
+
   const userWallet = walletBalances.find(w => w.type === "user");
 
   // Handle deposit
@@ -97,10 +132,11 @@ export function EarnPage() {
     setDepositStep("depositing");
     setDepositError("");
     try {
+      const decimals = selectedVault.underlyingSymbol === "ETH" ? 18 : 6;
       const body: Record<string, unknown> = {
         walletType: "user",
         vaultId: selectedVault.id,
-        amount: depositAmount,
+        amount: toBaseUnits(depositAmount, decimals),
         unlockTime: Math.floor(Date.now() / 1000) + 86400,
       };
       if (depositLabel) body.label = depositLabel;
@@ -169,6 +205,7 @@ export function EarnPage() {
         <button className={`exo-tab ${tab === "positions" ? "active" : ""}`} onClick={() => { setTab("positions"); setWithdrawStep("idle"); }}>Currently Earning</button>
       </div>
 
+      <div key={tab} className={`tab-content-slide ${earnTabSlide === "left" ? "slide-from-left" : earnTabSlide === "right" ? "slide-from-right" : ""}`}>
       {loading && (
         <div className="exo-inline-spinner"><Spinner /></div>
       )}
@@ -210,17 +247,16 @@ export function EarnPage() {
                   APY: {selectedVault.apy ?? "N/A"}{selectedVault.netApy && selectedVault.netApy !== selectedVault.apy ? ` (Net: ${selectedVault.netApy})` : ""} | {selectedVault.underlyingSymbol}
                   {selectedVault.performanceFee && <> | Fee: {selectedVault.performanceFee}</>}
                 </div>
-                <div className="form-group">
-                  <label>Amount ({selectedVault.underlyingSymbol})</label>
-                  <input
-                    className="input-exo"
-                    type="text"
-                    value={depositAmount}
-                    onChange={e => setDepositAmount(e.target.value)}
-                    placeholder="1000000"
-                    inputMode="numeric"
-                  />
-                </div>
+                <TokenAmountInput
+                  token={selectedVault.underlyingSymbol ?? "USDC"}
+                  amount={depositAmount}
+                  onAmountChange={setDepositAmount}
+                  balance={userWallet?.balances?.[selectedVault.underlyingSymbol ?? "USDC"]}
+                  label={`Amount (${selectedVault.underlyingSymbol})`}
+                  placeholder="10.00"
+                  tokenFixed
+                  showMax
+                />
                 <div className="form-group">
                   <label>Label (optional)</label>
                   <input
@@ -247,7 +283,7 @@ export function EarnPage() {
                 </div>
                 <div className="exo-review-row">
                   <span className="exo-review-label">Amount</span>
-                  <span className="exo-review-value">{depositAmount} {selectedVault.underlyingSymbol}</span>
+                  <span className="exo-review-value">{Number(depositAmount).toLocaleString(undefined, { maximumFractionDigits: 6 })} {selectedVault.underlyingSymbol}</span>
                 </div>
                 <div className="exo-review-row">
                   <span className="exo-review-label">APY</span>
@@ -343,72 +379,71 @@ export function EarnPage() {
             </div>
           )}
 
-          {/* Position detail / withdraw modal */}
-          {selectedPosition && withdrawStep === "idle" && (
-            <div className="exo-modal-backdrop" onClick={e => { if (e.target === e.currentTarget) setSelectedPosition(null); }}>
-              <div className="exo-modal">
-                <div className="exo-modal-header">
-                  <span className="exo-modal-title">{selectedPosition.label || "Position Details"}</span>
-                  <button className="exo-modal-close" onClick={() => setSelectedPosition(null)}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-                  </button>
-                </div>
-                <div className="exo-modal-body">
-                  <div className="exo-review">
-                    <div className="exo-review-row">
-                      <span className="exo-review-label">Status</span>
-                      <span className="exo-review-value"><span className={`tag-exo status-${selectedPosition.status}`}>{selectedPosition.status}</span></span>
-                    </div>
-                    <div className="exo-review-row">
-                      <span className="exo-review-label">Deposited</span>
-                      <span className="exo-review-value">{selectedPosition.depositAmount}</span>
-                    </div>
-                    <div className="exo-review-row">
-                      <span className="exo-review-label">Current Value</span>
-                      <span className="exo-review-value" style={{ color: "var(--exo-lime)" }}>{selectedPosition.currentValue ?? "N/A"}</span>
-                    </div>
-                    <div className="exo-review-row">
-                      <span className="exo-review-label">Unlock</span>
-                      <span className="exo-review-value">{formatDate(selectedPosition.unlockTime)}</span>
-                    </div>
-                    <div className="exo-review-row">
-                      <span className="exo-review-label">Shares</span>
-                      <span className="exo-review-value">{selectedPosition.shares}</span>
-                    </div>
+          {/* Position detail tray */}
+          <BottomSheet
+            open={!!selectedPosition && withdrawStep === "idle"}
+            onClose={() => setSelectedPosition(null)}
+            title={selectedPosition?.label || "Position Details"}
+          >
+            {selectedPosition && (
+              <>
+                <div className="exo-review">
+                  <div className="exo-review-row">
+                    <span className="exo-review-label">Status</span>
+                    <span className="exo-review-value"><span className={`tag-exo status-${selectedPosition.status}`}>{selectedPosition.status}</span></span>
                   </div>
-                  {selectedPosition.status === "active" && (
-                    <div className="exo-actions">
-                      <button className="btn-exo btn-danger" style={{ flex: 1 }} onClick={() => setWithdrawStep("confirm")}>
-                        Withdraw
-                      </button>
-                    </div>
-                  )}
+                  <div className="exo-review-row">
+                    <span className="exo-review-label">Deposited</span>
+                    <span className="exo-review-value">{selectedPosition.depositAmount}</span>
+                  </div>
+                  <div className="exo-review-row">
+                    <span className="exo-review-label">Current Value</span>
+                    <span className="exo-review-value" style={{ color: "var(--exo-lime)" }}>{selectedPosition.currentValue ?? "N/A"}</span>
+                  </div>
+                  <div className="exo-review-row">
+                    <span className="exo-review-label">Accrued Yield</span>
+                    <span className="exo-review-value" style={{ color: "var(--exo-lime)" }}>
+                      {accruedLoading ? "Loading..." : accruedYield ?? "N/A"}
+                    </span>
+                  </div>
+                  <div className="exo-review-row">
+                    <span className="exo-review-label">Unlock</span>
+                    <span className="exo-review-value">{formatDate(selectedPosition.unlockTime)}</span>
+                  </div>
+                  <div className="exo-review-row">
+                    <span className="exo-review-label">Shares</span>
+                    <span className="exo-review-value">{selectedPosition.shares}</span>
+                  </div>
                 </div>
-              </div>
-            </div>
-          )}
-
-          {withdrawStep === "confirm" && selectedPosition && (
-            <div className="exo-modal-backdrop" onClick={e => { if (e.target === e.currentTarget) { setWithdrawStep("idle"); setSelectedPosition(null); } }}>
-              <div className="exo-modal">
-                <div className="exo-modal-header">
-                  <span className="exo-modal-title">Confirm Withdrawal</span>
-                  <button className="exo-modal-close" onClick={() => { setWithdrawStep("idle"); setSelectedPosition(null); }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-                  </button>
-                </div>
-                <div className="exo-modal-body">
-                  <p style={{ fontSize: 14, color: "var(--text-secondary)", marginBottom: 16 }}>
-                    Withdraw your position? Funds will be returned to your user wallet.
-                  </p>
+                {selectedPosition.status === "active" && (
                   <div className="exo-actions">
-                    <button className="btn-exo btn-secondary" onClick={() => setWithdrawStep("idle")}>Cancel</button>
-                    <button className="btn-exo btn-danger" onClick={handleWithdraw}>Withdraw</button>
+                    <button className="btn-exo btn-danger" style={{ flex: 1 }} onClick={() => setWithdrawStep("confirm")}>
+                      Withdraw
+                    </button>
                   </div>
+                )}
+              </>
+            )}
+          </BottomSheet>
+
+          {/* Confirm withdrawal tray */}
+          <BottomSheet
+            open={withdrawStep === "confirm" && !!selectedPosition}
+            onClose={() => { setWithdrawStep("idle"); setSelectedPosition(null); }}
+            title="Confirm Withdrawal"
+          >
+            {selectedPosition && (
+              <>
+                <p style={{ fontSize: 14, color: "var(--text-secondary)", marginBottom: 16 }}>
+                  Withdraw your position? Funds will be returned to your user wallet.
+                </p>
+                <div className="exo-actions">
+                  <button className="btn-exo btn-secondary" onClick={() => setWithdrawStep("idle")}>Cancel</button>
+                  <button className="btn-exo btn-danger" onClick={handleWithdraw}>Withdraw</button>
                 </div>
-              </div>
-            </div>
-          )}
+              </>
+            )}
+          </BottomSheet>
 
           {withdrawStep === "withdrawing" && (
             <div className="exo-feedback"><Spinner /><div className="exo-feedback-title">Withdrawing...</div></div>
@@ -436,6 +471,7 @@ export function EarnPage() {
           )}
         </>
       )}
+      </div>
     </div>
   );
 }

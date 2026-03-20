@@ -20,8 +20,42 @@ import type {
 export function createAgentRoutes(runtime: AppRuntime) {
   const app = new Hono<{ Variables: AuthVariables }>();
 
-  // GET /conversation — Load conversation
-  app.get("/conversation", (c) =>
+  // ── Multi-conversation endpoints ──────────────────────────────────
+
+  // GET /conversations — List all conversations
+  app.get("/conversations", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const userId = c.get("userId");
+        const service = yield* AgentConversationService;
+        return yield* service.listConversations(userId);
+      }),
+      c
+    )
+  );
+
+  // POST /conversations — Create new conversation
+  app.post("/conversations", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const userId = c.get("userId");
+        const body = yield* Effect.tryPromise({
+          try: () => c.req.json<{ title?: string }>(),
+          catch: () => new Error("Invalid request body"),
+        }).pipe(Effect.catchAll(() => Effect.succeed({} as { title?: string })));
+
+        const service = yield* AgentConversationService;
+        return yield* service.createConversation(userId, body.title);
+      }),
+      c,
+      201
+    )
+  );
+
+  // GET /conversations/active — Get or create the active conversation
+  app.get("/conversations/active", (c) =>
     runEffect(
       runtime,
       Effect.gen(function* () {
@@ -33,12 +67,61 @@ export function createAgentRoutes(runtime: AppRuntime) {
     )
   );
 
-  // POST /conversation/message — Append message
-  app.post("/conversation/message", (c) =>
+  // GET /conversations/:id — Get a specific conversation
+  app.get("/conversations/:id", (c) =>
     runEffect(
       runtime,
       Effect.gen(function* () {
         const userId = c.get("userId");
+        const conversationId = c.req.param("id");
+        const service = yield* AgentConversationService;
+        return yield* service.getConversation(userId, conversationId);
+      }),
+      c
+    )
+  );
+
+  // PATCH /conversations/:id — Update conversation title
+  app.patch("/conversations/:id", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const userId = c.get("userId");
+        const conversationId = c.req.param("id");
+        const body = yield* Effect.tryPromise({
+          try: () => c.req.json<{ title: string }>(),
+          catch: () => new Error("Invalid request body"),
+        });
+
+        const service = yield* AgentConversationService;
+        return yield* service.updateTitle(userId, conversationId, body.title);
+      }),
+      c
+    )
+  );
+
+  // DELETE /conversations/:id — Delete a conversation
+  app.delete("/conversations/:id", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const userId = c.get("userId");
+        const conversationId = c.req.param("id");
+        const service = yield* AgentConversationService;
+        yield* service.deleteConversation(userId, conversationId);
+        return { deleted: true };
+      }),
+      c
+    )
+  );
+
+  // POST /conversations/:id/message — Append message to specific conversation
+  app.post("/conversations/:id/message", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const userId = c.get("userId");
+        const conversationId = c.req.param("id");
         const body = yield* Effect.tryPromise({
           try: () =>
             c.req.json<{
@@ -61,21 +144,22 @@ export function createAgentRoutes(runtime: AppRuntime) {
         };
 
         const service = yield* AgentConversationService;
-        return yield* service.appendMessage(userId, message);
+        return yield* service.appendMessage(userId, message, conversationId);
       }),
       c,
       201
     )
   );
 
-  // DELETE /conversation — Clear conversation
-  app.delete("/conversation", (c) =>
+  // DELETE /conversations/:id/messages — Clear messages in a conversation
+  app.delete("/conversations/:id/messages", (c) =>
     runEffect(
       runtime,
       Effect.gen(function* () {
         const userId = c.get("userId");
+        const conversationId = c.req.param("id");
         const service = yield* AgentConversationService;
-        return yield* service.clearConversation(userId);
+        return yield* service.clearConversation(userId, conversationId);
       }),
       c
     )
@@ -150,6 +234,7 @@ export function createAgentRoutes(runtime: AppRuntime) {
       c
     )
   );
+
 
   // ── Agent wallet budget endpoints ─────────────────────────────────
 

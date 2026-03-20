@@ -67,8 +67,9 @@ export const agentConversations = pgTable("agent_conversations", {
     .$defaultFn(() => crypto.randomUUID()),
   userId: text("user_id")
     .notNull()
-    .unique()
     .references(() => userProfiles.privyUserId),
+  title: text("title"),
+  isActive: boolean("is_active").default(true).notNull(),
   messages: jsonb("messages").$type<ConversationMessage[]>().notNull().default([]),
   tokenCount: integer("token_count").default(0).notNull(),
   lastMessageAt: timestamp("last_message_at", { withTimezone: true }),

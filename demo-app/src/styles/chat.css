@@ -2,6 +2,192 @@
    Chat Interface — Premium Fintech Styling
    ═══════════════════════════════════════════════════════════════════ */
 
+/* ─── Chat Page Header Bar ───────────────────────────────────────── */
+
+.chat-header-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+
+.chat-history-toggle,
+.chat-new-convo-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.chat-history-toggle:hover,
+.chat-new-convo-btn:hover {
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+
+.chat-header-title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+
+/* ─── Thinking Indicator ─────────────────────────────────────────── */
+
+.chat-thinking-indicator {
+  display: flex;
+  gap: 12px;
+  padding: 14px 20px;
+  animation: msgAppear 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    thinkingFloat 2s ease-in-out infinite;
+}
+
+@keyframes thinkingFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+.chat-thinking-indicator .thinking-avatar {
+  background: var(--bg-elevated);
+  color: var(--exo-lime);
+}
+
+.chat-thinking-indicator .thinking-content {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Subtle glow pulse behind the dots */
+.chat-thinking-indicator .thinking-content::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: radial-gradient(
+    ellipse at center,
+    color-mix(in srgb, var(--exo-lime) 8%, transparent) 0%,
+    transparent 70%
+  );
+  animation: thinkingGlow 2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes thinkingGlow {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+.chat-thinking-indicator .think-dots {
+  display: flex;
+  gap: 5px;
+  position: relative;
+  z-index: 1;
+}
+
+.chat-thinking-indicator .think-dot {
+  width: 7px;
+  height: 7px;
+  background: var(--exo-lime);
+  border-radius: 50%;
+  animation: thinkBounceEnhanced 1.4s ease-in-out infinite;
+}
+
+.chat-thinking-indicator .think-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.chat-thinking-indicator .think-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes thinkBounceEnhanced {
+  0%, 60%, 100% {
+    transform: translateY(0) scale(0.85);
+    opacity: 0.3;
+  }
+  30% {
+    transform: translateY(-8px) scale(1.1);
+    opacity: 1;
+  }
+}
+
+/* ─── Message Skeleton (initial load) ────────────────────────────── */
+
+.chat-skeleton-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  animation: fadeIn 0.3s ease;
+}
+
+.chat-skeleton-msg {
+  display: flex;
+  gap: 12px;
+  padding: 14px 0;
+}
+
+.chat-skeleton-msg.user {
+  flex-direction: row-reverse;
+  margin-left: auto;
+}
+
+.chat-skeleton-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  flex-shrink: 0;
+  animation: skeletonPulse 1.5s ease-in-out infinite;
+}
+
+.chat-skeleton-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  max-width: 400px;
+}
+
+.chat-skeleton-line {
+  height: 14px;
+  background: var(--bg-elevated);
+  border-radius: 6px;
+  animation: skeletonPulse 1.5s ease-in-out infinite;
+}
+
+.chat-skeleton-line:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+/* ─── Restored Messages ──────────────────────────────────────────── */
+
+.chat-message.restored {
+  opacity: 0.85;
+}
+
 /* ─── Wallet Balance Header ───────────────────────────────────────── */
 
 .wallet-balance-header {
@@ -672,6 +858,12 @@
   margin-bottom: 8px;
   user-select: none;
   letter-spacing: -1px;
+  animation: emptyLogoBreathe 3s ease-in-out infinite;
+}
+
+@keyframes emptyLogoBreathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.03); }
 }
 
 .chat-empty-logo .dot {
@@ -915,11 +1107,11 @@
   0%,
   60%,
   100% {
-    transform: translateY(0);
+    transform: translateY(0) scale(0.85);
     opacity: 0.3;
   }
   30% {
-    transform: translateY(-8px);
+    transform: translateY(-8px) scale(1.1);
     opacity: 1;
   }
 }
@@ -1014,6 +1206,24 @@
 /* ─── Responsive: Mobile ──────────────────────────────────────────── */
 
 @media (max-width: 767px) {
+  .chat-header-bar {
+    padding: 6px 10px;
+  }
+
+  .chat-history-toggle,
+  .chat-new-convo-btn {
+    width: 30px;
+    height: 30px;
+  }
+
+  .chat-header-title {
+    font-size: 12px;
+  }
+
+  .chat-thinking-indicator {
+    padding: 12px 14px;
+  }
+
   .wallet-balance-header {
     padding: 8px 14px;
   }

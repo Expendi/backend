@@ -23,6 +23,7 @@ interface RemotePromptRequest {
   systemPrompt: string;
   messages: Message[];
   tools?: SerializedTool[];
+  conversationId?: string;
 }
 
 /**
@@ -103,6 +104,7 @@ function deserializeTools(tools: SerializedTool[]): Tool<unknown>[] {
     },
   }));
 }
+
 
 export function createChatRoutes(runtime: AppRuntime) {
   const router = new Hono<{ Variables: AuthVariables }>();
@@ -186,20 +188,32 @@ export function createChatRoutes(runtime: AppRuntime) {
       adapter.setSystemPrompt(systemPrompt);
     }
 
-    const tools = body.tools?.length ? deserializeTools(body.tools) : undefined;
+    const tools = body.tools?.length ? deserializeTools(body.tools) : [];
 
     // Track the last user message and agent response for post-stream reflection
     const lastUserMessage = body.messages[body.messages.length - 1];
     let agentResponseText = "";
 
     return streamSSE(c, async (stream) => {
+      // ── Emit "thinking" immediately so the frontend can show a loading state ──
+      await stream.writeSSE({
+        data: JSON.stringify({ type: "thinking" }),
+      });
+
+      let firstTextReceived = false;
+
       try {
         const result = await adapter.prompt(
-          { messages: body.messages, tools } as PromptRequest,
+          { messages: body.messages, tools: tools.length > 0 ? tools : undefined } as PromptRequest,
           async (eventType, eventData) => {
             switch (eventType) {
               case "text_delta": {
                 const d = eventData as { text: string };
+                if (!firstTextReceived) {
+                  firstTextReceived = true;
+                  // No extra event needed — the arrival of text_delta
+                  // implicitly tells the frontend that thinking is over.
+                }
                 agentResponseText += d.text;
                 await stream.writeSSE({
                   data: JSON.stringify({ type: "text_delta", text: d.text }),
@@ -218,6 +232,24 @@ export function createChatRoutes(runtime: AppRuntime) {
                     id: d.id,
                     name: d.name,
                     input: d.input,
+                  }),
+                });
+                break;
+              }
+              case "tool_use_result": {
+                const d = eventData as {
+                  tool_name: string;
+                  call_id?: string;
+                  result: { data: unknown; status: string; message?: string };
+                };
+                await stream.writeSSE({
+                  data: JSON.stringify({
+                    type: "tool_result",
+                    name: d.tool_name,
+                    id: d.call_id,
+                    status: d.result.status,
+                    data: d.result.data,
+                    message: d.result.message,
                   }),
                 });
                 break;
@@ -262,13 +294,14 @@ export function createChatRoutes(runtime: AppRuntime) {
 
             // Append both messages to the conversation
             for (const message of messagesToAppend) {
-              yield* conversationService.appendMessage(userId, message);
+              yield* conversationService.appendMessage(userId, message, body.conversationId);
             }
 
             // Update token count
             yield* conversationService.updateTokenCount(
               userId,
-              (result.tokens_in ?? 0) + (result.tokens_out ?? 0)
+              (result.tokens_in ?? 0) + (result.tokens_out ?? 0),
+              body.conversationId
             );
 
             // Trigger reflection with the recent messages
@@ -283,13 +316,34 @@ export function createChatRoutes(runtime: AppRuntime) {
           });
         }
       } catch (err) {
+        // ── Emit a dedicated error event with an actionable user message ──
+        const isNetworkError =
+          err instanceof Error &&
+          (err.message.includes("ECONNREFUSED") ||
+            err.message.includes("fetch failed") ||
+            err.message.includes("timeout"));
+
+        const userMessage = isNetworkError
+          ? "Unable to reach the AI service. Please try again in a moment."
+          : "Something went wrong. Please try sending your message again.";
+
+        await stream.writeSSE({
+          data: JSON.stringify({
+            type: "error",
+            code: isNetworkError ? "llm_unavailable" : "internal_error",
+            userMessage,
+            detail:
+              process.env.NODE_ENV !== "production"
+                ? (err instanceof Error ? err.message : String(err))
+                : undefined,
+          }),
+        });
+
+        // Still emit done so the frontend knows the stream has ended
         await stream.writeSSE({
           data: JSON.stringify({
             type: "done",
-            message: {
-              sender: "agent",
-              text: `Error: ${err instanceof Error ? err.message : "Unknown error"}`,
-            },
+            message: { sender: "agent", text: "" },
             tokens_in: 0,
             tokens_out: 0,
           }),

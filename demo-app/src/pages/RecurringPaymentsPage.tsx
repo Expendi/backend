@@ -3,13 +3,22 @@ import { useApi, ApiRequestError } from "../hooks/useApi";
 import { useApprovalContext } from "../context/ApprovalContext";
 import { usePreferences } from "../context/PreferencesContext";
 import { Spinner } from "../components/Spinner";
+import { BottomSheet } from "../components/BottomSheet";
+import { TokenAmountInput, toBaseUnits } from "../components/TokenAmountInput";
 import type { RecurringPayment, RecurringExecution, Category } from "../lib/types";
-import { FREQUENCY_OPTIONS, OFFRAMP_COUNTRIES } from "../lib/constants";
+import { TOKEN_ADDRESSES, FREQUENCY_OPTIONS, OFFRAMP_COUNTRIES } from "../lib/constants";
 import "../styles/pages.css";
 
 type Tab = "active" | "create";
 type CreateStep = "form" | "review" | "creating" | "success" | "error";
 type PaymentMode = "token_transfer" | "offramp";
+
+const PAYMENT_TYPE_LABELS: Record<string, string> = {
+  MOBILE: "Mobile Money",
+  BUY_GOODS: "Buy Goods (Till)",
+  PAYBILL: "Paybill",
+  BANK_TRANSFER: "Bank Transfer",
+};
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -26,6 +35,7 @@ function truncAddr(addr: string): string {
 }
 
 function scheduleLabel(s: RecurringPayment): string {
+  if (s.name) return s.name;
   if (s.paymentType === "offramp" || s.isOfframp) return "Cash Out";
   return `${s.tokenContractName ?? "Token"} Transfer`;
 }
@@ -43,6 +53,7 @@ export function RecurringPaymentsPage() {
   const [execLoading, setExecLoading] = useState(false);
 
   // Create form - shared
+  const [paymentName, setPaymentName] = useState("");
   const [paymentMode, setPaymentMode] = useState<PaymentMode>("token_transfer");
   const [amount, setAmount] = useState("");
   const [frequency, setFrequency] = useState("30d");
@@ -58,6 +69,13 @@ export function RecurringPaymentsPage() {
   const [offrampCountry, setOfframpCountry] = useState("");
   const [offrampPhone, setOfframpPhone] = useState("");
   const [offrampNetwork, setOfframpNetwork] = useState("");
+  const [offrampPaymentType, setOfframpPaymentType] = useState("");
+  const [offrampAccountNumber, setOfframpAccountNumber] = useState("");
+  const [offrampAccountName, setOfframpAccountName] = useState("");
+  const [offrampBankCode, setOfframpBankCode] = useState("");
+  const [offrampBankName, setOfframpBankName] = useState("");
+  const [banks, setBanks] = useState<{ Code: string; Name: string }[]>([]);
+  const [banksLoading, setBanksLoading] = useState(false);
 
   // Create form - category
   const [categories, setCategories] = useState<Category[]>([]);
@@ -72,6 +90,7 @@ export function RecurringPaymentsPage() {
       const match = OFFRAMP_COUNTRIES.find(c => c.code === preferences.country);
       if (match && !offrampCountry) {
         setOfframpCountry(match.code);
+        setOfframpPaymentType(match.paymentTypes[0] ?? "MOBILE");
       }
     }
     if (preferences.phoneNumber && !offrampPhone) {
@@ -94,12 +113,61 @@ export function RecurringPaymentsPage() {
   const selectedCountryData = OFFRAMP_COUNTRIES.find(c => c.code === offrampCountry);
   const availableNetworks = selectedCountryData ? selectedCountryData.networks : [];
 
-  // When country changes, reset network if not valid for new country
+  const availablePaymentTypes = selectedCountryData ? [...selectedCountryData.paymentTypes] : [];
+
+  // When country changes, reset network, payment type, and bank fields
   useEffect(() => {
-    if (selectedCountryData && offrampNetwork && !selectedCountryData.networks.includes(offrampNetwork as never)) {
-      setOfframpNetwork(selectedCountryData.networks.length > 0 ? String(selectedCountryData.networks[0]) : "");
+    if (selectedCountryData) {
+      if (offrampNetwork && !selectedCountryData.networks.includes(offrampNetwork as never)) {
+        setOfframpNetwork(selectedCountryData.networks.length > 0 ? String(selectedCountryData.networks[0]) : "");
+      }
+      setOfframpPaymentType(selectedCountryData.paymentTypes[0] ?? "MOBILE");
+      setOfframpAccountNumber("");
+      setOfframpAccountName("");
+      setOfframpBankCode("");
+      setOfframpBankName("");
     }
   }, [offrampCountry]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset payment-type-specific fields when payment type changes
+  useEffect(() => {
+    setOfframpAccountNumber("");
+    setOfframpAccountName("");
+    setOfframpBankCode("");
+    setOfframpBankName("");
+    if (offrampPaymentType === "MOBILE") {
+      setOfframpPhone(preferences.phoneNumber ?? "");
+    } else if (offrampPaymentType !== "BUY_GOODS" && offrampPaymentType !== "PAYBILL") {
+      setOfframpPhone("");
+    }
+  }, [offrampPaymentType, preferences.phoneNumber]);
+
+  // Fetch banks when BANK_TRANSFER is selected
+  useEffect(() => {
+    if (offrampPaymentType !== "BANK_TRANSFER" || (offrampCountry !== "KE" && offrampCountry !== "NG")) {
+      setBanks([]);
+      return;
+    }
+    let cancelled = false;
+    setBanksLoading(true);
+    request<{ Code: string; Name: string }[]>(`/pretium/banks/${offrampCountry}`)
+      .then(data => {
+        if (!cancelled) {
+          setBanks(data);
+          if (data.length > 0) {
+            setOfframpBankCode(data[0].Code);
+            setOfframpBankName(data[0].Name);
+          }
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setBanks([]);
+      })
+      .finally(() => {
+        if (!cancelled) setBanksLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [offrampPaymentType, offrampCountry, request]);
 
   const requestWithApproval = useCallback(
     async <T,>(path: string, options?: { method?: "GET" | "POST"; body?: unknown }) => {
@@ -143,45 +211,88 @@ export function RecurringPaymentsPage() {
   }, [selected, fetchExecutions]);
 
   // Determine if form is valid for submission
-  const isFormValid = paymentMode === "token_transfer"
-    ? recipient.length > 0 && amount.length > 0
-    : offrampCountry.length > 0 && offrampPhone.length > 0 && amount.length > 0;
+  const isFormValid = (() => {
+    if (!amount || Number(amount) <= 0) return false;
+    if (paymentMode === "token_transfer") {
+      return recipient.length > 0;
+    }
+    if (!offrampCountry) return false;
+    switch (offrampPaymentType) {
+      case "MOBILE":
+        return !!offrampPhone && !!offrampNetwork;
+      case "BUY_GOODS":
+        return !!offrampPhone;
+      case "PAYBILL":
+        return !!offrampPhone && !!offrampAccountNumber;
+      case "BANK_TRANSFER":
+        if (offrampCountry === "NG") {
+          return !!offrampAccountNumber && !!offrampBankCode && !!offrampAccountName;
+        }
+        return !!offrampAccountNumber && !!offrampBankCode;
+      default:
+        return false;
+    }
+  })();
 
   // Create
   const handleCreate = async () => {
     setCreateStep("creating");
     setCreateError("");
     try {
-      const baseBody = {
-        walletType: "server" as const,
-        frequency,
-        executeImmediately: executeImm,
-        maxRetries: 3,
-        ...(categoryId ? { categoryId } : {}),
-      };
-
       if (paymentMode === "token_transfer") {
+        const tokenMeta = TOKEN_ADDRESSES[tokenName];
+        const decimals = tokenMeta?.decimals ?? 6;
         await requestWithApproval("/recurring-payments", {
           method: "POST",
           body: {
-            ...baseBody,
-            recipientAddress: recipient,
-            paymentType: "erc20_transfer",
-            amount,
-            tokenContractName: tokenName,
+            type: "transfer",
+            name: paymentName || undefined,
+            wallet: "server",
+            to: recipient,
+            amount: toBaseUnits(amount, decimals),
+            token: tokenName.toLowerCase(),
+            frequency,
+            executeImmediately: executeImm,
+            maxRetries: 3,
+            ...(categoryId ? { categoryId } : {}),
           },
         });
       } else {
+        const recipient: Record<string, string> = {
+          country: offrampCountry,
+          paymentMethod: offrampPaymentType,
+        };
+
+        if (offrampPaymentType === "MOBILE") {
+          recipient.phoneNumber = offrampPhone;
+          recipient.mobileNetwork = offrampNetwork;
+        } else if (offrampPaymentType === "BUY_GOODS") {
+          recipient.phoneNumber = offrampPhone;
+        } else if (offrampPaymentType === "PAYBILL") {
+          recipient.phoneNumber = offrampPhone;
+          recipient.accountNumber = offrampAccountNumber;
+        } else if (offrampPaymentType === "BANK_TRANSFER") {
+          recipient.bankAccount = offrampAccountNumber;
+          recipient.bankCode = offrampBankCode;
+          recipient.bankName = offrampBankName;
+          if (offrampCountry === "NG" && offrampAccountName) {
+            recipient.accountName = offrampAccountName;
+          }
+        }
+
         await requestWithApproval("/recurring-payments", {
           method: "POST",
           body: {
-            ...baseBody,
-            recipientAddress: "0x0000000000000000000000000000000000000000",
-            paymentType: "offramp",
-            amount,
-            country: offrampCountry,
-            phoneNumber: offrampPhone,
-            mobileNetwork: offrampNetwork,
+            type: "offramp",
+            name: paymentName || undefined,
+            wallet: "server",
+            amount: toBaseUnits(amount, 6),
+            amountInUsdc: true,
+            recipient,
+            frequency,
+            executeImmediately: executeImm,
+            maxRetries: 3,
+            ...(categoryId ? { categoryId } : {}),
           },
         });
       }
@@ -209,11 +320,21 @@ export function RecurringPaymentsPage() {
   };
 
   const resetForm = () => {
+    setPaymentName("");
     setRecipient("");
     setAmount("");
     setTokenName("USDC");
     setPaymentMode("token_transfer");
     setCategoryId("");
+    setOfframpAccountNumber("");
+    setOfframpAccountName("");
+    setOfframpBankCode("");
+    setOfframpBankName("");
+    setBanks([]);
+    const countryData = OFFRAMP_COUNTRIES.find(c => c.code === offrampCountry);
+    if (countryData) {
+      setOfframpPaymentType(countryData.paymentTypes[0] ?? "MOBILE");
+    }
     setCreateStep("form");
   };
 
@@ -341,100 +462,117 @@ export function RecurringPaymentsPage() {
             </div>
           )}
 
-          {/* Detail modal */}
-          {selected && (
-            <div className="exo-modal-backdrop" onClick={e => { if (e.target === e.currentTarget) setSelected(null); }}>
-              <div className="exo-modal">
-                <div className="exo-modal-header">
-                  <span className="exo-modal-title">Payment Details</span>
-                  <button className="exo-modal-close" onClick={() => setSelected(null)}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-                  </button>
-                </div>
-                <div className="exo-modal-body">
-                  <div className="exo-review" style={{ marginBottom: 16 }}>
-                    <div className="exo-review-row"><span className="exo-review-label">Status</span><span className="exo-review-value"><span className={`tag-exo status-${selected.status}`}>{selected.status}</span></span></div>
-                    <div className="exo-review-row"><span className="exo-review-label">Type</span><span className="exo-review-value">{scheduleLabel(selected)}</span></div>
-                    <div className="exo-review-row"><span className="exo-review-label">Amount</span><span className="exo-review-value">{selected.amount}</span></div>
-                    {selected.paymentType !== "offramp" && !selected.isOfframp && (
-                      <>
-                        <div className="exo-review-row"><span className="exo-review-label">Token</span><span className="exo-review-value">{selected.tokenContractName ?? "ETH"}</span></div>
-                        <div className="exo-review-row"><span className="exo-review-label">To</span><span className="exo-review-value" style={{ fontSize: 11 }}>{truncAddr(selected.recipientAddress)}</span></div>
-                      </>
-                    )}
-                    {(selected.paymentType === "offramp" || selected.isOfframp) && selected.offrampMetadata && (
-                      <>
-                        {selected.offrampMetadata.country && (
-                          <div className="exo-review-row"><span className="exo-review-label">Country</span><span className="exo-review-value">{String(selected.offrampMetadata.country)}</span></div>
-                        )}
-                        {selected.offrampMetadata.phoneNumber && (
-                          <div className="exo-review-row"><span className="exo-review-label">Phone</span><span className="exo-review-value">{String(selected.offrampMetadata.phoneNumber)}</span></div>
-                        )}
-                        {selected.offrampMetadata.mobileNetwork && (
-                          <div className="exo-review-row"><span className="exo-review-label">Network</span><span className="exo-review-value">{String(selected.offrampMetadata.mobileNetwork)}</span></div>
-                        )}
-                      </>
-                    )}
-                    <div className="exo-review-row"><span className="exo-review-label">Frequency</span><span className="exo-review-value">{formatFreq(selected.frequency)}</span></div>
-                    <div className="exo-review-row"><span className="exo-review-label">Next</span><span className="exo-review-value">{formatDate(selected.nextExecutionAt)}</span></div>
-                    <div className="exo-review-row"><span className="exo-review-label">Executions</span><span className="exo-review-value">{selected.totalExecutions}</span></div>
-                  </div>
-
-                  {/* Actions */}
-                  {(selected.status === "active" || selected.status === "paused") && (
-                    <div className="exo-actions" style={{ marginBottom: 16 }}>
-                      {selected.status === "active" && (
-                        <button className="btn-exo btn-secondary" disabled={actionLoading} onClick={() => handleAction(selected.id, "pause")}>
-                          Pause
-                        </button>
-                      )}
-                      {selected.status === "paused" && (
-                        <button className="btn-exo btn-primary" disabled={actionLoading} onClick={() => handleAction(selected.id, "resume")}>
-                          Resume
-                        </button>
-                      )}
-                      <button className="btn-exo btn-danger" disabled={actionLoading} onClick={() => handleAction(selected.id, "cancel")}>
-                        Cancel
-                      </button>
-                    </div>
+          {/* Detail tray */}
+          <BottomSheet open={!!selected} onClose={() => setSelected(null)} title="Payment Details">
+            {selected && (
+              <>
+                <div className="exo-review" style={{ marginBottom: 16 }}>
+                  <div className="exo-review-row"><span className="exo-review-label">Status</span><span className="exo-review-value"><span className={`tag-exo status-${selected.status}`}>{selected.status}</span></span></div>
+                  {selected.name && (
+                    <div className="exo-review-row"><span className="exo-review-label">Name</span><span className="exo-review-value">{selected.name}</span></div>
                   )}
-
-                  {/* Execution history */}
-                  <div className="exo-form-card-title" style={{ marginBottom: 8 }}>Execution History</div>
-                  {execLoading ? (
-                    <div className="exo-inline-spinner"><Spinner /></div>
-                  ) : executions.length === 0 ? (
-                    <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "8px 0" }}>No executions yet</div>
-                  ) : (
-                    <div className="exo-list">
-                      {executions.map(ex => (
-                        <div key={ex.id} className="exo-list-item" style={{ cursor: "default" }}>
-                          <div className="exo-list-item-left">
-                            <span className="exo-list-item-title" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <span className={`exo-status-dot ${ex.status}`} />
-                              {ex.status}
-                            </span>
-                            <span className="exo-list-item-sub">{formatDate(ex.executedAt)}</span>
-                          </div>
-                          {ex.txHash && (
-                            <a
-                              href={`https://basescan.org/tx/${ex.txHash}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={e => e.stopPropagation()}
-                              style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)" }}
-                            >
-                              View
-                            </a>
-                          )}
+                  <div className="exo-review-row"><span className="exo-review-label">Type</span><span className="exo-review-value">{scheduleLabel(selected)}</span></div>
+                  <div className="exo-review-row"><span className="exo-review-label">Amount</span><span className="exo-review-value">{selected.amount}</span></div>
+                  {selected.paymentType !== "offramp" && !selected.isOfframp && (
+                    <>
+                      <div className="exo-review-row"><span className="exo-review-label">Token</span><span className="exo-review-value">{selected.tokenContractName ?? "ETH"}</span></div>
+                      <div className="exo-review-row"><span className="exo-review-label">To</span><span className="exo-review-value" style={{ fontSize: 11 }}>{truncAddr(selected.recipientAddress)}</span></div>
+                    </>
+                  )}
+                  {(selected.paymentType === "offramp" || selected.isOfframp) && selected.offrampMetadata && (
+                    <>
+                      {selected.offrampMetadata.country && (
+                        <div className="exo-review-row"><span className="exo-review-label">Country</span><span className="exo-review-value">{String(selected.offrampMetadata.country)}</span></div>
+                      )}
+                      {selected.offrampMetadata.paymentMethod && (
+                        <div className="exo-review-row"><span className="exo-review-label">Payment Type</span><span className="exo-review-value">{PAYMENT_TYPE_LABELS[String(selected.offrampMetadata.paymentMethod)] ?? String(selected.offrampMetadata.paymentMethod)}</span></div>
+                      )}
+                      {selected.offrampMetadata.phoneNumber && (
+                        <div className="exo-review-row">
+                          <span className="exo-review-label">
+                            {selected.offrampMetadata.paymentMethod === "BUY_GOODS" ? "Till Number"
+                              : selected.offrampMetadata.paymentMethod === "PAYBILL" ? "Paybill Number"
+                              : "Phone"}
+                          </span>
+                          <span className="exo-review-value">{String(selected.offrampMetadata.phoneNumber)}</span>
                         </div>
-                      ))}
-                    </div>
+                      )}
+                      {selected.offrampMetadata.mobileNetwork && (
+                        <div className="exo-review-row"><span className="exo-review-label">Network</span><span className="exo-review-value">{String(selected.offrampMetadata.mobileNetwork)}</span></div>
+                      )}
+                      {selected.offrampMetadata.accountNumber && (
+                        <div className="exo-review-row"><span className="exo-review-label">Account Number</span><span className="exo-review-value">{String(selected.offrampMetadata.accountNumber)}</span></div>
+                      )}
+                      {selected.offrampMetadata.bankAccount && (
+                        <div className="exo-review-row"><span className="exo-review-label">Bank Account</span><span className="exo-review-value">{String(selected.offrampMetadata.bankAccount)}</span></div>
+                      )}
+                      {selected.offrampMetadata.bankName && (
+                        <div className="exo-review-row"><span className="exo-review-label">Bank</span><span className="exo-review-value">{String(selected.offrampMetadata.bankName)}</span></div>
+                      )}
+                      {selected.offrampMetadata.accountName && (
+                        <div className="exo-review-row"><span className="exo-review-label">Account Name</span><span className="exo-review-value">{String(selected.offrampMetadata.accountName)}</span></div>
+                      )}
+                    </>
                   )}
+                  <div className="exo-review-row"><span className="exo-review-label">Frequency</span><span className="exo-review-value">{formatFreq(selected.frequency)}</span></div>
+                  <div className="exo-review-row"><span className="exo-review-label">Next</span><span className="exo-review-value">{formatDate(selected.nextExecutionAt)}</span></div>
+                  <div className="exo-review-row"><span className="exo-review-label">Executions</span><span className="exo-review-value">{selected.totalExecutions}</span></div>
                 </div>
-              </div>
-            </div>
-          )}
+
+                {/* Actions */}
+                {(selected.status === "active" || selected.status === "paused") && (
+                  <div className="exo-actions" style={{ marginBottom: 16 }}>
+                    {selected.status === "active" && (
+                      <button className="btn-exo btn-secondary" disabled={actionLoading} onClick={() => handleAction(selected.id, "pause")}>
+                        Pause
+                      </button>
+                    )}
+                    {selected.status === "paused" && (
+                      <button className="btn-exo btn-primary" disabled={actionLoading} onClick={() => handleAction(selected.id, "resume")}>
+                        Resume
+                      </button>
+                    )}
+                    <button className="btn-exo btn-danger" disabled={actionLoading} onClick={() => handleAction(selected.id, "cancel")}>
+                      Cancel
+                    </button>
+                  </div>
+                )}
+
+                {/* Execution history */}
+                <div className="exo-form-card-title" style={{ marginBottom: 8 }}>Execution History</div>
+                {execLoading ? (
+                  <div className="exo-inline-spinner"><Spinner /></div>
+                ) : executions.length === 0 ? (
+                  <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "8px 0" }}>No executions yet</div>
+                ) : (
+                  <div className="exo-list">
+                    {executions.map(ex => (
+                      <div key={ex.id} className="exo-list-item" style={{ cursor: "default" }}>
+                        <div className="exo-list-item-left">
+                          <span className="exo-list-item-title" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span className={`exo-status-dot ${ex.status}`} />
+                            {ex.status}
+                          </span>
+                          <span className="exo-list-item-sub">{formatDate(ex.executedAt)}</span>
+                        </div>
+                        {ex.txHash && (
+                          <a
+                            href={`https://basescan.org/tx/${ex.txHash}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)" }}
+                          >
+                            View
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </BottomSheet>
         </>
       )}
 
@@ -445,6 +583,11 @@ export function RecurringPaymentsPage() {
             <div className="exo-animate-in">
               <div className="exo-form-card">
                 <div className="exo-form-card-title">Set Up Autopay</div>
+
+                <div className="form-group">
+                  <label>Payment Name (optional)</label>
+                  <input className="input-exo" value={paymentName} onChange={e => setPaymentName(e.target.value)} placeholder="Rent, Salary, etc." />
+                </div>
 
                 {/* Payment type selector */}
                 <div className="form-group">
@@ -476,16 +619,15 @@ export function RecurringPaymentsPage() {
                       <label>Recipient Address</label>
                       <input className="input-exo" value={recipient} onChange={e => setRecipient(e.target.value)} placeholder="0x..." />
                     </div>
-                    <div className="form-row">
-                      <div className="form-group">
-                        <label>Amount</label>
-                        <input className="input-exo" value={amount} onChange={e => setAmount(e.target.value)} placeholder="5000000" inputMode="numeric" />
-                      </div>
-                      <div className="form-group">
-                        <label>Token</label>
-                        <input className="input-exo" value={tokenName} onChange={e => setTokenName(e.target.value)} placeholder="USDC" />
-                      </div>
-                    </div>
+                    <TokenAmountInput
+                      token={tokenName}
+                      onTokenChange={setTokenName}
+                      amount={amount}
+                      onAmountChange={setAmount}
+                      label="Amount"
+                      placeholder="5.00"
+                      tokens={["USDC", "ETH"]}
+                    />
                   </>
                 )}
 
@@ -505,41 +647,149 @@ export function RecurringPaymentsPage() {
                         ))}
                       </select>
                     </div>
-                    <div className="form-group">
-                      <label>Phone Number</label>
-                      <input
-                        className="input-exo"
-                        value={offrampPhone}
-                        onChange={e => setOfframpPhone(e.target.value)}
-                        placeholder="0712345678"
-                        inputMode="tel"
-                      />
-                    </div>
-                    {availableNetworks.length > 0 && (
+
+                    {/* Payment type selector - show when country has multiple types */}
+                    {availablePaymentTypes.length > 1 && (
                       <div className="form-group">
-                        <label>Mobile Network</label>
+                        <label>Payment Type</label>
                         <select
                           className="input-exo"
-                          value={offrampNetwork}
-                          onChange={e => setOfframpNetwork(e.target.value)}
+                          value={offrampPaymentType}
+                          onChange={e => setOfframpPaymentType(e.target.value)}
                         >
-                          <option value="">Select network</option>
-                          {availableNetworks.map(n => (
-                            <option key={n} value={n}>{n.charAt(0).toUpperCase() + n.slice(1)}</option>
+                          {availablePaymentTypes.map(t => (
+                            <option key={t} value={t}>{PAYMENT_TYPE_LABELS[t] ?? t}</option>
                           ))}
                         </select>
                       </div>
                     )}
-                    <div className="form-group">
-                      <label>Amount (USDC)</label>
-                      <input
-                        className="input-exo"
-                        value={amount}
-                        onChange={e => setAmount(e.target.value)}
-                        placeholder="10"
-                        inputMode="numeric"
-                      />
-                    </div>
+
+                    {/* MOBILE: Phone + Network */}
+                    {offrampPaymentType === "MOBILE" && (
+                      <>
+                        <div className="form-group">
+                          <label>Phone Number</label>
+                          <input
+                            className="input-exo"
+                            value={offrampPhone}
+                            onChange={e => setOfframpPhone(e.target.value)}
+                            placeholder="0712345678"
+                            inputMode="tel"
+                          />
+                        </div>
+                        {availableNetworks.length > 0 && (
+                          <div className="form-group">
+                            <label>Mobile Network</label>
+                            <select
+                              className="input-exo"
+                              value={offrampNetwork}
+                              onChange={e => setOfframpNetwork(e.target.value)}
+                            >
+                              <option value="">Select network</option>
+                              {availableNetworks.map(n => (
+                                <option key={n} value={n}>{n.charAt(0).toUpperCase() + n.slice(1)}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {/* BUY_GOODS: Till Number */}
+                    {offrampPaymentType === "BUY_GOODS" && (
+                      <div className="form-group">
+                        <label>Till Number</label>
+                        <input
+                          className="input-exo"
+                          value={offrampPhone}
+                          onChange={e => setOfframpPhone(e.target.value)}
+                          placeholder="123456"
+                          inputMode="numeric"
+                        />
+                      </div>
+                    )}
+
+                    {/* PAYBILL: Paybill Number + Account Number */}
+                    {offrampPaymentType === "PAYBILL" && (
+                      <>
+                        <div className="form-group">
+                          <label>Paybill Number</label>
+                          <input
+                            className="input-exo"
+                            value={offrampPhone}
+                            onChange={e => setOfframpPhone(e.target.value)}
+                            placeholder="888880"
+                            inputMode="numeric"
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>Account Number</label>
+                          <input
+                            className="input-exo"
+                            value={offrampAccountNumber}
+                            onChange={e => setOfframpAccountNumber(e.target.value)}
+                            placeholder="Account number"
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {/* BANK_TRANSFER: Bank dropdown + Account Number + Account Name (NG) */}
+                    {offrampPaymentType === "BANK_TRANSFER" && (
+                      <>
+                        <div className="form-group">
+                          <label>Bank</label>
+                          {banksLoading ? (
+                            <div className="exo-inline-spinner"><Spinner /></div>
+                          ) : (
+                            <select
+                              className="input-exo"
+                              value={offrampBankCode}
+                              onChange={e => {
+                                const selected = banks.find(b => b.Code === e.target.value);
+                                setOfframpBankCode(e.target.value);
+                                setOfframpBankName(selected?.Name ?? "");
+                              }}
+                            >
+                              <option value="">Select bank</option>
+                              {banks.map(b => (
+                                <option key={b.Code} value={b.Code}>{b.Name}</option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                        <div className="form-group">
+                          <label>Account Number</label>
+                          <input
+                            className="input-exo"
+                            value={offrampAccountNumber}
+                            onChange={e => setOfframpAccountNumber(e.target.value)}
+                            placeholder="Account number"
+                            inputMode="numeric"
+                          />
+                        </div>
+                        {offrampCountry === "NG" && (
+                          <div className="form-group">
+                            <label>Account Name</label>
+                            <input
+                              className="input-exo"
+                              value={offrampAccountName}
+                              onChange={e => setOfframpAccountName(e.target.value)}
+                              placeholder="Account holder name"
+                            />
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    <TokenAmountInput
+                      token="USDC"
+                      amount={amount}
+                      onAmountChange={setAmount}
+                      label="Amount (USDC)"
+                      placeholder="10.00"
+                      tokenFixed
+                    />
                   </>
                 )}
 
@@ -585,6 +835,12 @@ export function RecurringPaymentsPage() {
           {createStep === "review" && (
             <div className="exo-animate-in">
               <div className="exo-review">
+                {paymentName && (
+                  <div className="exo-review-row">
+                    <span className="exo-review-label">Name</span>
+                    <span className="exo-review-value">{paymentName}</span>
+                  </div>
+                )}
                 <div className="exo-review-row">
                   <span className="exo-review-label">Type</span>
                   <span className="exo-review-value">{paymentMode === "token_transfer" ? "Token Transfer" : "Cash Out (Offramp)"}</span>
@@ -592,7 +848,7 @@ export function RecurringPaymentsPage() {
                 {paymentMode === "token_transfer" && (
                   <>
                     <div className="exo-review-row"><span className="exo-review-label">To</span><span className="exo-review-value" style={{ fontSize: 11 }}>{truncAddr(recipient)}</span></div>
-                    <div className="exo-review-row"><span className="exo-review-label">Amount</span><span className="exo-review-value">{amount} {tokenName}</span></div>
+                    <div className="exo-review-row"><span className="exo-review-label">Amount</span><span className="exo-review-value">{Number(amount).toLocaleString(undefined, { maximumFractionDigits: 6 })} {tokenName}</span></div>
                   </>
                 )}
                 {paymentMode === "offramp" && (
@@ -601,11 +857,37 @@ export function RecurringPaymentsPage() {
                       <span className="exo-review-label">Country</span>
                       <span className="exo-review-value">{OFFRAMP_COUNTRIES.find(c => c.code === offrampCountry)?.name ?? offrampCountry}</span>
                     </div>
-                    <div className="exo-review-row"><span className="exo-review-label">Phone</span><span className="exo-review-value">{offrampPhone}</span></div>
-                    {offrampNetwork && (
-                      <div className="exo-review-row"><span className="exo-review-label">Network</span><span className="exo-review-value">{offrampNetwork.charAt(0).toUpperCase() + offrampNetwork.slice(1)}</span></div>
+                    <div className="exo-review-row">
+                      <span className="exo-review-label">Payment Type</span>
+                      <span className="exo-review-value">{PAYMENT_TYPE_LABELS[offrampPaymentType] ?? offrampPaymentType}</span>
+                    </div>
+                    {offrampPaymentType === "MOBILE" && (
+                      <>
+                        <div className="exo-review-row"><span className="exo-review-label">Phone</span><span className="exo-review-value">{offrampPhone}</span></div>
+                        {offrampNetwork && (
+                          <div className="exo-review-row"><span className="exo-review-label">Network</span><span className="exo-review-value">{offrampNetwork.charAt(0).toUpperCase() + offrampNetwork.slice(1)}</span></div>
+                        )}
+                      </>
                     )}
-                    <div className="exo-review-row"><span className="exo-review-label">Amount</span><span className="exo-review-value">{amount} USDC</span></div>
+                    {offrampPaymentType === "BUY_GOODS" && (
+                      <div className="exo-review-row"><span className="exo-review-label">Till Number</span><span className="exo-review-value">{offrampPhone}</span></div>
+                    )}
+                    {offrampPaymentType === "PAYBILL" && (
+                      <>
+                        <div className="exo-review-row"><span className="exo-review-label">Paybill Number</span><span className="exo-review-value">{offrampPhone}</span></div>
+                        <div className="exo-review-row"><span className="exo-review-label">Account Number</span><span className="exo-review-value">{offrampAccountNumber}</span></div>
+                      </>
+                    )}
+                    {offrampPaymentType === "BANK_TRANSFER" && (
+                      <>
+                        <div className="exo-review-row"><span className="exo-review-label">Bank</span><span className="exo-review-value">{offrampBankName || offrampBankCode}</span></div>
+                        <div className="exo-review-row"><span className="exo-review-label">Account Number</span><span className="exo-review-value">{offrampAccountNumber}</span></div>
+                        {offrampCountry === "NG" && offrampAccountName && (
+                          <div className="exo-review-row"><span className="exo-review-label">Account Name</span><span className="exo-review-value">{offrampAccountName}</span></div>
+                        )}
+                      </>
+                    )}
+                    <div className="exo-review-row"><span className="exo-review-label">Amount</span><span className="exo-review-value">{Number(amount).toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC</span></div>
                   </>
                 )}
                 <div className="exo-review-row"><span className="exo-review-label">Frequency</span><span className="exo-review-value">{formatFreq(frequency)}</span></div>
