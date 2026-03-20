@@ -737,7 +737,7 @@
   height: 42px;
   padding: 0;
   background: var(--exo-lime);
-  color: #0a0a0a;
+  color: var(--accent-text);
   border: none;
   border-radius: 50%;
   font-weight: 700;

@@ -25,7 +25,7 @@
 
 .btn-primary {
   background: var(--exo-lime);
-  color: #0A0A0A;
+  color: var(--accent-text);
 }
 .btn-primary:hover:not(:disabled) {
   transform: translateY(-2px);
@@ -44,7 +44,7 @@
 
 .btn-danger {
   background: var(--exo-coral);
-  color: #0A0A0A;
+  color: var(--accent-text);
 }
 .btn-danger:hover:not(:disabled) {
   transform: translateY(-2px);

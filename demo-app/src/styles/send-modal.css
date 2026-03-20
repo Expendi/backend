@@ -535,7 +535,7 @@
 
 .send-btn-primary {
   background: var(--exo-lime);
-  color: #0a0a0a;
+  color: var(--accent-text);
 }
 
 .send-btn-primary:hover:not(:disabled) {
