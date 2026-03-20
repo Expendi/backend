@@ -152,9 +152,14 @@ export function createChatRoutes(runtime: AppRuntime) {
 
     const body = (await c.req.json()) as RemotePromptRequest;
 
+    if (!Array.isArray(body.messages) || body.messages.length === 0) {
+      return c.json({ error: "messages must be a non-empty array" }, 400);
+    }
+
     // Build a profile-aware system prompt if the user is authenticated
     const userId = c.get("userId");
-    let systemPrompt = body.systemPrompt;
+    const DEFAULT_SYSTEM_PROMPT = "You are exo, a helpful financial assistant.";
+    let systemPrompt: string | undefined;
     let profileData: { trustTier: string; agentBudget: string; profile: Record<string, unknown> } | undefined;
 
     if (userId) {
@@ -178,15 +183,13 @@ export function createChatRoutes(runtime: AppRuntime) {
           agentBudget: agentProfile.agentBudget,
         });
       } catch (err) {
-        // Profile fetch failed — fall back to client-provided system prompt.
-        // This keeps the chat endpoint functional even if the DB is unreachable.
+        // Profile fetch failed — fall back to hardcoded safe default.
         console.error("Failed to fetch agent profile for system prompt:", err instanceof Error ? err.message : String(err));
+        systemPrompt = DEFAULT_SYSTEM_PROMPT;
       }
     }
 
-    if (systemPrompt) {
-      adapter.setSystemPrompt(systemPrompt);
-    }
+    adapter.setSystemPrompt(systemPrompt ?? DEFAULT_SYSTEM_PROMPT);
 
     const tools = body.tools?.length ? deserializeTools(body.tools) : [];
 

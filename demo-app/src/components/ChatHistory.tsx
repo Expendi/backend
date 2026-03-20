@@ -55,6 +55,14 @@ export function ChatHistory({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const editInputRef = useRef<HTMLInputElement>(null);
+  const deleteTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // Clean up delete confirmation timer on unmount
+  useEffect(() => {
+    return () => {
+      if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
+    };
+  }, []);
 
   // Focus the input when entering edit mode
   useEffect(() => {
@@ -77,12 +85,14 @@ export function ChatHistory({
     e.stopPropagation();
     if (deletingId === id) {
       // Second click — confirm delete
+      if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
       onDelete(id);
       setDeletingId(null);
     } else {
+      if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
       setDeletingId(id);
       // Reset after 3 seconds if not confirmed
-      setTimeout(() => setDeletingId(null), 3000);
+      deleteTimerRef.current = setTimeout(() => setDeletingId(null), 3000);
     }
   };
 

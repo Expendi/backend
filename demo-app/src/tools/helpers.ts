@@ -71,13 +71,26 @@ export function parseAmountString(raw: string): { amount: string; token?: string
 /**
  * Convert a human-readable amount to base units.
  * e.g. toBaseUnits("10", 6) → "10000000"
+ *
+ * Handles scientific notation (1e-7), leading-dot (.5), and negative guard.
  */
 export function toBaseUnits(amount: string, decimals: number): string {
-  const parts = amount.split(".");
-  const whole = parts[0] ?? "0";
+  // Normalise scientific notation or other Number.toString() artefacts to decimal
+  let normalized = amount;
+  if (/[eE]/.test(normalized)) {
+    normalized = Number(normalized).toFixed(decimals);
+  }
+  // Strip leading/trailing whitespace
+  normalized = normalized.trim();
+  if (normalized === "" || normalized === ".") return "0";
+
+  const parts = normalized.split(".");
+  const whole = parts[0] === "" || parts[0] === undefined ? "0" : parts[0];
   const frac = (parts[1] ?? "").padEnd(decimals, "0").slice(0, decimals);
   const factor = BigInt(10) ** BigInt(decimals);
-  return (BigInt(whole) * factor + BigInt(frac)).toString();
+  const result = BigInt(whole) * factor + BigInt(frac);
+  if (result < 0n) return "0";
+  return result.toString();
 }
 
 /**
@@ -91,6 +104,29 @@ export function fromBaseUnits(base: string, decimals: number): string {
   const frac = val % factor;
   const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
   return fracStr.length > 0 ? `${whole}.${fracStr}` : whole.toString();
+}
+
+/**
+ * Convert a Number to a fixed-point decimal string safe for BigInt conversion.
+ * Avoids scientific notation (e.g. 1e-7 → "0.0000001").
+ */
+export function safeNumberToString(n: number, maxDecimals: number = 18): string {
+  if (!Number.isFinite(n) || n < 0) return "0";
+  return n.toFixed(maxDecimals).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+/**
+ * Compare a human-readable amount against a base-unit balance using BigInt.
+ * Returns true if the amount (in human units) exceeds the balance (in base units).
+ */
+export function exceedsBalance(
+  amountHuman: string,
+  balanceBase: string,
+  decimals: number,
+): boolean {
+  const amountBase = BigInt(toBaseUnits(amountHuman, decimals));
+  const balance = BigInt(balanceBase);
+  return amountBase > balance;
 }
 
 /**

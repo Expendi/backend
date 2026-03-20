@@ -10,6 +10,7 @@ import {
   toBaseUnits,
   fromBaseUnits,
   formatNumber,
+  exceedsBalance,
   fetchBalances,
   getUserWallet,
   getTokenBalance,
@@ -75,6 +76,7 @@ export const swapTool: ToolConfig = defineTool({
       };
     }
 
+    // Also block ETH↔WETH swaps (they map to the same Uniswap address)
     if (fromSymbol === toSymbol) {
       return {
         status: "error",
@@ -82,11 +84,29 @@ export const swapTool: ToolConfig = defineTool({
         message: `Cannot swap ${fromSymbol} to itself. Please choose different tokens.`,
       };
     }
+    const ethWethPair =
+      (fromSymbol === "ETH" && toSymbol === "WETH") ||
+      (fromSymbol === "WETH" && toSymbol === "ETH");
+    if (ethWethPair) {
+      return {
+        status: "error",
+        data: "",
+        message: `ETH and WETH are equivalent on Uniswap. No swap needed — you can wrap/unwrap directly.`,
+      };
+    }
 
     const fromTokenInfo = TOKEN_MAP[fromSymbol]!;
     const toTokenInfo = TOKEN_MAP[toSymbol]!;
 
-    // 2. Parse amount
+    // 2. Parse amount and cap slippage
+    if (slippage > 50) {
+      return {
+        status: "error",
+        data: "",
+        message: `Slippage tolerance of ${slippage}% is too high. Maximum allowed is 50%.`,
+      };
+    }
+
     const parsed = parseAmountString(input.amount);
     const isAll = parsed.amount === "all";
     const parsedNumber = isAll ? 0 : Number(parsed.amount);
@@ -120,35 +140,37 @@ export const swapTool: ToolConfig = defineTool({
       };
     }
 
-    // 4. Get token balance in human-readable form
+    // 4. Get token balance — use BigInt for comparison, Number only for display
     const balanceBase = getTokenBalance(userWallet, fromSymbol);
-    const balanceHuman = Number(fromBaseUnits(balanceBase, fromTokenInfo.decimals));
+    const balanceHumanStr = fromBaseUnits(balanceBase, fromTokenInfo.decimals);
+    const balanceDisplay = Number(balanceHumanStr);
 
-    // 5. Determine actual swap amount
-    let actualAmount: number;
+    // 5. Determine actual swap amount (string-based)
+    let amountStr: string;
     if (isAll) {
-      if (balanceHuman <= 0) {
+      if (BigInt(balanceBase) <= 0n) {
         return {
           status: "error",
           data: "",
           message: `You have no ${fromSymbol} to swap.`,
         };
       }
-      actualAmount = balanceHuman;
+      amountStr = balanceHumanStr;
     } else {
-      actualAmount = parsedNumber;
+      amountStr = parsed.amount;
     }
 
-    if (actualAmount > balanceHuman) {
+    if (exceedsBalance(amountStr, balanceBase, fromTokenInfo.decimals)) {
+      const amountDisplay = Number(amountStr);
       return {
         status: "error",
         data: "",
-        message: `Insufficient ${fromSymbol} balance. You have ${formatNumber(balanceHuman)} ${fromSymbol} but need ${formatNumber(actualAmount)} ${fromSymbol}.`,
+        message: `Insufficient ${fromSymbol} balance. You have ${formatNumber(balanceDisplay)} ${fromSymbol} but need ${formatNumber(amountDisplay)} ${fromSymbol}.`,
       };
     }
 
     // 6. Convert to base units
-    const amountInBase = toBaseUnits(actualAmount.toString(), fromTokenInfo.decimals);
+    const amountInBase = toBaseUnits(amountStr, fromTokenInfo.decimals);
 
     // 7. Map ETH to WETH address for Uniswap
     const fromAddress = fromSymbol === "ETH" ? TOKEN_MAP["WETH"]!.address : fromTokenInfo.address;
@@ -184,17 +206,18 @@ export const swapTool: ToolConfig = defineTool({
       ? `$${Number(quote.quote.gasFeeUSD).toFixed(2)}`
       : "unknown";
 
-    // 10. Compute rate display
+    // 10. Compute rate display (Number is fine here — display only)
+    const actualAmountDisplay = Number(amountStr);
     let rateDisplay: string;
     const stablecoins = ["USDC", "USDbC"];
     if (stablecoins.includes(fromSymbol)) {
-      const price = actualAmount / expectedOutHuman;
+      const price = actualAmountDisplay / expectedOutHuman;
       rateDisplay = `1 ${toSymbol} = ${formatNumber(price)} ${fromSymbol}`;
     } else if (stablecoins.includes(toSymbol)) {
-      const price = expectedOutHuman / actualAmount;
+      const price = expectedOutHuman / actualAmountDisplay;
       rateDisplay = `1 ${fromSymbol} = ${formatNumber(price)} ${toSymbol}`;
     } else {
-      const ratio = expectedOutHuman / actualAmount;
+      const ratio = expectedOutHuman / actualAmountDisplay;
       rateDisplay = `1 ${fromSymbol} = ${formatNumber(ratio)} ${toSymbol}`;
     }
 
@@ -202,7 +225,7 @@ export const swapTool: ToolConfig = defineTool({
     const confirmed = await display.pushAndWait({
       fromToken: fromSymbol,
       toToken: toSymbol,
-      amountIn: formatNumber(actualAmount),
+      amountIn: formatNumber(actualAmountDisplay),
       amountOut: formatNumber(expectedOutHuman),
       rate: rateDisplay,
       priceImpact: `${priceImpact}%`,

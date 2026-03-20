@@ -5,7 +5,6 @@ import { useDashboard } from "../context/DashboardContext";
 import type { WalletBalanceDetailed } from "../context/DashboardContext";
 import { SendModal } from "../components/SendModal";
 import { AnimatedBalance } from "../components/AnimatedBalance";
-import { useToast } from "../components/Toast";
 import { useAppMode } from "../context/AppModeContext";
 import type { YieldPortfolio, GoalSaving, RecurringPayment } from "../lib/types";
 import "../styles/wallet-home.css";

@@ -85,9 +85,9 @@ describe("Chat Routes", () => {
         }),
       );
 
-      // Verify system prompt was set
+      // Verify system prompt was set (hardcoded default, since no profile is loaded in tests)
       expect(mockAdapter.setSystemPrompt).toHaveBeenCalledWith(
-        "You are a helpful assistant.",
+        "You are exo, a helpful financial assistant.",
       );
 
       // Verify prompt was called with correct messages
@@ -205,7 +205,7 @@ describe("Chat Routes", () => {
       expect(text).toContain('"type":"done"');
     });
 
-    it("should not set system prompt when empty", async () => {
+    it("should use hardcoded default system prompt when client sends empty prompt", async () => {
       mockAdapter.prompt.mockImplementation(async () => ({
         messages: [{ sender: "agent", text: "ok" }],
         tokens_in: 1,
@@ -222,7 +222,9 @@ describe("Chat Routes", () => {
         }),
       });
 
-      expect(mockAdapter.setSystemPrompt).not.toHaveBeenCalled();
+      expect(mockAdapter.setSystemPrompt).toHaveBeenCalledWith(
+        "You are exo, a helpful financial assistant.",
+      );
     });
   });
 });

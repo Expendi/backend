@@ -47,8 +47,6 @@ const TOKEN_DECIMALS: Record<Token, number> = {
   USDC: 6,
 };
 
-const USDC_CONTRACT_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-
 const WALLET_TYPE_LABELS: Record<WalletType, string> = {
   user: "User",
   server: "Server",

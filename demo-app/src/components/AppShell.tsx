@@ -338,23 +338,12 @@ export function AppShell() {
 
   const prevSimpleIdxRef = useRef(SIMPLE_TAB_ORDER.indexOf(simpleTab));
   const prevAgentIdxRef = useRef(AGENT_TAB_ORDER.indexOf(agentTab));
-  const [slideDirection, setSlideDirection] = useState<"left" | "right" | null>(null);
 
   useEffect(() => {
     if (mode === "simple") {
-      const newIdx = SIMPLE_TAB_ORDER.indexOf(simpleTab);
-      const prevIdx = prevSimpleIdxRef.current;
-      if (newIdx !== prevIdx) {
-        setSlideDirection(newIdx > prevIdx ? "right" : "left");
-        prevSimpleIdxRef.current = newIdx;
-      }
+      prevSimpleIdxRef.current = SIMPLE_TAB_ORDER.indexOf(simpleTab);
     } else {
-      const newIdx = AGENT_TAB_ORDER.indexOf(agentTab);
-      const prevIdx = prevAgentIdxRef.current;
-      if (newIdx !== prevIdx) {
-        setSlideDirection(newIdx > prevIdx ? "right" : "left");
-        prevAgentIdxRef.current = newIdx;
-      }
+      prevAgentIdxRef.current = AGENT_TAB_ORDER.indexOf(agentTab);
     }
   }, [simpleTab, agentTab, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 

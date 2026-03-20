@@ -136,6 +136,18 @@ export function createAgentRoutes(runtime: AppRuntime) {
           catch: () => new Error("Invalid request body"),
         });
 
+        const validRoles = ["user", "agent"] as const;
+        if (!validRoles.includes(body.role as typeof validRoles[number])) {
+          return yield* Effect.fail(
+            new Error(`Invalid message role: "${body.role}". Must be one of: ${validRoles.join(", ")}`)
+          );
+        }
+        if (typeof body.content !== "string" || body.content.trim().length === 0) {
+          return yield* Effect.fail(
+            new Error("Message content must be a non-empty string")
+          );
+        }
+
         const message: ConversationMessage = {
           role: body.role,
           content: body.content,
@@ -210,6 +222,13 @@ export function createAgentRoutes(runtime: AppRuntime) {
           catch: () => new Error("Invalid request body"),
         });
 
+        const validTiers = ["observe", "notify", "act_within_limits", "full"] as const;
+        if (!validTiers.includes(body.tier as typeof validTiers[number])) {
+          return yield* Effect.fail(
+            new Error(`Invalid trust tier: "${body.tier}". Must be one of: ${validTiers.join(", ")}`)
+          );
+        }
+
         const service = yield* AgentProfileService;
         return yield* service.updateTrustTier(userId, body.tier);
       }),
@@ -227,6 +246,13 @@ export function createAgentRoutes(runtime: AppRuntime) {
           try: () => c.req.json<{ budget: string }>(),
           catch: () => new Error("Invalid request body"),
         });
+
+        const parsed = Number(body.budget);
+        if (typeof body.budget !== "string" || body.budget.trim().length === 0 || !Number.isFinite(parsed) || parsed < 0) {
+          return yield* Effect.fail(
+            new Error("Budget must be a non-negative numeric string")
+          );
+        }
 
         const service = yield* AgentProfileService;
         return yield* service.updateBudget(userId, body.budget);

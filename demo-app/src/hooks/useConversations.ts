@@ -150,33 +150,26 @@ export function useConversations() {
     try {
       await request(`/agent/conversations/${id}`, { method: "DELETE" });
       setConversations(prev => prev.filter(c => c.id !== id));
-      // If we deleted the active one, create a new one.
-      // We call createConversation via a fresh reference from the returned
-      // promise chain rather than closing over it to avoid stale closures.
-      setActiveConversation(prev => {
-        if (prev?.id === id) {
-          // Trigger new conversation creation outside the state setter
-          queueMicrotask(() => {
-            request<Conversation>("/agent/conversations", {
-              method: "POST",
-              body: {},
-            })
-              .then(data => {
-                setActiveConversation(data);
-                fetchConversations();
-              })
-              .catch(err => {
-                console.error("Failed to create replacement conversation after delete:", err);
-              });
+
+      // If we deleted the active conversation, clear it and create a replacement.
+      const wasActive = activeConversation?.id === id;
+      if (wasActive) {
+        setActiveConversation(null);
+        try {
+          const data = await request<Conversation>("/agent/conversations", {
+            method: "POST",
+            body: {},
           });
-          return null;
+          setActiveConversation(data);
+          fetchConversations();
+        } catch (err) {
+          console.error("Failed to create replacement conversation after delete:", err);
         }
-        return prev;
-      });
+      }
     } catch (err) {
       console.error("Failed to delete conversation:", err);
     }
-  }, [request, fetchConversations]);
+  }, [request, fetchConversations, activeConversation?.id]);
 
   /* ── Initialize on mount ─────────────────────────────────────── */
 

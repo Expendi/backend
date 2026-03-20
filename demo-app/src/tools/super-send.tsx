@@ -14,6 +14,8 @@ import {
   toBaseUnits,
   fromBaseUnits,
   formatNumber,
+  safeNumberToString,
+  exceedsBalance,
   resolveRecipient,
   fetchBalances,
   getUserWallet,
@@ -87,50 +89,67 @@ export const sendTool: ToolConfig = defineTool({
         };
       }
 
-      // 6. Get token balance and convert from base units
+      // 6. Get token balance in base units
       const balanceBase = getTokenBalance(wallet, tokenSymbol);
       const balanceHuman = fromBaseUnits(balanceBase, tokenInfo.decimals);
-      const balanceNum = Number(balanceHuman);
+      const balanceDisplay = Number(balanceHuman); // Only for display, not comparison
 
-      // 7. Handle "all" amount
-      let sendAmount: number;
+      // 7. Handle "all" amount — use string-based amounts, BigInt for comparison
+      //    For native ETH, reserve ~0.0005 ETH for gas to avoid draining the wallet
+      const ETH_GAS_RESERVE = "500000000000000"; // 0.0005 ETH in wei
+      let sendAmountStr: string; // human-readable decimal string
       if (parsed.amount === "all") {
-        sendAmount = balanceNum;
-        if (sendAmount <= 0) {
+        if (BigInt(balanceBase) <= 0n) {
           return {
             status: "error" as const,
             data: "",
             message: `You have no ${tokenSymbol} to send.`,
           };
         }
+        if (tokenSymbol === "ETH") {
+          const reserved = BigInt(balanceBase) - BigInt(ETH_GAS_RESERVE);
+          if (reserved <= 0n) {
+            return {
+              status: "error" as const,
+              data: "",
+              message: `Your ETH balance (${formatNumber(balanceDisplay)} ETH) is too low to send — you need to keep some for gas fees.`,
+            };
+          }
+          sendAmountStr = fromBaseUnits(reserved.toString(), tokenInfo.decimals);
+        } else {
+          sendAmountStr = balanceHuman;
+        }
       } else {
-        sendAmount = Number(parsed.amount);
-        if (isNaN(sendAmount) || sendAmount <= 0) {
+        const parsedNum = Number(parsed.amount);
+        if (isNaN(parsedNum) || parsedNum <= 0) {
           return {
             status: "error" as const,
             data: "",
             message: `Invalid amount "${parsed.amount}". Please provide a positive number.`,
           };
         }
+        sendAmountStr = parsed.amount;
       }
 
-      // 8. Validate sufficient balance
-      if (sendAmount > balanceNum) {
+      // 8. Validate sufficient balance using BigInt
+      if (exceedsBalance(sendAmountStr, balanceBase, tokenInfo.decimals)) {
+        const sendDisplay = Number(sendAmountStr);
         return {
           status: "error" as const,
           data: "",
-          message: `Insufficient balance. You have ${formatNumber(balanceNum)} ${tokenSymbol} but need ${formatNumber(sendAmount)} ${tokenSymbol}.`,
+          message: `Insufficient balance. You have ${formatNumber(balanceDisplay)} ${tokenSymbol} but need ${formatNumber(sendDisplay)} ${tokenSymbol}.`,
         };
       }
 
-      // 9. Compute remaining balance
-      const remainingBalance = balanceNum - sendAmount;
+      // 9. Compute remaining balance for display
+      const sendDisplay = Number(sendAmountStr);
+      const remainingBalance = balanceDisplay - sendDisplay;
 
       // 10. Show confirmation and wait for user decision
       const confirmed = await display.pushAndWait({
         recipientLabel,
         recipientAddress,
-        amount: formatNumber(sendAmount),
+        amount: formatNumber(sendDisplay),
         token: tokenSymbol,
         remainingBalance: formatNumber(remainingBalance),
       });
@@ -141,7 +160,7 @@ export const sendTool: ToolConfig = defineTool({
       }
 
       // 12. Convert amount to base units for the transaction
-      const baseUnits = toBaseUnits(sendAmount.toString(), tokenInfo.decimals);
+      const baseUnits = toBaseUnits(sendAmountStr, tokenInfo.decimals);
 
       // Lowercase the address to avoid EIP-55 checksum issues with viem
       const normalizedAddress = recipientAddress.toLowerCase();
