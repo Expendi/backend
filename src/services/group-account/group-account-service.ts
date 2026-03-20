@@ -1,7 +1,7 @@
 import { Effect, Context, Layer, Data } from "effect";
 import { eq, and } from "drizzle-orm";
-import { encodeFunctionData, createPublicClient, http } from "viem";
-import { base } from "viem/chains";
+import { encodeFunctionData } from "viem";
+import { createBasePublicClient } from "../chain/public-client.js";
 import { DatabaseService } from "../../db/client.js";
 import {
   groupAccounts,
@@ -272,10 +272,7 @@ export const GroupAccountServiceLive: Layer.Layer<
       userId?: string
     ) =>
       Effect.gen(function* () {
-        const client = createPublicClient({
-          chain: base,
-          transport: http(),
-        });
+        const client = createBasePublicClient(config.baseRpcUrl || undefined);
 
         const currentAllowance = yield* Effect.tryPromise({
           try: () =>
@@ -936,10 +933,7 @@ export const GroupAccountServiceLive: Layer.Layer<
             );
           }
 
-          const client = createPublicClient({
-            chain: base,
-            transport: http(),
-          });
+          const client = createBasePublicClient(config.baseRpcUrl || undefined);
 
           // Read ETH balance
           const ethBalance = yield* Effect.tryPromise({

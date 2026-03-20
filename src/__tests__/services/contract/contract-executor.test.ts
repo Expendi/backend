@@ -1,5 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Effect, Layer } from "effect";
+
+// Mock viem's createPublicClient for readContract tests
+const mockReadContract = vi.fn();
+vi.mock("viem", async () => {
+  const actual = await vi.importActual("viem");
+  return {
+    ...actual,
+    createPublicClient: vi.fn((...args: any[]) => {
+      if (mockReadContract.getMockImplementation()) {
+        return {
+          readContract: mockReadContract,
+        };
+      }
+      return (actual as any).createPublicClient(...args);
+    }),
+  };
+});
 import {
   ContractExecutor,
   ContractExecutorLive,
@@ -14,6 +31,7 @@ import {
   WalletError,
   type WalletInstance,
 } from "../../../services/wallet/wallet-service.js";
+import { ConfigService } from "../../../config.js";
 import type { ContractConnector } from "../../../services/contract/types.js";
 
 const erc20Abi = [
@@ -91,9 +109,26 @@ function makeTestLayers(opts?: {
         : Effect.succeed(opts?.walletInstance ?? makeMockWalletInstance()),
   });
 
+  const MockConfigLayer = Layer.succeed(ConfigService, {
+    databaseUrl: "",
+    privyAppId: "",
+    privyAppSecret: "",
+    coinmarketcapApiKey: "",
+    adminApiKey: "",
+    defaultChainId: 1,
+    port: 3000,
+    pretiumApiKey: "",
+    pretiumBaseUri: "",
+    serverBaseUrl: "",
+    uniswapApiKey: "",
+    approvalTokenSecret: "",
+    baseRpcUrl: "",
+  });
+
   return ContractExecutorLive.pipe(
     Layer.provide(MockRegistryLayer),
-    Layer.provide(MockWalletServiceLayer)
+    Layer.provide(MockWalletServiceLayer),
+    Layer.provide(MockConfigLayer)
   );
 }
 
@@ -320,10 +355,11 @@ describe("ContractExecutor", () => {
       }
     });
 
-    // Note: testing readContract success fully would require mocking viem's
-    // createPublicClient which is created inside the executor. Since it makes
-    // real HTTP calls, we test that the error path works correctly instead.
     it("should fail with ContractExecutionError when RPC call fails", async () => {
+      mockReadContract.mockImplementation(() => {
+        throw new Error("RPC connection failed");
+      });
+
       const testLayer = makeTestLayers();
 
       const result = await Effect.runPromise(
@@ -342,7 +378,8 @@ describe("ContractExecutor", () => {
         }).pipe(Effect.provide(testLayer))
       );
 
-      // Will fail because there is no real RPC endpoint, which is the expected behavior
+      mockReadContract.mockReset();
+
       expect(result.tag).toBe("err");
       if (result.tag === "err") {
         expect(result.e).toBeInstanceOf(ContractExecutionError);

@@ -8,6 +8,7 @@ import {
   type Chain,
 } from "viem";
 import { mainnet, base, polygon, arbitrum, optimism } from "viem/chains";
+import { createBasePublicClient } from "../chain/public-client.js";
 import { DatabaseService } from "../../db/client.js";
 import {
   yieldVaults,
@@ -70,6 +71,7 @@ export interface PortfolioSummary {
   readonly totalYield: string;
   readonly averageApy: string;
   readonly positionCount: number;
+  readonly withdrawnCount: number;
 }
 
 export interface AccruedYieldInfo {
@@ -449,11 +451,13 @@ export const YieldServiceLive: Layer.Layer<
           let onChainLockId = tx.txHash ?? "pending";
 
           if (tx.txHash) {
-            const chainMap: Record<number, Chain> = {
-              1: mainnet, 8453: base, 137: polygon, 42161: arbitrum, 10: optimism,
-            };
-            const chain = chainMap[chainId] ?? base;
-            const publicClient = createPublicClient({ chain, transport: http() });
+            const isBase = chainId === 8453 || chainId === 84532;
+            const publicClient = isBase
+              ? createBasePublicClient(config.baseRpcUrl || undefined, chainId)
+              : createPublicClient({
+                  chain: ({ 1: mainnet, 137: polygon, 42161: arbitrum, 10: optimism } as Record<number, Chain>)[chainId] ?? base,
+                  transport: http(),
+                });
 
             const receipt = yield* Effect.tryPromise({
               try: () => publicClient.getTransactionReceipt({ hash: tx.txHash as Hash }),
@@ -538,7 +542,8 @@ export const YieldServiceLive: Layer.Layer<
                   .where(
                     and(
                       eq(yieldPositions.userId, userId),
-                      inArray(yieldPositions.id, goalPositionIds)
+                      inArray(yieldPositions.id, goalPositionIds),
+                      inArray(yieldPositions.status, ["active", "matured"])
                     )
                   )
                   .orderBy(desc(yieldPositions.createdAt));
@@ -549,7 +554,8 @@ export const YieldServiceLive: Layer.Layer<
                   .where(
                     and(
                       eq(yieldPositions.userId, userId),
-                      notInArray(yieldPositions.id, goalPositionIds)
+                      notInArray(yieldPositions.id, goalPositionIds),
+                      inArray(yieldPositions.status, ["active", "matured"])
                     )
                   )
                   .orderBy(desc(yieldPositions.createdAt));
@@ -559,7 +565,12 @@ export const YieldServiceLive: Layer.Layer<
             return db
               .select()
               .from(yieldPositions)
-              .where(eq(yieldPositions.userId, userId))
+              .where(
+                and(
+                  eq(yieldPositions.userId, userId),
+                  inArray(yieldPositions.status, ["active", "matured"])
+                )
+              )
               .orderBy(desc(yieldPositions.createdAt));
           },
           catch: (error) =>
@@ -1093,12 +1104,19 @@ export const YieldServiceLive: Layer.Layer<
 
       getPortfolioSummary: (userId: string) =>
         Effect.gen(function* () {
+          const activeStatuses = ["active", "matured"] as const;
+
           const positions = yield* Effect.tryPromise({
             try: () =>
               db
                 .select()
                 .from(yieldPositions)
-                .where(eq(yieldPositions.userId, userId)),
+                .where(
+                  and(
+                    eq(yieldPositions.userId, userId),
+                    inArray(yieldPositions.status, [...activeStatuses])
+                  )
+                ),
             catch: (error) =>
               new YieldError({
                 message: `Failed to list positions for portfolio: ${error}`,
@@ -1106,11 +1124,36 @@ export const YieldServiceLive: Layer.Layer<
               }),
           });
 
+          // Count withdrawn positions separately for the frontend
+          const withdrawnPositions = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .select()
+                .from(yieldPositions)
+                .where(
+                  and(
+                    eq(yieldPositions.userId, userId),
+                    inArray(yieldPositions.status, ["withdrawn", "emergency"])
+                  )
+                ),
+            catch: (error) =>
+              new YieldError({
+                message: `Failed to count withdrawn positions: ${error}`,
+                cause: error,
+              }),
+          });
+
+          const withdrawnCount = withdrawnPositions.length;
+
           let totalPrincipal = 0n;
           let totalCurrentValue = 0n;
           let totalYield = 0n;
           let apySum = 0;
           let apyCount = 0;
+
+          const twentyFourHoursAgo = new Date(
+            Date.now() - 24 * 60 * 60 * 1000
+          );
 
           for (const position of positions) {
             totalPrincipal += BigInt(position.principalAmount);
@@ -1131,7 +1174,10 @@ export const YieldServiceLive: Layer.Layer<
                 }),
             });
 
-            if (latestSnapshot) {
+            if (
+              latestSnapshot &&
+              latestSnapshot.snapshotAt > twentyFourHoursAgo
+            ) {
               totalCurrentValue += BigInt(latestSnapshot.currentAssets);
               totalYield += BigInt(latestSnapshot.accruedYield);
               if (latestSnapshot.estimatedApy) {
@@ -1139,7 +1185,7 @@ export const YieldServiceLive: Layer.Layer<
                 apyCount++;
               }
             } else {
-              // No snapshot yet, use principal as current value
+              // No snapshot or stale (>24h) — fall back to principal as floor
               totalCurrentValue += BigInt(position.principalAmount);
             }
           }
@@ -1153,6 +1199,7 @@ export const YieldServiceLive: Layer.Layer<
             totalYield: String(totalYield),
             averageApy,
             positionCount: positions.length,
+            withdrawnCount,
           } satisfies PortfolioSummary;
         }),
 

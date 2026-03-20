@@ -182,10 +182,10 @@ function makeTestLayers(opts?: {
     submitContractTransaction: () =>
       opts?.submitContractFail
         ? Effect.fail(new TransactionError({ message: "contract tx failed" }))
-        : Effect.succeed(makeFakeTx()),
-    submitRawTransaction: () => Effect.succeed(makeFakeTx()),
-    getTransaction: () => Effect.succeed(makeFakeTx()),
-    listTransactions: () => Effect.succeed([makeFakeTx()]),
+        : Effect.succeed(makeFakeTx({ txHash: null })),
+    submitRawTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+    getTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+    listTransactions: () => Effect.succeed([makeFakeTx({ txHash: null })]),
   });
 
   const MockContractExecutorLayer = Layer.succeed(ContractExecutor, {
@@ -201,7 +201,7 @@ function makeTestLayers(opts?: {
         ? Effect.fail(
             new ContractExecutionError({ message: "read failed" })
           )
-        : Effect.succeed(opts?.readContractResult ?? [0n, 0n]),
+        : Effect.succeed(opts?.readContractResult ?? { depositor: "0x1111" }),
   });
 
   const MockConfigLayer = Layer.succeed(ConfigService, {
@@ -567,10 +567,10 @@ describe("YieldService", () => {
         pool: {} as any,
       });
       const MockTxServiceLayer = Layer.succeed(TransactionService, {
-        submitContractTransaction: () => Effect.succeed(makeFakeTx()),
-        submitRawTransaction: () => Effect.succeed(makeFakeTx()),
-        getTransaction: () => Effect.succeed(makeFakeTx()),
-        listTransactions: () => Effect.succeed([makeFakeTx()]),
+        submitContractTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        submitRawTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        getTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        listTransactions: () => Effect.succeed([makeFakeTx({ txHash: null })]),
       });
       const MockContractExecutorLayer = Layer.succeed(ContractExecutor, {
         execute: () =>
@@ -580,7 +580,7 @@ describe("YieldService", () => {
             method: "test",
             chainId: 1,
           }),
-        readContract: () => Effect.succeed([0n, 0n]),
+        readContract: () => Effect.succeed({ depositor: "0x1111" }),
       });
       const MockConfigLayer = Layer.succeed(ConfigService, {
         databaseUrl: "postgres://test",
@@ -640,10 +640,10 @@ describe("YieldService", () => {
         pool: {} as any,
       });
       const MockTxServiceLayer = Layer.succeed(TransactionService, {
-        submitContractTransaction: () => Effect.succeed(makeFakeTx()),
-        submitRawTransaction: () => Effect.succeed(makeFakeTx()),
-        getTransaction: () => Effect.succeed(makeFakeTx()),
-        listTransactions: () => Effect.succeed([makeFakeTx()]),
+        submitContractTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        submitRawTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        getTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        listTransactions: () => Effect.succeed([makeFakeTx({ txHash: null })]),
       });
       const MockContractExecutorLayer = Layer.succeed(ContractExecutor, {
         execute: () =>
@@ -653,7 +653,7 @@ describe("YieldService", () => {
             method: "test",
             chainId: 1,
           }),
-        readContract: () => Effect.succeed([0n, 0n]),
+        readContract: () => Effect.succeed({ depositor: "0x1111" }),
       });
       const MockConfigLayer = Layer.succeed(ConfigService, {
         databaseUrl: "postgres://test",
@@ -1006,10 +1006,10 @@ describe("YieldService", () => {
         pool: {} as any,
       });
       const MockTxServiceLayer = Layer.succeed(TransactionService, {
-        submitContractTransaction: () => Effect.succeed(makeFakeTx()),
-        submitRawTransaction: () => Effect.succeed(makeFakeTx()),
-        getTransaction: () => Effect.succeed(makeFakeTx()),
-        listTransactions: () => Effect.succeed([makeFakeTx()]),
+        submitContractTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        submitRawTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        getTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        listTransactions: () => Effect.succeed([makeFakeTx({ txHash: null })]),
       });
       const MockContractExecutorLayer = Layer.succeed(ContractExecutor, {
         execute: () =>
@@ -1019,7 +1019,7 @@ describe("YieldService", () => {
             method: "test",
             chainId: 1,
           }),
-        readContract: () => Effect.succeed([0n, 0n]),
+        readContract: () => Effect.succeed({ depositor: "0x1111" }),
       });
       const MockConfigLayer = Layer.succeed(ConfigService, {
         databaseUrl: "postgres://test",
@@ -1080,10 +1080,10 @@ describe("YieldService", () => {
         pool: {} as any,
       });
       const MockTxServiceLayer = Layer.succeed(TransactionService, {
-        submitContractTransaction: () => Effect.succeed(makeFakeTx()),
-        submitRawTransaction: () => Effect.succeed(makeFakeTx()),
-        getTransaction: () => Effect.succeed(makeFakeTx()),
-        listTransactions: () => Effect.succeed([makeFakeTx()]),
+        submitContractTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        submitRawTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        getTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        listTransactions: () => Effect.succeed([makeFakeTx({ txHash: null })]),
       });
       const MockContractExecutorLayer = Layer.succeed(ContractExecutor, {
         execute: () =>
@@ -1093,7 +1093,7 @@ describe("YieldService", () => {
             method: "test",
             chainId: 1,
           }),
-        readContract: () => Effect.succeed([0n, 0n]),
+        readContract: () => Effect.succeed({ depositor: "0x1111" }),
       });
       const MockConfigLayer = Layer.succeed(ConfigService, {
         databaseUrl: "postgres://test",
@@ -1178,10 +1178,10 @@ describe("YieldService", () => {
         pool: {} as any,
       });
       const MockTxServiceLayer = Layer.succeed(TransactionService, {
-        submitContractTransaction: () => Effect.succeed(makeFakeTx()),
-        submitRawTransaction: () => Effect.succeed(makeFakeTx()),
-        getTransaction: () => Effect.succeed(makeFakeTx()),
-        listTransactions: () => Effect.succeed([makeFakeTx()]),
+        submitContractTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        submitRawTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        getTransaction: () => Effect.succeed(makeFakeTx({ txHash: null })),
+        listTransactions: () => Effect.succeed([makeFakeTx({ txHash: null })]),
       });
       const MockContractExecutorLayer = Layer.succeed(ContractExecutor, {
         execute: () =>
@@ -1191,7 +1191,7 @@ describe("YieldService", () => {
             method: "test",
             chainId: 1,
           }),
-        readContract: () => Effect.succeed([0n, 0n]),
+        readContract: () => Effect.succeed({ depositor: "0x1111" }),
       });
       const MockConfigLayer = Layer.succeed(ConfigService, {
         databaseUrl: "postgres://test",
