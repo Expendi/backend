@@ -9,6 +9,7 @@
     "start": "node dist/src/index.js",
     "db:generate": "node --import tsx node_modules/drizzle-kit/bin.cjs generate",
     "db:migrate": "node --import tsx node_modules/drizzle-kit/bin.cjs migrate",
+    "db:pull": "node --import tsx node_modules/drizzle-kit/bin.cjs pull",
     "test": "vitest run",
     "trigger:dev": "npx trigger.dev@latest dev",
     "trigger:deploy": "npx trigger.dev@latest deploy"

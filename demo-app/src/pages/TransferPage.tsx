@@ -3,6 +3,11 @@ import { useApi, ApiRequestError } from "../hooks/useApi";
 import { useApprovalContext } from "../context/ApprovalContext";
 import { useDashboard } from "../context/DashboardContext";
 import { Spinner } from "../components/Spinner";
+import { SuccessCheck } from "../components/SuccessCheck";
+import { triggerConfetti } from "../components/Confetti";
+import { useToast } from "../components/Toast";
+import { TokenAmountInput, toBaseUnits, formatHumanAmount } from "../components/TokenAmountInput";
+import { TOKEN_ADDRESSES } from "../lib/constants";
 import type { Category } from "../lib/types";
 import "../styles/pages.css";
 
@@ -14,12 +19,13 @@ export function TransferPage() {
   const { request } = useApi();
   const approvalCtx = useApprovalContext();
   const { walletBalances, refresh } = useDashboard();
+  const toast = useToast();
 
   const [step, setStep] = useState<Step>("form");
   const [from, setFrom] = useState<"user" | "server" | "agent">("user");
   const [to, setTo] = useState<"user" | "server" | "agent">("server");
   const [amount, setAmount] = useState("");
-  const [token, setToken] = useState("usdc");
+  const [token, setToken] = useState("USDC");
   const [categoryId, setCategoryId] = useState("");
   const [categories, setCategories] = useState<Category[]>([]);
   const [error, setError] = useState("");
@@ -53,23 +59,28 @@ export function TransferPage() {
     setStep("sending");
     setError("");
     try {
-      const rawAmount = Math.round(parseFloat(amount) * 1e6).toString();
+      const tokenMeta = TOKEN_ADDRESSES[token];
+      const decimals = tokenMeta?.decimals ?? 6;
+      const rawAmount = toBaseUnits(amount, decimals);
       const result = await requestWithApproval<{ txHash?: string }>("/wallets/transfer", {
         method: "POST",
         body: {
           from,
           to,
           amount: rawAmount,
-          token: token || undefined,
+          token: token.toLowerCase() || undefined,
           categoryId: categoryId || undefined,
         },
       });
       setTxHash(result?.txHash ?? "");
       setStep("success");
+      triggerConfetti();
+      toast.info("Transaction submitted");
       refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Transfer failed");
       setStep("error");
+      toast.error("Transfer failed");
     }
   };
 
@@ -107,11 +118,6 @@ export function TransferPage() {
                 <select className="input-exo" value={from} onChange={e => setFrom(e.target.value as typeof from)}>
                   {WALLET_TYPES.map(t => <option key={t} value={t}>{t} wallet</option>)}
                 </select>
-                {usdcBalance && (
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
-                    Balance: {usdcBalance} USDC
-                  </div>
-                )}
               </div>
               <div className="form-group">
                 <label>To</label>
@@ -121,22 +127,17 @@ export function TransferPage() {
               </div>
             </div>
 
-            <div className="form-row">
-              <div className="form-group">
-                <label>Amount (USDC)</label>
-                <input
-                  className="input-exo"
-                  value={amount}
-                  onChange={e => setAmount(e.target.value)}
-                  placeholder="10.00"
-                  inputMode="decimal"
-                />
-              </div>
-              <div className="form-group">
-                <label>Token</label>
-                <input className="input-exo" value={token} onChange={e => setToken(e.target.value)} placeholder="usdc" />
-              </div>
-            </div>
+            <TokenAmountInput
+              token={token}
+              onTokenChange={setToken}
+              amount={amount}
+              onAmountChange={setAmount}
+              balance={fromBalance?.balances?.[token]}
+              label="Amount"
+              placeholder="10.00"
+              tokens={["USDC", "ETH"]}
+              showMax
+            />
 
             <div className="form-group">
               <label>Category (optional)</label>
@@ -178,11 +179,7 @@ export function TransferPage() {
             </div>
             <div className="exo-review-row">
               <span className="exo-review-label">Amount</span>
-              <span className="exo-review-value">{parseFloat(amount).toFixed(2)} USDC</span>
-            </div>
-            <div className="exo-review-row">
-              <span className="exo-review-label">Token</span>
-              <span className="exo-review-value">{token || "usdc"}</span>
+              <span className="exo-review-value">{Number(amount).toLocaleString(undefined, { maximumFractionDigits: 6 })} {TOKEN_ADDRESSES[token]?.symbol ?? token}</span>
             </div>
             {selectedCategory && (
               <div className="exo-review-row">
@@ -207,10 +204,8 @@ export function TransferPage() {
 
       {step === "success" && (
         <div className="exo-feedback exo-animate-in">
-          <div className="exo-feedback-icon success">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
-          </div>
-          <div className="exo-feedback-title">Transfer Complete</div>
+          <SuccessCheck size={56} />
+          <div className="exo-feedback-title" style={{ opacity: 0, animation: "slide-up 0.35s cubic-bezier(0.22, 1, 0.36, 1) 0.5s forwards" }}>Transfer Complete</div>
           {txHash && (
             <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)", wordBreak: "break-all", marginTop: 4 }}>
               {txHash}

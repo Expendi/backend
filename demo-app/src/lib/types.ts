@@ -82,6 +82,8 @@ export interface RecurringPayment {
   userId: string;
   walletId: string;
   walletType: "user" | "server" | "agent";
+  name: string | null;
+  categoryId: string | null;
   recipientAddress: string;
   paymentType: "erc20_transfer" | "raw_transfer" | "contract_call" | "offramp";
   amount: string;
@@ -276,27 +278,35 @@ export interface GroupMember {
 
 export interface SplitExpense {
   id: string;
-  groupId: string;
-  creatorId: string;
-  description: string;
-  totalAmount: string;
+  creatorUserId: string;
+  title: string;
   tokenAddress: string;
   tokenSymbol: string;
   tokenDecimals: number;
-  status: "pending" | "settled" | "cancelled";
-  shares: SplitShare[];
+  totalAmount: string;
+  chainId: number;
+  transactionId: string | null;
+  categoryId: string | null;
+  status: "active" | "settled" | "cancelled";
+  shares?: SplitShare[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SplitExpenseWithShares extends SplitExpense {
+  shares: SplitShare[];
 }
 
 export interface SplitShare {
   id: string;
   expenseId: string;
-  userId: string;
+  debtorUserId: string;
   amount: string;
-  isPaid: boolean;
+  status: "pending" | "paid" | "cancelled";
+  transactionId: string | null;
   paidAt: string | null;
-  txHash: string | null;
+  createdAt: string;
+  username: string | null;
 }
 
 export interface GoalSaving {
@@ -380,6 +390,13 @@ export interface ApiError {
   message: string;
   method?: string;
   [key: string]: unknown;
+}
+
+export interface FeeEstimate {
+  grossAmount: number;
+  fiatAmount: number;
+  fee: number;
+  netAmount: number;
 }
 
 export type ApiResult<T> =

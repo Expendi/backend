@@ -9,6 +9,7 @@ import { OnboardingService } from "../services/onboarding/onboarding-service.js"
 import { RecurringPaymentService } from "../services/recurring-payment/recurring-payment-service.js";
 import { YieldService } from "../services/yield/yield-service.js";
 import { GoalSavingsService } from "../services/goal-savings/index.js";
+import { AgentAutonomyService } from "../services/agent/index.js";
 import { DatabaseService } from "../db/client.js";
 import { wallets, userProfiles } from "../db/schema/index.js";
 
@@ -483,6 +484,20 @@ export function createInternalRoutes(runtime: AppRuntime) {
         const service = yield* GoalSavingsService;
         const deposits = yield* service.processDueDeposits();
         return { processedCount: deposits.length, deposits };
+      }),
+      c
+    )
+  );
+
+  // ── Agent autonomy routes ────────────────────────────────────────
+
+  // Process all active mandates (called by cron / Trigger.dev)
+  app.post("/agent/process-mandates", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const autonomy = yield* AgentAutonomyService;
+        return yield* autonomy.processAllMandates();
       }),
       c
     )

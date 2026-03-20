@@ -30,6 +30,19 @@ const CHART_COLORS = [
   "#f59e0b", "#ef4444", "#ec4899", "#a855f7", "#14b8a6",
 ];
 
+const PRESET_CATEGORIES: { name: string; description: string }[] = [
+  { name: "Food & Dining", description: "Meals, groceries, and restaurants" },
+  { name: "Transport", description: "Rides, fuel, and public transit" },
+  { name: "Bills & Utilities", description: "Rent, electricity, internet, and subscriptions" },
+  { name: "Entertainment", description: "Movies, games, events, and streaming" },
+  { name: "Shopping", description: "Clothing, electronics, and general purchases" },
+  { name: "Health", description: "Medical, pharmacy, and wellness" },
+  { name: "Education", description: "Courses, books, and tuition" },
+  { name: "Savings", description: "Deposits into savings and investments" },
+  { name: "Transfers", description: "Peer-to-peer and account transfers" },
+  { name: "Other", description: "Uncategorized transactions" },
+];
+
 const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const USDC_SYMBOL = "USDC";
 const USDC_DECIMALS = 6;
@@ -73,6 +86,13 @@ export function CategoriesPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState("");
 
+
+  // Quick setup (batch creation)
+  const [quickSetupSelected, setQuickSetupSelected] = useState<Set<number>>(
+    () => new Set(PRESET_CATEGORIES.map((_, i) => i))
+  );
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [batchError, setBatchError] = useState("");
 
   // Spending analytics
   const [spending, setSpending] = useState<SpendingRow[]>([]);
@@ -217,6 +237,38 @@ export function CategoriesPage() {
   };
 
 
+  const toggleQuickSetupPreset = (index: number) => {
+    setQuickSetupSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  };
+
+  const handleBatchCreate = async () => {
+    if (quickSetupSelected.size === 0) return;
+    setBatchLoading(true);
+    setBatchError("");
+    try {
+      const payload = PRESET_CATEGORIES
+        .filter((_, i) => quickSetupSelected.has(i))
+        .map(({ name, description }) => ({ name, description }));
+      await request<Category[]>("/categories/batch", {
+        method: "POST",
+        body: payload,
+      });
+      fetchCategories();
+      fetchLimits();
+    } catch (err) {
+      setBatchError(err instanceof Error ? err.message : "Failed to create categories");
+    }
+    setBatchLoading(false);
+  };
+
   const openCategoryModal = (cat: Category) => {
     setSelected(cat);
     setEditMode(false);
@@ -258,15 +310,73 @@ export function CategoriesPage() {
           ) : (
             <div className="exo-animate-in">
               {categories.length === 0 && !showCreateForm ? (
-                <div className="exo-empty">
-                  <div className="exo-empty-icon">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
-                    </svg>
+                <div className="exo-animate-in">
+                  {/* Quick Setup card for onboarding */}
+                  <div className="exo-form-card" style={{ marginBottom: 16 }}>
+                    <div className="exo-form-card-title">Quick Setup</div>
+                    <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 12px" }}>
+                      Select common categories to get started quickly, or add your own below.
+                    </p>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+                      {PRESET_CATEGORIES.map((preset, i) => {
+                        const isSelected = quickSetupSelected.has(i);
+                        return (
+                          <button
+                            key={preset.name}
+                            type="button"
+                            onClick={() => toggleQuickSetupPreset(i)}
+                            disabled={batchLoading}
+                            style={{
+                              padding: "6px 12px",
+                              borderRadius: 16,
+                              border: isSelected
+                                ? "1.5px solid var(--exo-accent, #8b5cf6)"
+                                : "1.5px solid var(--border-color, #333)",
+                              background: isSelected
+                                ? "var(--exo-accent-dim, rgba(139,92,246,0.15))"
+                                : "transparent",
+                              color: isSelected
+                                ? "var(--exo-accent, #8b5cf6)"
+                                : "var(--text-muted)",
+                              fontSize: 13,
+                              fontWeight: 500,
+                              cursor: batchLoading ? "not-allowed" : "pointer",
+                              transition: "all 0.15s ease",
+                              fontFamily: "inherit",
+                            }}
+                          >
+                            {preset.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: batchError ? 8 : 0 }}>
+                      <button
+                        className="btn-exo btn-primary"
+                        disabled={quickSetupSelected.size === 0 || batchLoading}
+                        onClick={handleBatchCreate}
+                        style={{ flex: 1 }}
+                      >
+                        {batchLoading
+                          ? "Creating..."
+                          : `Create ${quickSetupSelected.size} ${quickSetupSelected.size === 1 ? "Category" : "Categories"}`}
+                      </button>
+                      <button
+                        className="btn-exo btn-secondary"
+                        onClick={() => {
+                          setQuickSetupSelected(new Set());
+                          setShowCreateForm(true);
+                          setBatchError("");
+                        }}
+                        disabled={batchLoading}
+                      >
+                        Custom
+                      </button>
+                    </div>
+                    {batchError && (
+                      <div className="msg-error" style={{ marginTop: 8 }}>{batchError}</div>
+                    )}
                   </div>
-                  <div className="exo-empty-text">No categories yet</div>
-                  <div className="exo-empty-hint">Create categories to organize your transactions</div>
-                  <button className="btn-exo btn-primary btn-sm" onClick={() => setShowCreateForm(true)}>Add Category</button>
                 </div>
               ) : (
                 <>

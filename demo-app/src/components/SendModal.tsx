@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useApi, ApiRequestError } from "../hooks/useApi";
 import { useApprovalContext } from "../context/ApprovalContext";
+import { TokenIcon } from "./TokenAmountInput";
 import "../styles/send-modal.css";
 
 /* ─── Types ──────────────────────────────────────────────────────── */
@@ -45,8 +46,6 @@ const TOKEN_DECIMALS: Record<Token, number> = {
   ETH: 18,
   USDC: 6,
 };
-
-const USDC_CONTRACT_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 
 const WALLET_TYPE_LABELS: Record<WalletType, string> = {
   user: "User",
@@ -134,6 +133,8 @@ export function SendModal({ open, onClose, walletBalances }: SendModalProps) {
   const [recipient, setRecipient] = useState("");
   const [fromWallet, setFromWallet] = useState<WalletType>("user");
   const [toWallet, setToWallet] = useState<WalletType>("server");
+  const [categoryId, setCategoryId] = useState("");
+  const [categories, setCategories] = useState<{ id: string; name: string; isGlobal: boolean }[]>([]);
 
   // Resolution state
   const [resolvedUser, setResolvedUser] = useState<ResolvedUser | null>(null);
@@ -162,6 +163,7 @@ export function SendModal({ open, onClose, walletBalances }: SendModalProps) {
       setRecipient("");
       setFromWallet("user");
       setToWallet("server");
+      setCategoryId("");
       setResolvedUser(null);
       setResolving(false);
       setResolveError("");
@@ -170,12 +172,17 @@ export function SendModal({ open, onClose, walletBalances }: SendModalProps) {
       setErrorMessage("");
       setClosing(false);
 
+      // Fetch categories
+      request<{ id: string; name: string; userId: string | null }[]>("/categories")
+        .then(raw => setCategories(raw.map(c => ({ id: c.id, name: c.name, isGlobal: c.userId === null }))))
+        .catch(() => {});
+
       // Focus amount input after animation
       setTimeout(() => {
         amountInputRef.current?.focus();
       }, 300);
     }
-  }, [open]);
+  }, [open, request]);
 
   // Cleanup timeouts on unmount
   useEffect(() => {
@@ -355,6 +362,9 @@ export function SendModal({ open, onClose, walletBalances }: SendModalProps) {
         if (token === "USDC") {
           body.token = "usdc";
         }
+        if (categoryId) {
+          body.categoryId = categoryId;
+        }
 
         const result = await requestWithApproval<TransferResult>("/wallets/transfer", {
           method: "POST",
@@ -382,6 +392,7 @@ export function SendModal({ open, onClose, walletBalances }: SendModalProps) {
                   recipientAddress,
                   parseAmountToBaseUnits(amount, TOKEN_DECIMALS.USDC),
                 ],
+                categoryId: categoryId || undefined,
               },
             }
           );
@@ -396,6 +407,7 @@ export function SendModal({ open, onClose, walletBalances }: SendModalProps) {
                 walletType: "user",
                 to: recipientAddress,
                 value: parseAmountToBaseUnits(amount, TOKEN_DECIMALS.ETH),
+                categoryId: categoryId || undefined,
               },
             }
           );
@@ -614,6 +626,16 @@ export function SendModal({ open, onClose, walletBalances }: SendModalProps) {
                     <span className="send-review-row-label">Network</span>
                     <span className="send-review-row-value">Base</span>
                   </div>
+
+                  {categoryId && (() => {
+                    const cat = categories.find(c => c.id === categoryId);
+                    return cat ? (
+                      <div className="send-review-row">
+                        <span className="send-review-row-label">Category</span>
+                        <span className="send-review-row-value">{cat.name}</span>
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
               </div>
 
@@ -646,6 +668,7 @@ export function SendModal({ open, onClose, walletBalances }: SendModalProps) {
                     setAmount("");
                   }}
                 >
+                  <TokenIcon name="USDC" size={18} />
                   USDC
                 </button>
                 <button
@@ -655,6 +678,7 @@ export function SendModal({ open, onClose, walletBalances }: SendModalProps) {
                     setAmount("");
                   }}
                 >
+                  <TokenIcon name="ETH" size={18} />
                   ETH
                 </button>
               </div>
@@ -801,6 +825,24 @@ export function SendModal({ open, onClose, walletBalances }: SendModalProps) {
                   {resolveError && !resolving && (
                     <span className="send-field-error">{resolveError}</span>
                   )}
+                </div>
+              )}
+
+              {/* Category (optional) */}
+              {categories.length > 0 && (
+                <div className="send-field-group">
+                  <span className="send-field-label">Category (optional)</span>
+                  <select
+                    className="send-field-input"
+                    value={categoryId}
+                    onChange={(e) => setCategoryId(e.target.value)}
+                    aria-label="Category"
+                  >
+                    <option value="">No category</option>
+                    {categories.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}{c.isGlobal ? " (global)" : ""}</option>
+                    ))}
+                  </select>
                 </div>
               )}
 

@@ -1,0 +1,304 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Chat History Drawer
+   ═══════════════════════════════════════════════════════════════════ */
+
+.chat-history-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 399;
+  animation: fadeIn 0.2s ease;
+}
+
+.chat-history-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 320px;
+  max-width: 85vw;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  z-index: 400;
+  display: flex;
+  flex-direction: column;
+  animation: drawerSlideIn 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 8px 0 32px rgba(0, 0, 0, 0.2);
+}
+
+@keyframes drawerSlideIn {
+  from {
+    transform: translateX(-100%);
+    opacity: 0.8;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* ─── Header ──────────────────────────────────────────────────────── */
+
+.chat-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.chat-history-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.chat-history-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chat-history-new-btn,
+.chat-history-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.chat-history-new-btn:hover {
+  border-color: var(--exo-lime);
+  color: var(--exo-lime);
+  background: color-mix(in srgb, var(--exo-lime) 8%, transparent);
+}
+
+.chat-history-close-btn:hover {
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+
+/* ─── List ────────────────────────────────────────────────────────── */
+
+.chat-history-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+/* ─── Conversation Item ──────────────────────────────────────────── */
+
+.chat-history-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+  font-family: var(--font-body);
+  color: var(--text-primary);
+}
+
+.chat-history-item:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border);
+}
+
+.chat-history-item.active {
+  background: color-mix(in srgb, var(--exo-lime) 6%, var(--bg-card));
+  border-color: color-mix(in srgb, var(--exo-lime) 25%, var(--border));
+}
+
+.chat-history-item-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.chat-history-item-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-history-item.active .chat-history-item-title {
+  color: var(--exo-lime);
+}
+
+.chat-history-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* ─── Delete Button ──────────────────────────────────────────────── */
+
+.chat-history-item-delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.chat-history-item:hover .chat-history-item-delete {
+  opacity: 1;
+}
+
+.chat-history-item-delete:hover {
+  background: color-mix(in srgb, var(--exo-coral) 10%, transparent);
+  color: var(--exo-coral);
+}
+
+.chat-history-item-delete.confirm {
+  opacity: 1;
+  background: color-mix(in srgb, var(--exo-coral) 15%, transparent);
+  color: var(--exo-coral);
+  animation: confirmPulse 0.3s ease;
+}
+
+@keyframes confirmPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+/* ─── Item Actions Container ─────────────────────────────────────── */
+
+.chat-history-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* ─── Edit / Rename Button ───────────────────────────────────────── */
+
+.chat-history-item-edit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.chat-history-item:hover .chat-history-item-edit {
+  opacity: 1;
+}
+
+.chat-history-item-edit:hover {
+  background: color-mix(in srgb, var(--exo-lime) 10%, transparent);
+  color: var(--exo-lime);
+}
+
+/* ─── Rename Input ───────────────────────────────────────────────── */
+
+.chat-history-rename-input {
+  width: 100%;
+  padding: 4px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-body);
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--exo-lime);
+  border-radius: 6px;
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--exo-lime) 20%, transparent);
+}
+
+.chat-history-rename-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* ─── Empty & Loading States ─────────────────────────────────────── */
+
+.chat-history-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.chat-history-empty svg {
+  opacity: 0.3;
+}
+
+.chat-history-empty span {
+  font-size: 13px;
+}
+
+.chat-history-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.chat-history-skeleton {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chat-history-skeleton .skeleton-title {
+  width: 70%;
+  height: 14px;
+  background: var(--bg-elevated);
+  border-radius: 4px;
+  animation: skeletonPulse 1.5s ease-in-out infinite;
+}
+
+.chat-history-skeleton .skeleton-meta {
+  width: 40%;
+  height: 10px;
+  background: var(--bg-elevated);
+  border-radius: 4px;
+  animation: skeletonPulse 1.5s ease-in-out infinite;
+  animation-delay: 0.2s;
+}

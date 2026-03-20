@@ -1,0 +1,269 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Token Amount Input — Reusable token + amount field
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ─── Icon ───────────────────────────────────────────────────────── */
+
+.tai-icon-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 900;
+  flex-shrink: 0;
+}
+
+.tai-icon-img {
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+/* ─── Wrapper ────────────────────────────────────────────────────── */
+
+.tai-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tai-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ─── Field ──────────────────────────────────────────────────────── */
+
+.tai-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-card, rgba(255, 255, 255, 0.04));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 10px 12px;
+  transition: border-color 0.15s;
+}
+
+.tai-field:focus-within {
+  border-color: var(--exo-lime, #c8ff00);
+}
+
+.tai-field.exceeds {
+  border-color: var(--exo-error, #ff4d4d);
+}
+
+.tai-field.has-error {
+  border-color: var(--exo-error, #ff4d4d);
+}
+
+.tai-input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary, #fff);
+  padding: 0;
+}
+
+.tai-input::placeholder {
+  color: var(--text-muted, rgba(255, 255, 255, 0.25));
+}
+
+.tai-field.exceeds .tai-input {
+  color: var(--exo-error, #ff4d4d);
+}
+
+/* ─── Token Button (picker trigger) ──────────────────────────────── */
+
+.tai-token-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 4px 8px 4px 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.tai-token-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.tai-token-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.tai-token-symbol {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary, #fff);
+  letter-spacing: 0.5px;
+}
+
+.tai-token-chevron {
+  opacity: 0.5;
+}
+
+/* ─── Token Display (non-interactive) ────────────────────────────── */
+
+.tai-token-display {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 4px 0;
+}
+
+/* ─── Sub line (balance, errors) ─────────────────────────────────── */
+
+.tai-sub {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 2px;
+}
+
+.tai-balance {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.tai-error {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--exo-error, #ff4d4d);
+  font-weight: 600;
+}
+
+.tai-max {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--exo-lime, #c8ff00);
+  background: rgba(200, 255, 0, 0.08);
+  border: 1px solid rgba(200, 255, 0, 0.2);
+  border-radius: 4px;
+  padding: 1px 5px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.tai-max:hover {
+  background: rgba(200, 255, 0, 0.15);
+}
+
+/* ─── Token Picker Drawer ────────────────────────────────────────── */
+
+.tai-picker-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+}
+
+.tai-picker-content {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1001;
+  background: var(--bg-surface, #1a1a1a);
+  border-radius: 16px 16px 0 0;
+  max-height: 70vh;
+  outline: none;
+  padding: 16px;
+}
+
+.tai-picker-handle {
+  width: 32px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+  margin: 0 auto 12px;
+}
+
+.tai-picker-title {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.tai-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  max-height: 50vh;
+}
+
+.tai-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 10px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+  text-align: left;
+}
+
+.tai-picker-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.tai-picker-item.active {
+  background: rgba(200, 255, 0, 0.06);
+}
+
+.tai-picker-item-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.tai-picker-item-symbol {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary, #fff);
+}
+
+.tai-picker-item-name {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.tai-picker-check {
+  color: var(--exo-lime, #c8ff00);
+  flex-shrink: 0;
+}

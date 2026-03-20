@@ -1,0 +1,28 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Morphing Button — Subtle text transition for CTA label changes
+   ═══════════════════════════════════════════════════════════════════ */
+
+.morphing-label {
+  display: inline-block;
+  transition: opacity 0.1s ease, transform 0.1s ease;
+}
+
+.morphing-label.morphing-out {
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+.morphing-label.morphing-in {
+  animation: morphIn 0.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes morphIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

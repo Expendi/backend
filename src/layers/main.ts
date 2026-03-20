@@ -23,6 +23,13 @@ import { GroupAccountServiceLive } from "../services/group-account/group-account
 import { SplitExpenseServiceLive } from "../services/split-expense/split-expense-service.js";
 import { GoalSavingsServiceLive } from "../services/goal-savings/goal-savings-service.js";
 import { TransactionApprovalServiceLive } from "../services/transaction-approval/transaction-approval-service.js";
+import { AgentConversationServiceLive } from "../services/agent/agent-conversation-service.js";
+import { AgentProfileServiceLive } from "../services/agent/agent-profile-service.js";
+import { AgentMandateServiceLive } from "../services/agent/agent-mandate-service.js";
+import { AgentActivityServiceLive } from "../services/agent/agent-activity-service.js";
+import { CoinGeckoAdapterLive } from "../services/adapters/coingecko.js";
+import { AgentAutonomyServiceLive } from "../services/agent/agent-autonomy-service.js";
+import { AgentPatternServiceLive } from "../services/agent/agent-pattern-service.js";
 
 const ConfigLayer = ConfigLive;
 
@@ -145,6 +152,38 @@ const TransactionApprovalServiceLayer = TransactionApprovalServiceLive.pipe(
   Layer.provide(ConfigLayer)
 );
 
+const AgentConversationServiceLayer = AgentConversationServiceLive.pipe(
+  Layer.provide(DatabaseLayer)
+);
+
+const AgentProfileServiceLayer = AgentProfileServiceLive.pipe(
+  Layer.provide(DatabaseLayer),
+  Layer.provide(ConfigLayer)
+);
+
+const AgentMandateServiceLayer = AgentMandateServiceLive.pipe(
+  Layer.provide(DatabaseLayer)
+);
+
+const AgentActivityServiceLayer = AgentActivityServiceLive.pipe(
+  Layer.provide(DatabaseLayer)
+);
+
+const MarketIntelligenceServiceLayer = CoinGeckoAdapterLive;
+
+const AgentAutonomyServiceLayer = AgentAutonomyServiceLive.pipe(
+  Layer.provide(DatabaseLayer),
+  Layer.provide(AdapterServiceLayer),
+  Layer.provide(WalletServiceLayer),
+  Layer.provide(AgentMandateServiceLayer),
+  Layer.provide(AgentProfileServiceLayer),
+  Layer.provide(AgentActivityServiceLayer)
+);
+
+const AgentPatternServiceLayer = AgentPatternServiceLive.pipe(
+  Layer.provide(DatabaseLayer)
+);
+
 export const MainLayer = Layer.mergeAll(
   ConfigLayer,
   DatabaseLayer,
@@ -169,5 +208,12 @@ export const MainLayer = Layer.mergeAll(
   GroupAccountServiceLayer,
   SplitExpenseServiceLayer,
   GoalSavingsServiceLayer,
-  TransactionApprovalServiceLayer
+  TransactionApprovalServiceLayer,
+  AgentConversationServiceLayer,
+  AgentProfileServiceLayer,
+  AgentMandateServiceLayer,
+  AgentActivityServiceLayer,
+  MarketIntelligenceServiceLayer,
+  AgentAutonomyServiceLayer,
+  AgentPatternServiceLayer
 );

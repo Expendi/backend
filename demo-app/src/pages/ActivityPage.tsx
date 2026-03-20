@@ -1,7 +1,26 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useDashboard } from "../context/DashboardContext";
+import { useApi } from "../hooks/useApi";
+import { BottomSheet } from "../components/BottomSheet";
+import { TokenIcon } from "../components/TokenAmountInput";
 import type { Transaction } from "../lib/types";
 import "../styles/wallet-home.css";
+import "../styles/page-transition.css";
+
+/* ─── Deposit Type ───────────────────────────────────────────────── */
+
+interface Deposit {
+  walletId: string;
+  walletType: string;
+  walletAddress: string;
+  from: string;
+  tokenAddress: string;
+  tokenSymbol: string;
+  amount: string;
+  formattedAmount: string;
+  blockNumber: string;
+  transactionHash: string;
+}
 
 /* ─── Helpers ─────────────────────────────────────────────────────── */
 
@@ -26,6 +45,10 @@ function formatMethod(method: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function truncateAddress(s: string): string {
+  return s ? `${s.slice(0, 8)}...${s.slice(-6)}` : "—";
+}
+
 function TxStatusBadge({ status }: { status: string }) {
   const statusClass = status === "submitted" ? "confirmed" : status;
   const label = status === "submitted" ? "success" : status;
@@ -34,19 +57,11 @@ function TxStatusBadge({ status }: { status: string }) {
 
 /* ─── Transaction Detail ─────────────────────────────────────────── */
 
-function TxDetail({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
+function TxDetail({ tx }: { tx: Transaction }) {
   const truncate = (s: string | null) => s ? `${s.slice(0, 10)}...${s.slice(-6)}` : "—";
 
   return (
-    <div className="activity-detail">
-      <div className="activity-detail-header">
-        <span className="wh-section-title">{formatMethod(tx.method)}</span>
-        <button className="activity-detail-close" onClick={onClose}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-      </div>
+    <div className="activity-detail" style={{ padding: 0 }}>
       <div className="activity-detail-rows">
         <div className="activity-detail-row"><span className="activity-detail-label">Status</span><TxStatusBadge status={tx.status} /></div>
         <div className="activity-detail-row"><span className="activity-detail-label">Wallet</span><span className="activity-detail-value">{tx.walletType}</span></div>
@@ -65,35 +80,97 @@ function TxDetail({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
   );
 }
 
+/* ─── Deposit Detail ─────────────────────────────────────────────── */
+
+function DepositDetail({ deposit }: { deposit: Deposit }) {
+  return (
+    <div className="activity-detail" style={{ padding: 0 }}>
+      <div className="activity-detail-rows">
+        <div className="activity-detail-row">
+          <span className="activity-detail-label">Type</span>
+          <TxStatusBadge status="confirmed" />
+        </div>
+        <div className="activity-detail-row">
+          <span className="activity-detail-label">Amount</span>
+          <span className="activity-detail-value" style={{ fontWeight: 600, color: "var(--exo-lime, #a3e635)" }}>
+            +{deposit.formattedAmount} {deposit.tokenSymbol}
+          </span>
+        </div>
+        <div className="activity-detail-row">
+          <span className="activity-detail-label">From</span>
+          <span className="activity-detail-value" style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>{truncateAddress(deposit.from)}</span>
+        </div>
+        <div className="activity-detail-row">
+          <span className="activity-detail-label">To Wallet</span>
+          <span className="activity-detail-value">{deposit.walletType}</span>
+        </div>
+        <div className="activity-detail-row">
+          <span className="activity-detail-label">Block</span>
+          <span className="activity-detail-value">{deposit.blockNumber}</span>
+        </div>
+        {deposit.transactionHash && (
+          <div className="activity-detail-row">
+            <span className="activity-detail-label">Tx Hash</span>
+            <a className="activity-detail-link" href={`https://basescan.org/tx/${deposit.transactionHash}`} target="_blank" rel="noopener noreferrer">
+              {truncateAddress(deposit.transactionHash)}
+            </a>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ─── Filter Tabs ─────────────────────────────────────────────────── */
 
-type Filter = "all" | "confirmed" | "pending" | "failed";
+type Filter = "all" | "confirmed" | "pending" | "failed" | "deposits";
 
 /* ─── Page ────────────────────────────────────────────────────────── */
 
 export function ActivityPage() {
   const { recentTransactions, loading } = useDashboard();
+  const { request } = useApi();
   const [filter, setFilter] = useState<Filter>("all");
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
+  const [selectedDeposit, setSelectedDeposit] = useState<Deposit | null>(null);
+  const [deposits, setDeposits] = useState<Deposit[]>([]);
+  const [depositsLoading, setDepositsLoading] = useState(false);
 
-  const filtered = filter === "all"
-    ? recentTransactions
-    : recentTransactions.filter((tx) => {
-        if (filter === "confirmed") return tx.status === "confirmed" || tx.status === "submitted";
-        return tx.status === filter;
-      });
+  const fetchDeposits = useCallback(async () => {
+    setDepositsLoading(true);
+    try {
+      const data = await request<Deposit[]>("/wallets/deposits");
+      setDeposits(data);
+    } catch { /* silent */ }
+    setDepositsLoading(false);
+  }, [request]);
+
+  useEffect(() => {
+    fetchDeposits();
+  }, [fetchDeposits]);
+
+  const filtered = filter === "deposits"
+    ? []
+    : filter === "all"
+      ? recentTransactions
+      : recentTransactions.filter((tx) => {
+          if (filter === "confirmed") return tx.status === "confirmed" || tx.status === "submitted";
+          return tx.status === filter;
+        });
+
+  const showDeposits = filter === "all" || filter === "deposits";
 
   return (
     <div className="wallet-home">
       <div className="wh-section" style={{ paddingTop: 24 }}>
         <div className="wh-section-header">
           <span className="wh-section-title">Activity</span>
-          <span className="wh-section-count">{recentTransactions.length}</span>
+          <span className="wh-section-count">{recentTransactions.length + deposits.length}</span>
         </div>
 
         {/* Filters */}
         <div className="activity-filters">
-          {(["all", "confirmed", "pending", "failed"] as Filter[]).map((f) => (
+          {(["all", "confirmed", "pending", "failed", "deposits"] as Filter[]).map((f) => (
             <button
               key={f}
               className={`activity-filter-btn ${filter === f ? "active" : ""}`}
@@ -104,42 +181,97 @@ export function ActivityPage() {
           ))}
         </div>
 
-        {/* Transaction List */}
-        {loading && recentTransactions.length === 0 ? (
-          <div className="wh-wallet-card wh-skeleton-card">
-            <div className="wh-skeleton" style={{ width: "80%" }} />
-            <div className="wh-skeleton" style={{ width: "50%" }} />
-            <div className="wh-skeleton" style={{ width: "60%" }} />
-          </div>
-        ) : filtered.length === 0 ? (
+        {/* Deposits section */}
+        {showDeposits && deposits.length > 0 && (
+          <>
+            {filter === "all" && (
+              <div className="wh-section-header" style={{ marginTop: 8, marginBottom: 4 }}>
+                <span className="wh-section-title" style={{ fontSize: 14 }}>Deposits</span>
+                <span className="wh-section-count">{deposits.length}</span>
+              </div>
+            )}
+            <div className="activity-list" style={{ marginBottom: filter === "all" ? 16 : 0 }}>
+              {deposits.map((dep) => (
+                <button className="activity-item" key={dep.transactionHash + dep.walletId} onClick={() => setSelectedDeposit(dep)}>
+                  <div className="activity-item-left" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <TokenIcon name={dep.tokenSymbol} size={28} />
+                    <div style={{ display: "flex", flexDirection: "column" }}>
+                      <span className="activity-method">Deposit</span>
+                      <span className="activity-time" style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>
+                        from {truncateAddress(dep.from)}
+                      </span>
+                    </div>
+                  </div>
+                  <span style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: "var(--exo-lime, #a3e635)",
+                  }}>
+                    +{dep.formattedAmount} {dep.tokenSymbol}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Transactions section */}
+        {filter !== "deposits" && (
+          <>
+            {filter === "all" && deposits.length > 0 && (
+              <div className="wh-section-header" style={{ marginBottom: 4 }}>
+                <span className="wh-section-title" style={{ fontSize: 14 }}>Transactions</span>
+                <span className="wh-section-count">{recentTransactions.length}</span>
+              </div>
+            )}
+
+            {loading && recentTransactions.length === 0 ? (
+              <div className="wh-wallet-card wh-skeleton-card">
+                <div className="wh-skeleton" style={{ width: "80%" }} />
+                <div className="wh-skeleton" style={{ width: "50%" }} />
+                <div className="wh-skeleton" style={{ width: "60%" }} />
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="wh-insight-card">
+                <span className="wh-insight-text">
+                  {filter === "all" ? "No transactions yet." : `No ${filter} transactions.`}
+                </span>
+              </div>
+            ) : (
+              <div className="activity-list">
+                {filtered.map((tx) => (
+                  <button className="activity-item" key={tx.id} onClick={() => setSelectedTx(tx)}>
+                    <div className="activity-item-left">
+                      <span className="activity-method">{formatMethod(tx.method)}</span>
+                      <span className="activity-time">{formatTime(tx.createdAt)}</span>
+                    </div>
+                    <TxStatusBadge status={tx.status} />
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {filter === "deposits" && deposits.length === 0 && (
           <div className="wh-insight-card">
             <span className="wh-insight-text">
-              {filter === "all" ? "No transactions yet." : `No ${filter} transactions.`}
+              {depositsLoading ? "Loading deposits..." : "No deposits found."}
             </span>
-          </div>
-        ) : (
-          <div className="activity-list">
-            {filtered.map((tx) => (
-              <button className="activity-item" key={tx.id} onClick={() => setSelectedTx(tx)}>
-                <div className="activity-item-left">
-                  <span className="activity-method">{formatMethod(tx.method)}</span>
-                  <span className="activity-time">{formatTime(tx.createdAt)}</span>
-                </div>
-                <TxStatusBadge status={tx.status} />
-              </button>
-            ))}
           </div>
         )}
       </div>
 
-      {/* Detail Modal */}
-      {selectedTx && (
-        <div className="activity-modal-backdrop" onClick={() => setSelectedTx(null)}>
-          <div className="activity-modal" onClick={(e) => e.stopPropagation()}>
-            <TxDetail tx={selectedTx} onClose={() => setSelectedTx(null)} />
-          </div>
-        </div>
-      )}
+      {/* Transaction Detail */}
+      <BottomSheet open={!!selectedTx} onClose={() => setSelectedTx(null)} title={selectedTx ? formatMethod(selectedTx.method) : undefined}>
+        {selectedTx && <TxDetail tx={selectedTx} />}
+      </BottomSheet>
+
+      {/* Deposit Detail */}
+      <BottomSheet open={!!selectedDeposit} onClose={() => setSelectedDeposit(null)} title="Deposit">
+        {selectedDeposit && <DepositDetail deposit={selectedDeposit} />}
+      </BottomSheet>
     </div>
   );
 }

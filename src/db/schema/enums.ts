@@ -112,3 +112,38 @@ export const goalSavingsDepositStatusEnum = pgEnum(
   "goal_savings_deposit_status",
   ["pending", "confirmed", "failed"]
 );
+
+export const trustTierEnum = pgEnum("trust_tier", [
+  "observe",
+  "notify",
+  "act_within_limits",
+  "full",
+]);
+
+export const mandateStatusEnum = pgEnum("mandate_status", [
+  "active",
+  "paused",
+  "expired",
+  "revoked",
+]);
+
+export const mandateSourceEnum = pgEnum("mandate_source", [
+  "explicit",
+  "suggested",
+  "inferred",
+]);
+
+export const mandateExecutionStatusEnum = pgEnum("mandate_execution_status", [
+  "success",
+  "failed",
+  "skipped",
+]);
+
+export const agentActivityTypeEnum = pgEnum("agent_activity_type", [
+  "mandate_executed",
+  "pattern_detected",
+  "alert",
+  "suggestion",
+  "balance_change",
+  "position_matured",
+]);

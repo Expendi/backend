@@ -1,8 +1,16 @@
+import { Effect } from "effect";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { createAdapter, providers } from "glove-core/models/providers";
 import type { Message, ToolCall, PromptRequest, Tool } from "glove-core/core";
 import type { AuthVariables } from "../middleware/auth.js";
+import type { AppRuntime } from "./effect-handler.js";
+import type { ConversationMessage } from "../db/schema/index.js";
+import {
+  AgentProfileService,
+  AgentConversationService,
+} from "../services/agent/index.js";
+import { buildSystemPrompt } from "../services/agent/system-prompt-builder.js";
 import z4 from "zod4";
 
 interface SerializedTool {
@@ -15,6 +23,7 @@ interface RemotePromptRequest {
   systemPrompt: string;
   messages: Message[];
   tools?: SerializedTool[];
+  conversationId?: string;
 }
 
 /**
@@ -96,7 +105,8 @@ function deserializeTools(tools: SerializedTool[]): Tool<unknown>[] {
   }));
 }
 
-export function createChatRoutes() {
+
+export function createChatRoutes(runtime: AppRuntime) {
   const router = new Hono<{ Variables: AuthVariables }>();
 
   router.post("/", async (c) => {
@@ -142,20 +152,72 @@ export function createChatRoutes() {
 
     const body = (await c.req.json()) as RemotePromptRequest;
 
-    if (body.systemPrompt) {
-      adapter.setSystemPrompt(body.systemPrompt);
+    if (!Array.isArray(body.messages) || body.messages.length === 0) {
+      return c.json({ error: "messages must be a non-empty array" }, 400);
     }
 
-    const tools = body.tools?.length ? deserializeTools(body.tools) : undefined;
+    // Build a profile-aware system prompt if the user is authenticated
+    const userId = c.get("userId");
+    const DEFAULT_SYSTEM_PROMPT = "You are exo, a helpful financial assistant.";
+    let systemPrompt: string | undefined;
+    let profileData: { trustTier: string; agentBudget: string; profile: Record<string, unknown> } | undefined;
+
+    if (userId) {
+      try {
+        const agentProfile = await runtime.runPromise(
+          Effect.gen(function* () {
+            const profileService = yield* AgentProfileService;
+            return yield* profileService.getProfile(userId);
+          })
+        );
+
+        profileData = {
+          trustTier: agentProfile.trustTier,
+          agentBudget: agentProfile.agentBudget,
+          profile: (agentProfile.profile ?? {}) as Record<string, unknown>,
+        };
+
+        systemPrompt = buildSystemPrompt({
+          profile: agentProfile.profile ?? undefined,
+          trustTier: agentProfile.trustTier as "observe" | "notify" | "act_within_limits" | "full",
+          agentBudget: agentProfile.agentBudget,
+        });
+      } catch (err) {
+        // Profile fetch failed — fall back to hardcoded safe default.
+        console.error("Failed to fetch agent profile for system prompt:", err instanceof Error ? err.message : String(err));
+        systemPrompt = DEFAULT_SYSTEM_PROMPT;
+      }
+    }
+
+    adapter.setSystemPrompt(systemPrompt ?? DEFAULT_SYSTEM_PROMPT);
+
+    const tools = body.tools?.length ? deserializeTools(body.tools) : [];
+
+    // Track the last user message and agent response for post-stream reflection
+    const lastUserMessage = body.messages[body.messages.length - 1];
+    let agentResponseText = "";
 
     return streamSSE(c, async (stream) => {
+      // ── Emit "thinking" immediately so the frontend can show a loading state ──
+      await stream.writeSSE({
+        data: JSON.stringify({ type: "thinking" }),
+      });
+
+      let firstTextReceived = false;
+
       try {
         const result = await adapter.prompt(
-          { messages: body.messages, tools } as PromptRequest,
+          { messages: body.messages, tools: tools.length > 0 ? tools : undefined } as PromptRequest,
           async (eventType, eventData) => {
             switch (eventType) {
               case "text_delta": {
                 const d = eventData as { text: string };
+                if (!firstTextReceived) {
+                  firstTextReceived = true;
+                  // No extra event needed — the arrival of text_delta
+                  // implicitly tells the frontend that thinking is over.
+                }
+                agentResponseText += d.text;
                 await stream.writeSSE({
                   data: JSON.stringify({ type: "text_delta", text: d.text }),
                 });
@@ -177,6 +239,24 @@ export function createChatRoutes() {
                 });
                 break;
               }
+              case "tool_use_result": {
+                const d = eventData as {
+                  tool_name: string;
+                  call_id?: string;
+                  result: { data: unknown; status: string; message?: string };
+                };
+                await stream.writeSSE({
+                  data: JSON.stringify({
+                    type: "tool_result",
+                    name: d.tool_name,
+                    id: d.call_id,
+                    status: d.result.status,
+                    data: d.result.data,
+                    message: d.result.message,
+                  }),
+                });
+                break;
+              }
             }
           },
         );
@@ -190,14 +270,83 @@ export function createChatRoutes() {
             tokens_out: result.tokens_out,
           }),
         });
+
+        // Fire-and-forget: persist messages and trigger profile reflection
+        if (userId && agentResponseText) {
+          const now = new Date().toISOString();
+
+          const messagesToAppend: ConversationMessage[] = [];
+
+          if (lastUserMessage && lastUserMessage.sender === "user" && lastUserMessage.text) {
+            messagesToAppend.push({
+              role: "user",
+              content: lastUserMessage.text,
+              timestamp: now,
+            });
+          }
+
+          messagesToAppend.push({
+            role: "agent",
+            content: agentResponseText,
+            timestamp: now,
+          });
+
+          const persistAndReflect = Effect.gen(function* () {
+            const conversationService = yield* AgentConversationService;
+            const profileService = yield* AgentProfileService;
+
+            // Append both messages to the conversation
+            for (const message of messagesToAppend) {
+              yield* conversationService.appendMessage(userId, message, body.conversationId);
+            }
+
+            // Update token count
+            yield* conversationService.updateTokenCount(
+              userId,
+              (result.tokens_in ?? 0) + (result.tokens_out ?? 0),
+              body.conversationId
+            );
+
+            // Trigger reflection with the recent messages
+            yield* profileService.reflect(userId, messagesToAppend);
+          });
+
+          runtime.runPromise(persistAndReflect).catch((err) => {
+            console.error(
+              "Background reflection failed:",
+              err instanceof Error ? err.message : String(err)
+            );
+          });
+        }
       } catch (err) {
+        // ── Emit a dedicated error event with an actionable user message ──
+        const isNetworkError =
+          err instanceof Error &&
+          (err.message.includes("ECONNREFUSED") ||
+            err.message.includes("fetch failed") ||
+            err.message.includes("timeout"));
+
+        const userMessage = isNetworkError
+          ? "Unable to reach the AI service. Please try again in a moment."
+          : "Something went wrong. Please try sending your message again.";
+
+        await stream.writeSSE({
+          data: JSON.stringify({
+            type: "error",
+            code: isNetworkError ? "llm_unavailable" : "internal_error",
+            userMessage,
+            detail:
+              process.env.NODE_ENV !== "production"
+                ? (err instanceof Error ? err.message : String(err))
+                : undefined,
+          }),
+        });
+
+        // Still emit done so the frontend knows the stream has ended
         await stream.writeSSE({
           data: JSON.stringify({
             type: "done",
-            message: {
-              sender: "agent",
-              text: `Error: ${err instanceof Error ? err.message : "Unknown error"}`,
-            },
+            message: { sender: "agent", text: "" },
             tokens_in: 0,
             tokens_out: 0,
           }),

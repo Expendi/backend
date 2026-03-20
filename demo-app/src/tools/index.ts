@@ -1,30 +1,22 @@
 import type { ToolConfig } from "glove-react";
-import { dataTools } from "./data";
+import { utilityTools } from "./data";
 import { profileTools } from "./profile";
-import { walletTools } from "./wallets";
-import { transactionTools } from "./transactions";
-import { categoryTools } from "./categories";
-import { recurringTools } from "./recurring";
-import { yieldTools } from "./yield";
-import { pretiumTools } from "./pretium";
-import { swapTools } from "./swap";
-import { groupTools } from "./groups";
-import { savingsTools } from "./savings";
-import { securityTools } from "./security";
+import { sendTool } from "./super-send";
+import { buySellTool } from "./super-buy-sell";
+import { swapTool } from "./super-swap";
+import { earnTool } from "./super-earn";
+import { manageTool } from "./super-manage";
 
 export { setApiFetcher, setApprovalHandler } from "./api";
 
 export const allTools: ToolConfig[] = [
-  ...dataTools,
+  // ── Super tools (5) — high-level intent dispatchers ──
+  sendTool,
+  buySellTool,
+  swapTool,
+  earnTool,
+  manageTool,
+  // ── Utility tools — read-only info queries ──
+  ...utilityTools,
   ...profileTools,
-  ...walletTools,
-  ...transactionTools,
-  ...categoryTools,
-  ...recurringTools,
-  ...yieldTools,
-  ...pretiumTools,
-  ...swapTools,
-  ...groupTools,
-  ...savingsTools,
-  ...securityTools,
 ];

@@ -1,0 +1,248 @@
+/* ═══════════════════════════════════════════════════════════════════
+   BottomSheet — vaul-powered drawer with dark theme
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ─── Overlay ──────────────────────────────────────────────────── */
+
+.bottom-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+/* ─── Content (Mobile: bottom sheet) ───────────────────────────── */
+
+.bottom-sheet-content {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1001;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  border-radius: 20px 20px 0 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+  outline: none;
+}
+
+/* ─── Handle ───────────────────────────────────────────────────── */
+
+.bottom-sheet-handle-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 0 2px;
+  flex-shrink: 0;
+}
+
+.bottom-sheet-handle-bar::after {
+  content: "";
+  width: 32px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  transition: background 0.15s ease;
+}
+
+.bottom-sheet-handle-bar:hover::after {
+  background: var(--text-muted);
+}
+
+/* ─── Title ────────────────────────────────────────────────────── */
+
+.bottom-sheet-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 20px 12px;
+  flex-shrink: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+/* ─── Body ─────────────────────────────────────────────────────── */
+
+.bottom-sheet-body {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 20px 24px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  overscroll-behavior: contain;
+}
+
+/* ─── Desktop (>=768px): Centered Card Modal ────────────────────── */
+
+@media (min-width: 768px) {
+  .bottom-sheet-content {
+    position: fixed;
+    bottom: auto;
+    left: 50%;
+    top: 50%;
+    right: auto;
+    transform: translate(-50%, -50%);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+    max-height: 80vh;
+    width: 100%;
+    max-width: 460px;
+    height: auto;
+    min-height: 0;
+  }
+
+  /* Hide drag handle on desktop */
+  .bottom-sheet-handle-bar {
+    display: none;
+  }
+
+  .bottom-sheet-title {
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .bottom-sheet-body {
+    padding-bottom: 24px;
+  }
+}
+
+/* ─── Step Indicator ────────────────────────────────────────────── */
+
+.step-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 0 16px;
+}
+
+.step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.step-dot.step-dot-completed {
+  background: var(--text-muted);
+  border-color: var(--text-muted);
+}
+
+.step-dot.step-dot-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  transform: scale(1.2);
+}
+
+/* ─── Step Transition Wrappers ──────────────────────────────────── */
+
+.step-transition-forward {
+  animation: step-slide-in-right 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.step-transition-backward {
+  animation: step-slide-in-left 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes step-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes step-slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ─── Collapsible Section ───────────────────────────────────────── */
+
+.collapsible-section {
+  margin-bottom: 4px;
+}
+
+.collapsible-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 14px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  transition: all 0.2s ease;
+}
+
+.collapsible-header:hover {
+  border-color: var(--text-muted);
+}
+
+.collapsible-header.collapsible-open {
+  border-radius: var(--radius) var(--radius) 0 0;
+  border-bottom-color: transparent;
+}
+
+.collapsible-chevron {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.collapsible-chevron.collapsible-chevron-open {
+  transform: rotate(180deg);
+}
+
+.collapsible-body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.collapsible-body.collapsible-body-open {
+  max-height: 800px;
+}
+
+.collapsible-body-inner {
+  padding: 0 16px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.25s ease 0.1s, transform 0.25s ease 0.1s;
+}
+
+.collapsible-body-open .collapsible-body-inner {
+  opacity: 1;
+  transform: translateY(0);
+}

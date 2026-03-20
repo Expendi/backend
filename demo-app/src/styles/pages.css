@@ -322,6 +322,18 @@
   padding: 40px 20px;
   text-align: center;
   color: var(--text-muted);
+  animation: emptyFadeIn 0.5s ease forwards;
+}
+
+@keyframes emptyFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .exo-empty-icon {
@@ -333,6 +345,12 @@
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
+  animation: emptyIconBreathe 3s ease-in-out infinite;
+}
+
+@keyframes emptyIconBreathe {
+  0%, 100% { transform: scale(1); opacity: 0.7; }
+  50% { transform: scale(1.05); opacity: 1; }
 }
 
 .exo-empty-text {
@@ -438,7 +456,7 @@
   justify-content: center;
   z-index: 1000;
   padding: 16px;
-  animation: fadeIn 0.2s ease;
+  animation: modalBackdropIn 0.2s ease forwards;
 }
 
 .exo-modal {
@@ -449,12 +467,7 @@
   width: 100%;
   max-height: 80vh;
   overflow-y: auto;
-  animation: modalIn 0.25s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-@keyframes modalIn {
-  from { opacity: 0; transform: translateY(12px) scale(0.97); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  animation: modalContentIn 0.25s cubic-bezier(0.22, 1, 0.36, 1) 0.1s both;
 }
 
 .exo-modal-header {
@@ -582,13 +595,19 @@
   padding: 16px 20px;
 }
 
+.swap-token-box-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
 .swap-token-box-label {
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 1px;
   text-transform: uppercase;
   color: var(--text-muted);
-  margin-bottom: 8px;
 }
 
 .swap-token-box-row {
@@ -597,19 +616,61 @@
   gap: 12px;
 }
 
-.swap-token-select {
+/* ─── Token Badge (colored circle with initial) ──────────────────── */
+
+.swap-token-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 900;
+  color: #fff;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+/* ─── Token Chooser Button (replaces native select) ──────────────── */
+
+.swap-token-chooser {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.swap-token-chooser:hover {
+  border-color: var(--text-muted);
+  background: var(--bg-secondary);
+}
+
+.swap-token-chooser:active {
+  transform: scale(0.97);
+}
+
+.swap-token-chooser-name {
   font-family: var(--font-mono);
   font-size: 16px;
   font-weight: 700;
-  padding: 8px 12px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
   color: var(--text-primary);
-  cursor: pointer;
-  appearance: none;
-  min-width: 90px;
+  letter-spacing: 0.5px;
 }
+
+.swap-token-chooser svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* ─── Amount Input ───────────────────────────────────────────────── */
 
 .swap-token-amount {
   flex: 1;
@@ -618,23 +679,173 @@
   outline: none;
   font-family: var(--font-display);
   font-weight: 900;
-  font-size: 24px;
+  font-size: 28px;
   color: var(--text-primary);
   text-align: right;
-  appearance: textfield;
-  -moz-appearance: textfield;
+  min-width: 0;
+  width: 100%;
 }
 
 .swap-token-amount::placeholder { color: var(--text-muted); }
-.swap-token-amount::-webkit-inner-spin-button,
-.swap-token-amount::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+/* ─── Balance + MAX ──────────────────────────────────────────────── */
 
 .swap-token-balance {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-muted);
-  margin-top: 4px;
-  text-align: right;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swap-max-btn {
+  padding: 2px 8px;
+  background: color-mix(in srgb, var(--exo-lime) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--exo-lime) 25%, transparent);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--exo-lime);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.swap-max-btn:hover {
+  background: color-mix(in srgb, var(--exo-lime) 18%, transparent);
+  border-color: var(--exo-lime);
+}
+
+/* ─── Token Picker (bottom sheet overlay) ────────────────────────── */
+
+.swap-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: sendOverlayIn 0.2s ease;
+}
+
+.swap-picker-sheet {
+  width: 100%;
+  max-width: 480px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  animation: sendCardIn 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.swap-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg-card);
+  z-index: 1;
+}
+
+.swap-picker-title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.swap-picker-close {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.swap-picker-close:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.swap-picker-list {
+  padding: 8px;
+}
+
+.swap-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 12px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.12s ease;
+  text-align: left;
+  color: var(--text-primary);
+}
+
+.swap-picker-item:hover {
+  background: var(--bg-elevated);
+}
+
+.swap-picker-item.selected {
+  background: color-mix(in srgb, var(--exo-lime) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--exo-lime) 20%, transparent);
+}
+
+.swap-picker-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.swap-picker-item-name {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.swap-picker-item-full {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.swap-picker-item-bal {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-left: auto;
+}
+
+@media (min-width: 768px) {
+  .swap-picker-backdrop {
+    align-items: center;
+  }
+
+  .swap-picker-sheet {
+    border-radius: var(--radius-lg);
+    max-width: 380px;
+  }
 }
 
 /* ─── Quote Preview ───────────────────────────────────────────────── */
@@ -951,16 +1162,10 @@
 /* ─── Micro-interactions ──────────────────────────────────────────── */
 
 @keyframes slide-up {
-  from { opacity: 0; transform: translateY(12px); }
+  from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 .exo-animate-in {
-  animation: slide-up 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: slide-up 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
-
-.exo-animate-in:nth-child(1) { animation-delay: 0s; }
-.exo-animate-in:nth-child(2) { animation-delay: 0.05s; }
-.exo-animate-in:nth-child(3) { animation-delay: 0.1s; }
-.exo-animate-in:nth-child(4) { animation-delay: 0.15s; }
-.exo-animate-in:nth-child(5) { animation-delay: 0.2s; }

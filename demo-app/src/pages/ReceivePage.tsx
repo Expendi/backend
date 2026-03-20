@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useDashboard } from "../context/DashboardContext";
+import { useToast } from "../components/Toast";
 import "../styles/wallet-home.css";
 
 export function ReceivePage() {
   const { walletBalances } = useDashboard();
+  const toast = useToast();
   const [copied, setCopied] = useState(false);
   const [selectedWallet, setSelectedWallet] = useState<"user" | "server" | "agent">("user");
 
@@ -14,6 +16,7 @@ export function ReceivePage() {
     if (address) {
       navigator.clipboard.writeText(address);
       setCopied(true);
+      toast.success("Copied to clipboard");
       setTimeout(() => setCopied(false), 2000);
     }
   };

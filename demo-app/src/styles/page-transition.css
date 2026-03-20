@@ -1,0 +1,75 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Page Transitions — Fluid route change animations
+   ═══════════════════════════════════════════════════════════════════ */
+
+.page-transition {
+  min-height: 100%;
+}
+
+.page-transition-enter {
+  animation: pageEnter 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-transition-enter {
+    animation: none;
+  }
+}
+
+.page-transition-exit {
+  animation: pageExit 0.15s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pageExit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* ─── Directional Tab Content Slide ──────────────────────────────── */
+
+.tab-content-slide.slide-from-left {
+  animation: slideFromLeft 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.tab-content-slide.slide-from-right {
+  animation: slideFromRight 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes slideFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}

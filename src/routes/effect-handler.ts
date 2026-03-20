@@ -26,6 +26,13 @@ import type { GroupAccountService } from "../services/group-account/group-accoun
 import type { SplitExpenseService } from "../services/split-expense/split-expense-service.js";
 import type { GoalSavingsService } from "../services/goal-savings/goal-savings-service.js";
 import type { TransactionApprovalService } from "../services/transaction-approval/transaction-approval-service.js";
+import type { AgentConversationService } from "../services/agent/agent-conversation-service.js";
+import type { AgentProfileService } from "../services/agent/agent-profile-service.js";
+import type { AgentMandateService } from "../services/agent/agent-mandate-service.js";
+import type { AgentActivityService } from "../services/agent/agent-activity-service.js";
+import type { MarketIntelligenceService } from "../services/adapters/coingecko.js";
+import type { AgentAutonomyService } from "../services/agent/agent-autonomy-service.js";
+import type { AgentPatternService } from "../services/agent/agent-pattern-service.js";
 
 export type AppDeps =
   | WalletService
@@ -51,7 +58,14 @@ export type AppDeps =
   | GroupAccountService
   | SplitExpenseService
   | GoalSavingsService
-  | TransactionApprovalService;
+  | TransactionApprovalService
+  | AgentConversationService
+  | AgentProfileService
+  | AgentMandateService
+  | AgentActivityService
+  | MarketIntelligenceService
+  | AgentAutonomyService
+  | AgentPatternService;
 
 export type AppRuntime = ManagedRuntime.ManagedRuntime<AppDeps, ConfigError.ConfigError>;
 

@@ -4,6 +4,8 @@ import { useApi } from "../hooks/useApi";
 import { useDashboard } from "../context/DashboardContext";
 import type { WalletBalanceDetailed } from "../context/DashboardContext";
 import { SendModal } from "../components/SendModal";
+import { AnimatedBalance } from "../components/AnimatedBalance";
+import { useAppMode } from "../context/AppModeContext";
 import type { YieldPortfolio, GoalSaving, RecurringPayment } from "../lib/types";
 import "../styles/wallet-home.css";
 import "../styles/pages.css";
@@ -35,10 +37,12 @@ function CarouselCard({
   wallet,
   active,
   onSelect,
+  onCopy,
 }: {
   wallet: WalletBalanceDetailed;
   active: boolean;
   onSelect: () => void;
+  onCopy?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -47,6 +51,7 @@ function CarouselCard({
     if (wallet.address) {
       navigator.clipboard.writeText(wallet.address);
       setCopied(true);
+      onCopy?.();
       setTimeout(() => setCopied(false), 2000);
     }
   };
@@ -55,16 +60,18 @@ function CarouselCard({
   const usdcBal = formatBalance(wallet.balances.USDC ?? "0", 6);
 
   return (
-    <button
+    <div
       className={`wh-carousel-card ${active ? "active" : ""}`}
       onClick={onSelect}
-      type="button"
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onSelect(); }}
     >
       <div className="wh-carousel-card-top">
         <span className="wh-carousel-card-label">
           {WALLET_LABELS[wallet.type] ?? wallet.type}
         </span>
-        <button className="wh-wallet-addr" onClick={handleCopy} title={wallet.address}>
+        <button className="wh-wallet-addr" onClick={handleCopy} title={wallet.address} type="button">
           {copied
             ? "Copied"
             : wallet.address
@@ -85,7 +92,7 @@ function CarouselCard({
           <span className="wh-token-amount">{ethBal}</span>
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -95,6 +102,7 @@ export function WalletHomePage() {
   const { walletBalances, recentTransactions, loading, refresh } = useDashboard();
   const { request } = useApi();
   const navigate = useNavigate();
+  const { mode } = useAppMode();
   const [sendOpen, setSendOpen] = useState(false);
   const [activeWalletIdx, setActiveWalletIdx] = useState(0);
   const carouselRef = useRef<HTMLDivElement>(null);
@@ -171,14 +179,22 @@ export function WalletHomePage() {
                 {activeWallet ? WALLET_LABELS[activeWallet.type] : "Total Balance"}
               </div>
               <div className="wh-total-balance">
-                <span className="wh-total-amount">
-                  {displayUsdc.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                </span>
+                <AnimatedBalance
+                  value={displayUsdc}
+                  decimals={2}
+                  duration={600}
+                  className="wh-total-amount"
+                />
                 <span className="wh-total-symbol">USDC</span>
               </div>
               {displayEth > 0 && (
                 <div className="wh-secondary-balance">
-                  {displayEth.toLocaleString(undefined, { maximumFractionDigits: 4 })} ETH
+                  <AnimatedBalance
+                    value={displayEth}
+                    decimals={4}
+                    duration={600}
+                  />
+                  {" ETH"}
                 </div>
               )}
             </>
@@ -258,7 +274,7 @@ export function WalletHomePage() {
               <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="16" /><line x1="8" y1="12" x2="16" y2="12" />
             </svg>
           </span>
-          <span className="wh-action-label">Buy</span>
+          <span className="wh-action-label">Fund</span>
         </button>
       </div>
 
@@ -324,15 +340,17 @@ export function WalletHomePage() {
             <span className="wh-feature-label">Autopay</span>
             <span className="wh-feature-hint">Set it & forget it</span>
           </button>
-          <button className="wh-feature-card" onClick={() => navigate("/agent")}>
-            <span className="wh-feature-icon sky">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-              </svg>
-            </span>
-            <span className="wh-feature-label">exo AI</span>
-            <span className="wh-feature-hint">Ask anything</span>
-          </button>
+          {mode === "agent" && (
+            <button className="wh-feature-card" onClick={() => navigate("/agent")}>
+              <span className="wh-feature-icon sky">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+              </span>
+              <span className="wh-feature-label">exo AI</span>
+              <span className="wh-feature-hint">Ask anything</span>
+            </button>
+          )}
         </div>
       </div>
 
