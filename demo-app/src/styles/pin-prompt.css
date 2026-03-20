@@ -213,7 +213,7 @@
 
 .pin-btn-primary {
   background: var(--exo-lime);
-  color: #0a0a0a;
+  color: var(--accent-text);
 }
 
 .pin-btn-primary:hover:not(:disabled) {

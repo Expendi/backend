@@ -157,7 +157,7 @@
 
 .security-btn.primary {
   background: var(--exo-lime);
-  color: #0a0a0a;
+  color: var(--accent-text);
   border-color: var(--exo-lime);
 }
 
