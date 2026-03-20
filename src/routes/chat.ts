@@ -182,7 +182,9 @@ export function createChatRoutes(runtime: AppRuntime) {
       }
     }
 
-    adapter.setSystemPrompt(systemPrompt);
+    if (systemPrompt) {
+      adapter.setSystemPrompt(systemPrompt);
+    }
 
     const tools = body.tools?.length ? deserializeTools(body.tools) : undefined;
 
