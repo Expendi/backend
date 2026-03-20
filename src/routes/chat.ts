@@ -1,8 +1,16 @@
+import { Effect } from "effect";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { createAdapter, providers } from "glove-core/models/providers";
 import type { Message, ToolCall, PromptRequest, Tool } from "glove-core/core";
 import type { AuthVariables } from "../middleware/auth.js";
+import type { AppRuntime } from "./effect-handler.js";
+import type { ConversationMessage } from "../db/schema/index.js";
+import {
+  AgentProfileService,
+  AgentConversationService,
+} from "../services/agent/index.js";
+import { buildSystemPrompt } from "../services/agent/system-prompt-builder.js";
 import z4 from "zod4";
 
 interface SerializedTool {
@@ -96,7 +104,7 @@ function deserializeTools(tools: SerializedTool[]): Tool<unknown>[] {
   }));
 }
 
-export function createChatRoutes() {
+export function createChatRoutes(runtime: AppRuntime) {
   const router = new Hono<{ Variables: AuthVariables }>();
 
   router.post("/", async (c) => {
@@ -142,11 +150,45 @@ export function createChatRoutes() {
 
     const body = (await c.req.json()) as RemotePromptRequest;
 
-    if (body.systemPrompt) {
-      adapter.setSystemPrompt(body.systemPrompt);
+    // Build a profile-aware system prompt if the user is authenticated
+    const userId = c.get("userId");
+    let systemPrompt = body.systemPrompt;
+    let profileData: { trustTier: string; agentBudget: string; profile: Record<string, unknown> } | undefined;
+
+    if (userId) {
+      try {
+        const agentProfile = await runtime.runPromise(
+          Effect.gen(function* () {
+            const profileService = yield* AgentProfileService;
+            return yield* profileService.getProfile(userId);
+          })
+        );
+
+        profileData = {
+          trustTier: agentProfile.trustTier,
+          agentBudget: agentProfile.agentBudget,
+          profile: (agentProfile.profile ?? {}) as Record<string, unknown>,
+        };
+
+        systemPrompt = buildSystemPrompt({
+          profile: agentProfile.profile ?? undefined,
+          trustTier: agentProfile.trustTier as "observe" | "notify" | "act_within_limits" | "full",
+          agentBudget: agentProfile.agentBudget,
+        });
+      } catch (err) {
+        // Profile fetch failed — fall back to client-provided system prompt.
+        // This keeps the chat endpoint functional even if the DB is unreachable.
+        console.error("Failed to fetch agent profile for system prompt:", err instanceof Error ? err.message : String(err));
+      }
     }
 
+    adapter.setSystemPrompt(systemPrompt);
+
     const tools = body.tools?.length ? deserializeTools(body.tools) : undefined;
+
+    // Track the last user message and agent response for post-stream reflection
+    const lastUserMessage = body.messages[body.messages.length - 1];
+    let agentResponseText = "";
 
     return streamSSE(c, async (stream) => {
       try {
@@ -156,6 +198,7 @@ export function createChatRoutes() {
             switch (eventType) {
               case "text_delta": {
                 const d = eventData as { text: string };
+                agentResponseText += d.text;
                 await stream.writeSSE({
                   data: JSON.stringify({ type: "text_delta", text: d.text }),
                 });
@@ -190,6 +233,53 @@ export function createChatRoutes() {
             tokens_out: result.tokens_out,
           }),
         });
+
+        // Fire-and-forget: persist messages and trigger profile reflection
+        if (userId && agentResponseText) {
+          const now = new Date().toISOString();
+
+          const messagesToAppend: ConversationMessage[] = [];
+
+          if (lastUserMessage && lastUserMessage.sender === "user" && lastUserMessage.text) {
+            messagesToAppend.push({
+              role: "user",
+              content: lastUserMessage.text,
+              timestamp: now,
+            });
+          }
+
+          messagesToAppend.push({
+            role: "agent",
+            content: agentResponseText,
+            timestamp: now,
+          });
+
+          const persistAndReflect = Effect.gen(function* () {
+            const conversationService = yield* AgentConversationService;
+            const profileService = yield* AgentProfileService;
+
+            // Append both messages to the conversation
+            for (const message of messagesToAppend) {
+              yield* conversationService.appendMessage(userId, message);
+            }
+
+            // Update token count
+            yield* conversationService.updateTokenCount(
+              userId,
+              (result.tokens_in ?? 0) + (result.tokens_out ?? 0)
+            );
+
+            // Trigger reflection with the recent messages
+            yield* profileService.reflect(userId, messagesToAppend);
+          });
+
+          runtime.runPromise(persistAndReflect).catch((err) => {
+            console.error(
+              "Background reflection failed:",
+              err instanceof Error ? err.message : String(err)
+            );
+          });
+        }
       } catch (err) {
         await stream.writeSSE({
           data: JSON.stringify({

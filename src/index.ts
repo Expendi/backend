@@ -26,6 +26,9 @@ import { createGoalSavingsRoutes } from "./routes/goal-savings.js";
 import { createTransactionApprovalRoutes } from "./routes/transaction-approval.js";
 import { transactionApprovalMiddleware } from "./middleware/transaction-approval.js";
 import { createChatRoutes } from "./routes/chat.js";
+import { createAgentRoutes } from "./routes/agent.js";
+import { createAgentMandateRoutes } from "./routes/agent-mandates.js";
+import { createAgentActivityRoutes } from "./routes/agent-activity.js";
 
 // Resolve the Privy client and admin API key from the Effect runtime so
 // we can hand them to the Hono middleware layer without requiring Effect
@@ -62,6 +65,9 @@ app.get("/", (c) =>
       goalSavings: "/api/goal-savings",
       security: "/api/security/approval",
       chat: "/api/chat",
+      agent: "/api/agent",
+      agentMandates: "/api/agent/mandates",
+      agentActivity: "/api/agent/activity",
       webhooks: "/webhooks/pretium",
     },
   })
@@ -100,7 +106,10 @@ app.route("/api/swap-automations", createSwapAutomationRoutes(runtime));
 app.route("/api/groups", createGroupAccountRoutes(runtime));
 app.route("/api/split-expenses", createSplitExpenseRoutes(runtime));
 app.route("/api/goal-savings", createGoalSavingsRoutes(runtime));
-app.route("/api/chat", createChatRoutes());
+app.route("/api/chat", createChatRoutes(runtime));
+app.route("/api/agent", createAgentRoutes(runtime));
+app.route("/api/agent/mandates", createAgentMandateRoutes(runtime));
+app.route("/api/agent/activity", createAgentActivityRoutes(runtime));
 
 // ── Webhook routes (no auth -- called by payment providers) ────────
 
