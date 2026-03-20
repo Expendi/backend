@@ -269,3 +269,128 @@
   border-color: var(--accent);
   transform: scale(1.05);
 }
+
+/* ─── Onboarding Splash ──────────────────────────────────────────── */
+
+.exo-onboarding {
+  text-align: center;
+  padding: 48px;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.exo-onboarding-logo {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 56px;
+  line-height: 1;
+  margin-bottom: 32px;
+  animation: onboardLogoIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes onboardLogoIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Progress bar — thin, elegant, accent-colored */
+.exo-onboarding-bar {
+  width: 120px;
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 20px;
+  animation: onboardFadeIn 0.4s ease 0.3s both;
+}
+
+.exo-onboarding-bar-fill {
+  height: 100%;
+  width: 30%;
+  background: var(--exo-lime);
+  border-radius: 2px;
+  animation: onboardBarSlide 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  transition: width 0.4s ease, background 0.3s ease;
+}
+
+.exo-onboarding-bar-fill.complete {
+  width: 100%;
+  animation: none;
+}
+
+.exo-onboarding-bar-fill.error {
+  width: 100%;
+  background: var(--exo-coral);
+  animation: none;
+}
+
+@keyframes onboardBarSlide {
+  0% {
+    width: 0%;
+    margin-left: 0%;
+  }
+  50% {
+    width: 60%;
+    margin-left: 20%;
+  }
+  100% {
+    width: 0%;
+    margin-left: 100%;
+  }
+}
+
+/* Status text — subtle, mono, uppercase */
+.exo-onboarding-status {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  animation: onboardFadeIn 0.4s ease 0.5s both;
+}
+
+.exo-onboarding-status.ready {
+  color: var(--exo-lime);
+}
+
+@keyframes onboardFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Error state */
+.exo-onboarding-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  animation: onboardFadeIn 0.3s ease both;
+}
+
+.exo-onboarding-error-msg {
+  font-size: 13px;
+  color: var(--text-secondary);
+  max-width: 280px;
+  line-height: 1.5;
+}
+
+.exo-onboarding-retry {
+  font-size: 13px;
+  padding: 10px 28px;
+}
+
+/* Responsive */
+@media (max-width: 767px) {
+  .exo-onboarding-logo {
+    font-size: 44px;
+  }
+}

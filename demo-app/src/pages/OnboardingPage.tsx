@@ -1,105 +1,115 @@
-import { useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useApi } from "../hooks/useApi";
-import { ActionPanel } from "../components/ActionPanel";
-import { ApiForm } from "../components/ApiForm";
-import { JsonViewer } from "../components/JsonViewer";
 import { useAuth } from "../context/AuthContext";
-import type { OnboardResult, ProfileWithWallets, ResolvedUsername } from "../lib/types";
+import type { OnboardResult } from "../lib/types";
 
+/**
+ * OnboardingPage — Branded splash screen that auto-provisions wallets.
+ *
+ * Design rationale:
+ * - This screen appears after authentication but before profile exists.
+ * - It auto-calls POST /api/onboard on mount to create wallets + profile.
+ * - The UI is a minimal branded splash (matching LoginScreen aesthetic)
+ *   with a pulsing logo and subtle status text.
+ * - On success, it calls refreshProfile() which sets the profile in
+ *   AuthContext, causing App.tsx to render the main routes.
+ * - The real onboarding (asking about goals, location, etc.) happens
+ *   conversationally in Agent Mode via the system prompt.
+ */
 export function OnboardingPage() {
   const { request } = useApi();
   const { refreshProfile } = useAuth();
-  const [username, setUsername] = useState("");
-  const [resolveUser, setResolveUser] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<"provisioning" | "ready" | "error">("provisioning");
+  const hasStarted = useRef(false);
+
+  const runOnboarding = async () => {
+    setError(null);
+    setStatus("provisioning");
+
+    try {
+      await request<OnboardResult>("/onboard", {
+        method: "POST",
+        body: { chainId: 8453 },
+      });
+
+      setStatus("ready");
+
+      // Brief pause so the user sees "Ready" before the page swaps.
+      // Without this, the transition feels jarring -- the screen disappears
+      // before the user registers what happened.
+      await new Promise((r) => setTimeout(r, 600));
+
+      await refreshProfile();
+    } catch (err) {
+      setStatus("error");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Something went wrong setting up your wallet."
+      );
+    }
+  };
+
+  // Auto-onboard on mount. The ref guard prevents double-fire in StrictMode.
+  useEffect(() => {
+    if (hasStarted.current) return;
+    hasStarted.current = true;
+    runOnboarding();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
-    <div>
-      <div className="page-header">
-        <h1>Onboarding</h1>
-        <p>Create profile, manage username, resolve usernames</p>
+    <div className="login-screen">
+      <div className="exo-onboarding">
+        {/* Brand mark -- same as login screen */}
+        <h1 className="exo-onboarding-logo" aria-hidden="true">
+          exo<span className="dot">.</span>
+        </h1>
+
+        {/* Animated progress bar */}
+        <div
+          className="exo-onboarding-bar"
+          role="progressbar"
+          aria-label="Setting up your wallet"
+        >
+          <div
+            className={`exo-onboarding-bar-fill ${
+              status === "ready" ? "complete" : ""
+            } ${status === "error" ? "error" : ""}`}
+          />
+        </div>
+
+        {/* Status messages */}
+        {status === "provisioning" && (
+          <p className="exo-onboarding-status" aria-live="polite">
+            Setting up your wallets
+          </p>
+        )}
+
+        {status === "ready" && (
+          <p className="exo-onboarding-status ready" aria-live="polite">
+            You're all set
+          </p>
+        )}
+
+        {status === "error" && (
+          <div className="exo-onboarding-error" role="alert">
+            <p className="exo-onboarding-error-msg">
+              {error || "Unable to create your wallet."}
+            </p>
+            <button
+              className="btn-exo btn-secondary exo-onboarding-retry"
+              onClick={() => {
+                hasStarted.current = false;
+                runOnboarding();
+              }}
+            >
+              Try again
+            </button>
+          </div>
+        )}
       </div>
-
-      <ActionPanel title="Create Profile" method="POST" path="/api/onboard">
-        <ApiForm
-          onSubmit={async () => {
-            const data = await request<OnboardResult>("/onboard", {
-              method: "POST",
-              body: { chainId: 8453 },
-            });
-            await refreshProfile();
-            return data;
-          }}
-          submitLabel="Onboard"
-        >
-          <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 8 }}>
-            Creates 3 wallets (user, server, agent) and a user profile. Idempotent -- safe to call multiple times.
-          </p>
-        </ApiForm>
-      </ActionPanel>
-
-      <ActionPanel title="Get Profile" method="GET" path="/api/profile">
-        <ApiForm
-          onSubmit={() => request<ProfileWithWallets>("/profile")}
-          submitLabel="Fetch Profile"
-        >
-          <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-            Retrieves current user profile with wallet details.
-          </p>
-        </ApiForm>
-      </ActionPanel>
-
-      <ActionPanel title="Get Wallet Addresses" method="GET" path="/api/profile/wallets">
-        <ApiForm
-          onSubmit={() => request<Record<string, string>>("/profile/wallets")}
-          submitLabel="Fetch Addresses"
-        >
-          <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-            Returns just the wallet addresses (user, server, agent).
-          </p>
-        </ApiForm>
-      </ActionPanel>
-
-      <ActionPanel title="Set Username" method="PUT" path="/api/profile/username">
-        <ApiForm
-          onSubmit={async () => {
-            const data = await request<ProfileWithWallets>("/profile/username", {
-              method: "PUT",
-              body: { username },
-            });
-            await refreshProfile();
-            return data;
-          }}
-          submitLabel="Set Username"
-        >
-          <div className="form-group">
-            <label>Username (3-20 chars, lowercase alphanumeric + underscore)</label>
-            <input
-              className="input-exo"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="my_username"
-              pattern="^[a-z0-9_]{3,20}$"
-            />
-          </div>
-        </ApiForm>
-      </ActionPanel>
-
-      <ActionPanel title="Resolve Username" method="GET" path="/api/profile/resolve/:username">
-        <ApiForm
-          onSubmit={() => request<ResolvedUsername>(`/profile/resolve/${resolveUser}`)}
-          submitLabel="Resolve"
-        >
-          <div className="form-group">
-            <label>Username to resolve</label>
-            <input
-              className="input-exo"
-              value={resolveUser}
-              onChange={(e) => setResolveUser(e.target.value)}
-              placeholder="some_user"
-            />
-          </div>
-        </ApiForm>
-      </ActionPanel>
     </div>
   );
 }

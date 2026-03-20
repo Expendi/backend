@@ -55,7 +55,7 @@ export function ChatHistory({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const editInputRef = useRef<HTMLInputElement>(null);
-  const deleteTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const deleteTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // Clean up delete confirmation timer on unmount
   useEffect(() => {
