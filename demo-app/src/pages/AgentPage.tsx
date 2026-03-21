@@ -7,7 +7,7 @@ import { useChatActions } from "../context/ChatActionsContext";
 import { useConversations, type ConversationMessage } from "../hooks/useConversations";
 import { ChatHistory } from "../components/ChatHistory";
 import { setApiFetcher } from "../tools/api";
-import { setTokenGetter, setActiveConversationId } from "../lib/glove-client";
+import { setTokenGetter, setActiveConversationId, setHistoryMessages } from "../lib/glove-client";
 import { Markdown } from "../components/Markdown";
 import "../styles/chat.css";
 
@@ -206,8 +206,11 @@ export function AgentPage() {
         (msg) => !msg.content.startsWith("[Conversation summary from compaction]")
       );
       setRestoredMessages(filtered);
+      // Inject into the chat client so the LLM has full conversation context
+      setHistoryMessages(filtered);
     } else {
       setRestoredMessages([]);
+      setHistoryMessages([]);
     }
   }, [convos.activeConversation?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 

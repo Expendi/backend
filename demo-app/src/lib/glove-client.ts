@@ -55,12 +55,26 @@ type TokenGetter = () => Promise<string | null>;
 let getAccessToken: TokenGetter | null = null;
 let activeConversationId: string | null = null;
 
+/** Previous conversation messages to prepend to every LLM request for context continuity. */
+let historyMessages: Array<{ sender: "user" | "agent"; text: string }> = [];
+
 export function setTokenGetter(fn: TokenGetter) {
   getAccessToken = fn;
 }
 
 export function setActiveConversationId(id: string | null) {
   activeConversationId = id;
+}
+
+/**
+ * Set restored conversation messages so they're included in the LLM context.
+ * Call this when loading a conversation's persisted messages.
+ */
+export function setHistoryMessages(messages: Array<{ role: "user" | "agent"; content: string }>) {
+  historyMessages = messages.map((m) => ({
+    sender: m.role === "user" ? "user" : "agent",
+    text: m.content,
+  }));
 }
 
 async function authFetch(request: RemotePromptRequest, signal?: AbortSignal) {
@@ -71,7 +85,9 @@ async function authFetch(request: RemotePromptRequest, signal?: AbortSignal) {
     const token = await getAccessToken();
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
-  const body: Record<string, unknown> = { ...request };
+  // Prepend history messages so the LLM has full conversation context
+  const messages = [...historyMessages, ...request.messages];
+  const body: Record<string, unknown> = { ...request, messages };
   if (activeConversationId) {
     body.conversationId = activeConversationId;
   }
