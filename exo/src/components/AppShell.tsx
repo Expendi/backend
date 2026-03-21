@@ -486,7 +486,7 @@ export function AppShell() {
       </BottomSheet>
 
       {/* Bottom Tab Bars — different for each mode */}
-      {isMobile && mode === "simple" && (
+      {mode === "simple" && (
         <nav className="bottom-tabs" aria-label="Main navigation">
           <button className={`bottom-tab ${simpleTab === "home" ? "active" : ""}`} onClick={() => navigateSimpleTab("home")} aria-label="Home">
             <span className="bottom-tab-icon"><HomeIcon /></span>
@@ -507,7 +507,7 @@ export function AppShell() {
         </nav>
       )}
 
-      {isMobile && mode === "agent" && (
+      {mode === "agent" && (
         <nav className="bottom-tabs" aria-label="Main navigation">
           <button className={`bottom-tab ${agentTab === "chat" ? "active" : ""}`} onClick={() => navigateAgentTab("chat")} aria-label="Chat">
             <span className="bottom-tab-icon"><ChatIcon /></span>
