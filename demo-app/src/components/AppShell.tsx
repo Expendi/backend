@@ -4,6 +4,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useAuth } from "../context/AuthContext";
 import { useDashboard } from "../context/DashboardContext";
 import { useAppMode } from "../context/AppModeContext";
+import { useApi } from "../hooks/useApi";
 import { SecuritySettings } from "./SecuritySettings";
 import { PageTransition } from "./PageTransition";
 import { BottomSheet } from "./BottomSheet";
@@ -12,7 +13,7 @@ import "../styles/app-shell.css";
 /* ─── Tab Types ─────────────────────────────────────────────────── */
 
 type SimpleTab = "home" | "expenses" | "explore" | "settings";
-type AgentTab = "chat" | "portfolio" | "activity" | "settings";
+type AgentTab = "chat" | "agent" | "portfolio" | "settings";
 
 /* ─── Explore Sheet ──────────────────────────────────────────────── */
 
@@ -276,15 +277,49 @@ const PortfolioIcon = () => (
   </svg>
 );
 
+const AgentDashIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="9" cy="10" r="1.5" /><circle cx="15" cy="10" r="1.5" /><path d="M9 16c0-1.5 1.5-2.5 3-2.5s3 1 3 2.5" />
+  </svg>
+);
+
 /* ─── AppShell ────────────────────────────────────────────────────── */
 
 export function AppShell() {
   const { theme, toggleTheme } = useAuth();
   const { loading: dashLoading, refresh } = useDashboard();
   const { mode } = useAppMode();
+  const { request } = useApi();
   const location = useLocation();
   const navigate = useNavigate();
   const [exploreOpen, setExploreOpen] = useState(false);
+  const [inboxUnreadCount, setInboxUnreadCount] = useState(0);
+
+  // Poll inbox unread count every 30 seconds when in agent mode
+  useEffect(() => {
+    if (mode !== "agent") {
+      return;
+    }
+
+    let mounted = true;
+
+    const fetchUnread = async () => {
+      try {
+        const data = await request<{ total: number }>("/agent/inbox/unread");
+        if (mounted) setInboxUnreadCount(data.total);
+      } catch {
+        // Silently ignore polling failures
+      }
+    };
+
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 30000);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [mode, request]);
 
   const [viewportWidth, setViewportWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1200);
   useEffect(() => {
@@ -322,7 +357,7 @@ export function AppShell() {
   /* ── Agent Mode tab logic ───────────────────────────────────────── */
 
   const getAgentTab = (path: string): AgentTab => {
-    if (path.startsWith("/activity")) return "activity";
+    if (path.startsWith("/agent/dashboard")) return "agent";
     if (path.startsWith("/settings")) return "settings";
     if (path === "/") return "portfolio";
     return "chat";
@@ -334,7 +369,7 @@ export function AppShell() {
   /* ── Directional tab tracking ─────────────────────────────────── */
 
   const SIMPLE_TAB_ORDER: SimpleTab[] = ["home", "expenses", "explore", "settings"];
-  const AGENT_TAB_ORDER: AgentTab[] = ["chat", "portfolio", "activity", "settings"];
+  const AGENT_TAB_ORDER: AgentTab[] = ["chat", "agent", "portfolio", "settings"];
 
   const prevSimpleIdxRef = useRef(SIMPLE_TAB_ORDER.indexOf(simpleTab));
   const prevAgentIdxRef = useRef(AGENT_TAB_ORDER.indexOf(agentTab));
@@ -368,8 +403,8 @@ export function AppShell() {
       setExploreOpen(false);
       switch (tab) {
         case "chat": navigate("/agent"); break;
+        case "agent": navigate("/agent/dashboard"); break;
         case "portfolio": navigate("/"); break;
-        case "activity": navigate("/activity"); break;
         case "settings": navigate("/settings"); break;
       }
     },
@@ -478,13 +513,22 @@ export function AppShell() {
             <span className="bottom-tab-icon"><ChatIcon /></span>
             <span className="bottom-tab-label">Chat</span>
           </button>
+          <button className={`bottom-tab ${agentTab === "agent" ? "active" : ""}`} onClick={() => navigateAgentTab("agent")} aria-label="Agent">
+            <span className="bottom-tab-icon">
+              <span className="bottom-tab-icon-wrapper">
+                <AgentDashIcon />
+                {inboxUnreadCount > 0 && (
+                  <span className="tab-unread-badge">
+                    {inboxUnreadCount > 99 ? "99+" : inboxUnreadCount}
+                  </span>
+                )}
+              </span>
+            </span>
+            <span className="bottom-tab-label">Agent</span>
+          </button>
           <button className={`bottom-tab ${agentTab === "portfolio" ? "active" : ""}`} onClick={() => navigateAgentTab("portfolio")} aria-label="Portfolio">
             <span className="bottom-tab-icon"><PortfolioIcon /></span>
             <span className="bottom-tab-label">Portfolio</span>
-          </button>
-          <button className={`bottom-tab ${agentTab === "activity" ? "active" : ""}`} onClick={() => navigateAgentTab("activity")} aria-label="Activity">
-            <span className="bottom-tab-icon"><ActivityIcon /></span>
-            <span className="bottom-tab-label">Activity</span>
           </button>
           <button className={`bottom-tab ${agentTab === "settings" ? "active" : ""}`} onClick={() => navigateAgentTab("settings")} aria-label="Settings">
             <span className="bottom-tab-icon"><SettingsIcon /></span>

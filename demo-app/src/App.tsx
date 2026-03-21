@@ -32,6 +32,7 @@ import { SwapAutomationsPage } from "./pages/SwapAutomationsPage";
 import { SecurityPage } from "./pages/SecurityPage";
 import { WalletsPage } from "./pages/WalletsPage";
 import { TransactionsPage } from "./pages/TransactionsPage";
+import { AgentDashboardPage } from "./pages/AgentDashboardPage";
 
 import "./styles/exo-tokens.css";
 import "./styles/components.css";
@@ -109,6 +110,7 @@ function AuthenticatedApp() {
               <Route element={<AppShell />}>
                 <Route index element={<WalletHomePage />} />
                 <Route path="agent" element={<AgentPage />} />
+                <Route path="agent/dashboard" element={<AgentDashboardPage />} />
                 <Route path="activity" element={<ActivityPage />} />
                 <Route path="receive" element={<ReceivePage />} />
                 <Route path="settings" element={<SettingsPage />} />

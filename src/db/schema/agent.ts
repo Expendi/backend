@@ -15,6 +15,9 @@ import {
   mandateSourceEnum,
   mandateExecutionStatusEnum,
   agentActivityTypeEnum,
+  inboxCategoryEnum,
+  inboxPriorityEnum,
+  inboxStatusEnum,
 } from "./enums.js";
 export {
   trustTierEnum,
@@ -22,6 +25,9 @@ export {
   mandateSourceEnum,
   mandateExecutionStatusEnum,
   agentActivityTypeEnum,
+  inboxCategoryEnum,
+  inboxPriorityEnum,
+  inboxStatusEnum,
 };
 
 // ── Profile JSON shape ────────────────────────────────────────────────
@@ -44,6 +50,12 @@ export interface AgentProfileData {
   interests?: string[];
   communicationStyle?: string;
   onboardingComplete?: boolean;
+  riskScore?: number;
+  investmentHorizon?: "short" | "medium" | "long";
+  maxSingleTradePercent?: number;
+  preferredCategories?: string[];
+  avoidCategories?: string[];
+  customInstructions?: string;
 }
 
 // ── Conversation messages shape ───────────────────────────────────────
@@ -230,6 +242,29 @@ export const agentActivityRelations = relations(agentActivity, ({ one }) => ({
   }),
 }));
 
+// ── Agent inbox ──────────────────────────────────────────────────
+
+export const agentInbox = pgTable("agent_inbox", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => userProfiles.privyUserId),
+  category: inboxCategoryEnum("category").notNull(),
+  title: text("title").notNull(),
+  body: text("body"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+  priority: inboxPriorityEnum("priority").notNull().default("medium"),
+  status: inboxStatusEnum("status").notNull().default("unread"),
+  actionType: text("action_type"),
+  actionPayload: jsonb("action_payload").$type<Record<string, unknown>>(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+export const agentInboxRelations = relations(agentInbox, ({}) => ({}));
+
 // ── Type exports ──────────────────────────────────────────────────────
 
 export type AgentConversation = typeof agentConversations.$inferSelect;
@@ -242,3 +277,5 @@ export type MandateExecution = typeof mandateExecutions.$inferSelect;
 export type NewMandateExecution = typeof mandateExecutions.$inferInsert;
 export type AgentActivityRecord = typeof agentActivity.$inferSelect;
 export type NewAgentActivityRecord = typeof agentActivity.$inferInsert;
+export type AgentInboxItem = typeof agentInbox.$inferSelect;
+export type NewAgentInboxItem = typeof agentInbox.$inferInsert;

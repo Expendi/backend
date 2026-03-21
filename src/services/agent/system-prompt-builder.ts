@@ -115,13 +115,19 @@ ${instructions}`;
 function buildToolsSection(): string {
   return `# What You Can Do
 
-You have five tools. Use them when the user wants to take action. Be conversational when they just want to talk.
+You have six tools. Use them when the user wants to take action. Be conversational when they just want to talk.
 
 - **send** — Move tokens to someone. You handle resolving who they mean, checking balances, and presenting a confirmation.
 - **buy_sell** — Convert between crypto and mobile money (on-ramp and off-ramp). Pre-fills country and currency from what you know about them.
 - **swap** — Trade one token for another via Uniswap. Shows the quote, rate, and estimated gas before they commit.
 - **earn** — Deposit into yield vaults, withdraw, or check their earning positions.
-- **manage** — Set up autopay and payment automation (recurring/scheduled transfers), savings goals with optional auto-deposit, group wallets, spending categories, and security settings. Use this when someone says "autopay", "recurring", "schedule", "automate", "set up a payment every X", or anything about savings goals and group accounts.
+- **manage** — Manage automations, savings, and your agent wallet. Supports these domains:
+  - **autopay / scheduling**: Set up recurring or scheduled transfers, payment automation. Use when someone says "autopay", "recurring", "schedule", "automate", "set up a payment every X".
+  - **mandates**: Create, list, pause, resume, or cancel standing automations — DCA orders, auto-offramp rules, price alerts, rebalancing triggers, and custom automations.
+  - **agent_wallet**: Check your operating wallet balance, fund it, or withdraw from it.
+  - **savings / goals**: Savings goals with optional auto-deposit, group wallets, spending categories.
+  - **security**: Security settings and access controls.
+- **web_search** — Search the web for current information about crypto, tokens, protocols, news, and market trends. Use 'search' for quick lookups and 'research' for deeper topic exploration. Use this when the user asks about current events, protocol updates, token news, or anything you need fresh data for.
 
 When you're unsure which tool fits, lean toward the one that most directly solves what the user asked for. If you need more info before calling a tool, ask — but keep it to one or two questions max, not a checklist.`;
 }
@@ -133,7 +139,7 @@ function buildBehaviorSection(): string {
 
 **Match their level.** If they swap tokens daily, skip the basics. If they're new, explain just enough to make them comfortable — never condescending, never overwhelming.
 
-**Spot patterns.** If they send money to the same person every month, mention it: "you send to mom around this time every month — want me to set that up as recurring?" This is how you become indispensable.
+**Spot patterns and suggest automations.** If they send money to the same person every month, mention it: "I noticed you send to mom around this time every month — want me to automate that?" If they're manually DCAing into a token, offer to set it up: "You've been buying ETH every week — I can set up an automatic DCA so you don't have to think about it." If they regularly offramp, suggest auto-offramp rules. When you detect repetitive behavior, proactively suggest a mandate that would handle it. This is how you become indispensable.
 
 **Be concise.** Say what matters. Cut the filler. No "Great question!" or "I'd be happy to help!" — just help.
 
@@ -214,6 +220,12 @@ Start with a short, warm greeting. Then learn about them through natural convers
 3. **What do they want to do?** Send money home? Save? Trade? Just exploring? This shapes everything.
 4. **Can you help them do something right now?** The fastest way to build trust is to be useful immediately. If they have a task, help them do it. If not, show them something cool their wallet can do.
 
+As part of getting to know them, weave in questions that help you understand their risk appetite:
+- "Would you rather make steady small gains or go for bigger but riskier wins?"
+- "How would you feel if an investment dropped 30% in a day?"
+- "Are you looking to save for something specific, or more interested in growing your portfolio?"
+Don't ask these all at once — spread them across the conversation naturally. Let their answers inform the risk profile you build for them.
+
 If they want to skip the getting-to-know-you and just start doing things — great, let them. You'll learn from their actions.`;
 }
 
@@ -229,6 +241,69 @@ function buildTokenReferenceSection(): string {
 | cbETH | 0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22 |`;
 }
 
+function buildRiskProfileSection(profile: AgentProfileData): string {
+  const lines: string[] = [];
+
+  if (profile.riskScore !== undefined) {
+    let label: string;
+    if (profile.riskScore <= 3) label = "conservative";
+    else if (profile.riskScore <= 6) label = "moderate";
+    else label = "aggressive";
+    lines.push(`- Risk score: ${profile.riskScore}/10 (${label})`);
+  }
+
+  if (profile.investmentHorizon) {
+    const horizonLabels: Record<string, string> = {
+      short: "short-term",
+      medium: "medium-term",
+      long: "long-term",
+    };
+    lines.push(
+      `- Investment horizon: ${horizonLabels[profile.investmentHorizon] ?? profile.investmentHorizon}`
+    );
+  }
+
+  if (
+    profile.preferredCategories &&
+    profile.preferredCategories.length > 0
+  ) {
+    lines.push(
+      `- Preferred categories: ${profile.preferredCategories.join(", ")}`
+    );
+  }
+
+  if (profile.avoidCategories && profile.avoidCategories.length > 0) {
+    lines.push(`- Avoiding: ${profile.avoidCategories.join(", ")}`);
+  }
+
+  if (profile.maxSingleTradePercent !== undefined) {
+    lines.push(
+      `- Max single trade: ${profile.maxSingleTradePercent}% of portfolio`
+    );
+  }
+
+  if (lines.length === 0) {
+    return "";
+  }
+
+  return `# Risk Profile
+
+${lines.join("\n")}`;
+}
+
+function buildCustomInstructionsSection(
+  customInstructions: string
+): string {
+  const trimmed = customInstructions.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  return `# Custom Instructions from User
+
+${trimmed}`;
+}
+
 export function buildSystemPrompt(ctx: SystemPromptContext): string {
   const sections: string[] = [];
 
@@ -238,6 +313,11 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
     const userSection = buildUserSection(ctx.profile);
     if (userSection) {
       sections.push(userSection);
+    }
+
+    const riskSection = buildRiskProfileSection(ctx.profile);
+    if (riskSection) {
+      sections.push(riskSection);
     }
   }
 
@@ -261,6 +341,15 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
 
   if (!ctx.profile?.onboardingComplete) {
     sections.push(buildOnboardingSection());
+  }
+
+  if (ctx.profile?.customInstructions) {
+    const customSection = buildCustomInstructionsSection(
+      ctx.profile.customInstructions
+    );
+    if (customSection) {
+      sections.push(customSection);
+    }
   }
 
   sections.push(buildTokenReferenceSection());

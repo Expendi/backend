@@ -146,4 +146,30 @@ export const agentActivityTypeEnum = pgEnum("agent_activity_type", [
   "suggestion",
   "balance_change",
   "position_matured",
+  "research_finding",
+  "action_request",
+  "risk_alert",
+]);
+
+export const inboxCategoryEnum = pgEnum("inbox_category", [
+  "research",
+  "request",
+  "alert",
+  "news",
+  "suggestion",
+  "mandate_update",
+]);
+
+export const inboxPriorityEnum = pgEnum("inbox_priority", [
+  "low",
+  "medium",
+  "high",
+  "urgent",
+]);
+
+export const inboxStatusEnum = pgEnum("inbox_status", [
+  "unread",
+  "read",
+  "actioned",
+  "dismissed",
 ]);

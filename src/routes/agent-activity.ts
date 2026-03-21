@@ -50,5 +50,51 @@ export function createAgentActivityRoutes(runtime: AppRuntime) {
     )
   );
 
+  // GET /pending — List pending action requests
+  app.get("/pending", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const userId = c.get("userId");
+        const service = yield* AgentActivityService;
+        return yield* service.listPendingRequests(userId);
+      }),
+      c
+    )
+  );
+
+  // POST /:id/respond — Respond to an action request
+  app.post("/:id/respond", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const userId = c.get("userId");
+        const activityId = c.req.param("id");
+        const body = yield* Effect.tryPromise({
+          try: () =>
+            c.req.json<{ approved: boolean; note?: string }>(),
+          catch: () => new Error("Invalid request body"),
+        });
+
+        if (typeof body.approved !== "boolean") {
+          return yield* Effect.fail(
+            new Error(
+              'Request body must include "approved" as a boolean value'
+            )
+          );
+        }
+
+        const service = yield* AgentActivityService;
+        return yield* service.respondToRequest(
+          userId,
+          activityId,
+          body.approved,
+          body.note
+        );
+      }),
+      c
+    )
+  );
+
   return app;
 }

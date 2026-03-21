@@ -44,6 +44,11 @@ export interface AgentProfileServiceApi {
     budget: string
   ) => Effect.Effect<AgentProfile, AgentProfileError>;
 
+  readonly listActiveProfiles: () => Effect.Effect<
+    AgentProfile[],
+    AgentProfileError
+  >;
+
 }
 
 export class AgentProfileService extends Context.Tag("AgentProfileService")<
@@ -69,20 +74,24 @@ function deepMergeProfile(
     merged.communicationStyle = patch.communicationStyle;
   if (patch.onboardingComplete !== undefined)
     merged.onboardingComplete = patch.onboardingComplete;
+  if (patch.riskScore !== undefined) merged.riskScore = patch.riskScore;
+  if (patch.investmentHorizon !== undefined)
+    merged.investmentHorizon = patch.investmentHorizon;
+  if (patch.maxSingleTradePercent !== undefined)
+    merged.maxSingleTradePercent = patch.maxSingleTradePercent;
+  if (patch.customInstructions !== undefined)
+    merged.customInstructions = patch.customInstructions;
 
-  if (patch.goals !== undefined) {
-    const existingGoals = existing.goals ?? [];
-    const newGoals = patch.goals.filter((g) => !existingGoals.includes(g));
-    merged.goals = [...existingGoals, ...newGoals];
-  }
+  // Array fields: direct replace (supports both add and remove from UI)
+  if (patch.preferredCategories !== undefined)
+    merged.preferredCategories = patch.preferredCategories;
 
-  if (patch.interests !== undefined) {
-    const existingInterests = existing.interests ?? [];
-    const newInterests = patch.interests.filter(
-      (i) => !existingInterests.includes(i)
-    );
-    merged.interests = [...existingInterests, ...newInterests];
-  }
+  if (patch.avoidCategories !== undefined)
+    merged.avoidCategories = patch.avoidCategories;
+
+  if (patch.goals !== undefined) merged.goals = patch.goals;
+
+  if (patch.interests !== undefined) merged.interests = patch.interests;
 
   if (patch.patterns !== undefined) {
     const existingPatterns = existing.patterns ?? {};
@@ -125,8 +134,15 @@ Rules:
 - Note stated goals, preferences, and concerns
 - Keep it structured and concise
 
+Risk profiling rules:
+- Detect risk appetite from vocabulary: words like "moon", "degen", "ape in", "yolo", "100x" signal aggressive (riskScore 7-10); words like "safe", "careful", "stable", "preserve", "low risk" signal conservative (riskScore 1-3); neutral language is moderate (riskScore 4-6)
+- Infer investmentHorizon from stated goals: "saving for retirement", "long game", "hold for years" = "long"; "a few months", "medium term" = "medium"; "quick flip", "day trade", "short term" = "short"
+- Track token category preferences: if user mentions interest in DeFi, L2s, stablecoins, meme coins, NFTs, etc., populate preferredCategories; if they express dislike or avoidance of certain categories, populate avoidCategories
+- Compute riskScore (1-10) based on accumulated signals across all conversations — weight recent statements more heavily
+- Set maxSingleTradePercent if the user expresses preferences about position sizing (e.g. "never put more than 5% in one trade")
+
 Output only valid JSON matching this schema:
-{ country?, currency?, knowledgeLevel?, riskTolerance?, goals?, patterns?: { frequentRecipients?, preferredTokens?, typicalAmounts? }, interests?, communicationStyle?, onboardingComplete? }`;
+{ country?, currency?, knowledgeLevel?, riskTolerance?, goals?, patterns?: { frequentRecipients?, preferredTokens?, typicalAmounts? }, interests?, communicationStyle?, onboardingComplete?, riskScore?, investmentHorizon?, maxSingleTradePercent?, preferredCategories?, avoidCategories? }`;
 }
 
 // ── Live implementation ──────────────────────────────────────────────
@@ -378,6 +394,16 @@ export const AgentProfileServiceLive: Layer.Layer<
           });
 
           return updated!;
+        }),
+
+      listActiveProfiles: () =>
+        Effect.tryPromise({
+          try: () => db.select().from(agentProfiles),
+          catch: (error) =>
+            new AgentProfileError({
+              message: `Failed to list active profiles: ${error}`,
+              cause: error,
+            }),
         }),
 
     };

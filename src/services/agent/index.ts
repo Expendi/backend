@@ -37,6 +37,7 @@ export {
   type AgentAutonomyServiceApi,
   type ExecutionSummary,
   type MandateResult,
+  type ResearchCycleResult,
 } from "./agent-autonomy-service.js";
 
 export {
@@ -48,3 +49,33 @@ export {
   type PatternEvidence,
   type SuggestedMandate,
 } from "./agent-pattern-service.js";
+
+export {
+  AgentInboxService,
+  AgentInboxServiceLive,
+  AgentInboxError,
+  type AgentInboxServiceApi,
+  type CreateInboxItemParams,
+  type InboxFilters,
+  type UnreadCount,
+} from "./agent-inbox-service.js";
+
+export {
+  MarketResearchService,
+  MarketResearchServiceLive,
+  MarketResearchError,
+  type MarketResearchServiceApi,
+  type MarketBrief,
+  type Opportunity,
+  type TokenEvaluation,
+} from "./market-research-service.js";
+
+export {
+  WebSearchService,
+  WebSearchServiceLive,
+  WebSearchError,
+  type WebSearchServiceApi,
+  type SearchResult,
+  type SearchResults,
+  type ResearchBrief,
+} from "./web-search-service.js";

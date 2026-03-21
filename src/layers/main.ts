@@ -27,9 +27,12 @@ import { AgentConversationServiceLive } from "../services/agent/agent-conversati
 import { AgentProfileServiceLive } from "../services/agent/agent-profile-service.js";
 import { AgentMandateServiceLive } from "../services/agent/agent-mandate-service.js";
 import { AgentActivityServiceLive } from "../services/agent/agent-activity-service.js";
+import { AgentInboxServiceLive } from "../services/agent/agent-inbox-service.js";
 import { CoinGeckoAdapterLive } from "../services/adapters/coingecko.js";
 import { AgentAutonomyServiceLive } from "../services/agent/agent-autonomy-service.js";
 import { AgentPatternServiceLive } from "../services/agent/agent-pattern-service.js";
+import { MarketResearchServiceLive } from "../services/agent/market-research-service.js";
+import { WebSearchServiceLive } from "../services/agent/web-search-service.js";
 
 const ConfigLayer = ConfigLive;
 
@@ -169,7 +172,17 @@ const AgentActivityServiceLayer = AgentActivityServiceLive.pipe(
   Layer.provide(DatabaseLayer)
 );
 
+const AgentInboxServiceLayer = AgentInboxServiceLive.pipe(
+  Layer.provide(DatabaseLayer)
+);
+
 const MarketIntelligenceServiceLayer = CoinGeckoAdapterLive;
+
+const MarketResearchServiceLayer = MarketResearchServiceLive.pipe(
+  Layer.provide(MarketIntelligenceServiceLayer)
+);
+
+const WebSearchServiceLayer = WebSearchServiceLive;
 
 const AgentAutonomyServiceLayer = AgentAutonomyServiceLive.pipe(
   Layer.provide(DatabaseLayer),
@@ -177,7 +190,9 @@ const AgentAutonomyServiceLayer = AgentAutonomyServiceLive.pipe(
   Layer.provide(WalletServiceLayer),
   Layer.provide(AgentMandateServiceLayer),
   Layer.provide(AgentProfileServiceLayer),
-  Layer.provide(AgentActivityServiceLayer)
+  Layer.provide(AgentActivityServiceLayer),
+  Layer.provide(AgentInboxServiceLayer),
+  Layer.provide(MarketResearchServiceLayer)
 );
 
 const AgentPatternServiceLayer = AgentPatternServiceLive.pipe(
@@ -215,5 +230,8 @@ export const MainLayer = Layer.mergeAll(
   AgentActivityServiceLayer,
   MarketIntelligenceServiceLayer,
   AgentAutonomyServiceLayer,
-  AgentPatternServiceLayer
+  AgentPatternServiceLayer,
+  MarketResearchServiceLayer,
+  AgentInboxServiceLayer,
+  WebSearchServiceLayer
 );

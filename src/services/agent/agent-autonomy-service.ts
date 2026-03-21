@@ -6,6 +6,9 @@ import { WalletService } from "../wallet/wallet-service.js";
 import { AgentMandateService } from "./agent-mandate-service.js";
 import { AgentProfileService } from "./agent-profile-service.js";
 import { AgentActivityService } from "./agent-activity-service.js";
+import { AgentInboxService } from "./agent-inbox-service.js";
+import { MarketResearchService } from "./market-research-service.js";
+import type { AgentProfileData } from "../../db/schema/index.js";
 import {
   agentMandates,
   type AgentMandate,
@@ -39,6 +42,12 @@ export interface ExecutionSummary {
 
 // ── Service interface ────────────────────────────────────────────────
 
+export interface ResearchCycleResult {
+  readonly userId: string;
+  readonly opportunitiesFound: number;
+  readonly suggestionsCreated: number;
+}
+
 export interface AgentAutonomyServiceApi {
   readonly processAllMandates: () => Effect.Effect<
     ExecutionSummary,
@@ -47,6 +56,9 @@ export interface AgentAutonomyServiceApi {
   readonly processUserMandates: (
     userId: string
   ) => Effect.Effect<ExecutionSummary, AgentAutonomyError>;
+  readonly runResearchCycle: (
+    userId: string
+  ) => Effect.Effect<ResearchCycleResult, AgentAutonomyError>;
 }
 
 export class AgentAutonomyService extends Context.Tag("AgentAutonomyService")<
@@ -95,6 +107,8 @@ export const AgentAutonomyServiceLive: Layer.Layer<
   | AgentMandateService
   | AgentProfileService
   | AgentActivityService
+  | AgentInboxService
+  | MarketResearchService
 > = Layer.effect(
   AgentAutonomyService,
   Effect.gen(function* () {
@@ -102,6 +116,8 @@ export const AgentAutonomyServiceLive: Layer.Layer<
     const mandateService = yield* AgentMandateService;
     const profileService = yield* AgentProfileService;
     const activityService = yield* AgentActivityService;
+    const inboxService = yield* AgentInboxService;
+    const researchService = yield* MarketResearchService;
     const adapterService = yield* AdapterService;
     const walletService = yield* WalletService;
 
@@ -573,9 +589,104 @@ export const AgentAutonomyServiceLive: Layer.Layer<
         };
       });
 
+    // ── Research cycle ──────────────────────────────────────────────
+    const runResearchCycle = (userId: string) =>
+      Effect.gen(function* () {
+        // Get user profile
+        const agentProfile = yield* profileService.getProfile(userId).pipe(
+          Effect.mapError(
+            (e) =>
+              new AgentAutonomyError({
+                message: `Failed to get profile for research: ${e}`,
+                cause: e,
+              })
+          )
+        );
+
+        const profile = (agentProfile.profile ?? {}) as AgentProfileData;
+        const trustTier = agentProfile.trustTier;
+
+        // Only run research for users with notify tier or above
+        if (trustTier === "observe") {
+          return {
+            userId,
+            opportunitiesFound: 0,
+            suggestionsCreated: 0,
+          };
+        }
+
+        // Find opportunities based on profile
+        const opportunities = yield* researchService
+          .findOpportunities(profile)
+          .pipe(
+            Effect.mapError(
+              (e) =>
+                new AgentAutonomyError({
+                  message: `Research failed: ${e.message}`,
+                  cause: e,
+                })
+            )
+          );
+
+        if (opportunities.length === 0) {
+          return {
+            userId,
+            opportunitiesFound: 0,
+            suggestionsCreated: 0,
+          };
+        }
+
+        // Create activity entries for top opportunities (max 3)
+        const topOpportunities = opportunities.slice(0, 3);
+        let suggestionsCreated = 0;
+
+        for (const opp of topOpportunities) {
+          const oppMetadata = {
+            symbol: opp.token.symbol,
+            name: opp.token.name,
+            riskLevel: opp.riskLevel,
+            relevanceScore: opp.relevanceScore,
+            priceChange24h: opp.token.priceChange24h,
+          };
+          const oppDescription = `${opp.token.name} (${opp.token.symbol}) — risk: ${opp.riskLevel}, relevance: ${opp.relevanceScore}/10. 24h change: ${opp.token.priceChange24h.toFixed(1)}%.`;
+
+          yield* activityService
+            .createActivity({
+              userId,
+              type: "research_finding",
+              title: `${opp.token.symbol}: ${opp.reason}`,
+              description: oppDescription,
+              metadata: oppMetadata,
+            })
+            .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+
+          // Create inbox item: "research" for opportunities, "suggestion" for actionable ones
+          const isActionable = opp.relevanceScore >= 7;
+          yield* inboxService
+            .addItem({
+              userId,
+              category: isActionable ? "suggestion" : "research",
+              title: `${opp.token.symbol}: ${opp.reason}`,
+              body: oppDescription,
+              metadata: oppMetadata,
+              priority: opp.riskLevel === "high" ? "high" : "medium",
+            })
+            .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+
+          suggestionsCreated++;
+        }
+
+        return {
+          userId,
+          opportunitiesFound: opportunities.length,
+          suggestionsCreated,
+        };
+      });
+
     return {
       processAllMandates,
       processUserMandates,
+      runResearchCycle,
     };
   })
 );

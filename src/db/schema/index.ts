@@ -172,4 +172,11 @@ export {
   type MandateConstraints,
   type AgentActivityRecord,
   type NewAgentActivityRecord,
+  agentInbox,
+  agentInboxRelations,
+  inboxCategoryEnum,
+  inboxPriorityEnum,
+  inboxStatusEnum,
+  type AgentInboxItem,
+  type NewAgentInboxItem,
 } from "./agent.js";
