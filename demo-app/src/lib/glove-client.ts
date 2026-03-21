@@ -96,33 +96,52 @@ async function authFetch(request: RemotePromptRequest, signal?: AbortSignal) {
 
 /**
  * Store actions that map Glove's store interface to our conversation API.
- * The sessionId parameter is the conversation UUID.
+ *
+ * Glove's Agent.ask() flow:
+ *   1. appendMessages([userMessage])   — save user message to store
+ *   2. getMessages()                   — load ALL messages (must include the just-appended one)
+ *   3. Send all messages to model
+ *   4. appendMessages([agentResponse]) — save agent response to store
+ *
+ * We use an in-memory cache per session so appendMessages writes are
+ * immediately visible to getMessages. On first getMessages call, we
+ * hydrate the cache from the backend API. Server-side persistence
+ * in chat.ts handles durable storage to the database.
  */
+const messageCache = new Map<string, Array<{ sender: string; text: string }>>();
+const cacheHydrated = new Set<string>();
+
 const storeActions = {
   async getMessages(sessionId: string) {
-    try {
-      const res = await authedFetch(`${API_BASE}/api/agent/conversations/${sessionId}`);
-      if (!res.ok) return [];
-      const data = await res.json();
-      const conversation = data?.data ?? data;
-      const messages = conversation?.messages ?? [];
-      // Convert backend format { role, content } → Glove format { sender, text }
-      return messages
-        .filter((m: { content?: string }) => m.content && !m.content.startsWith("[Conversation summary from compaction]"))
-        .map((m: { role: string; content: string }) => ({
-          sender: m.role === "user" ? "user" : "agent",
-          text: m.content,
-        }));
-    } catch {
-      return [];
+    // Hydrate from backend on first call for this session
+    if (!cacheHydrated.has(sessionId)) {
+      cacheHydrated.add(sessionId);
+      try {
+        const res = await authedFetch(`${API_BASE}/api/agent/conversations/${sessionId}`);
+        if (res.ok) {
+          const data = await res.json();
+          const conversation = data?.data ?? data;
+          const backendMessages = conversation?.messages ?? [];
+          const converted = backendMessages
+            .filter((m: { content?: string }) => m.content && !m.content.startsWith("[Conversation summary from compaction]"))
+            .map((m: { role: string; content: string }) => ({
+              sender: m.role === "user" ? "user" : "agent",
+              text: m.content,
+            }));
+          messageCache.set(sessionId, converted);
+        }
+      } catch {
+        // Silently fail — cache stays empty
+      }
     }
+    return messageCache.get(sessionId) ?? [];
   },
 
   async appendMessages(sessionId: string, messages: Array<{ sender: string; text: string }>) {
-    // Messages are persisted server-side by the chat route.
-    // The store's appendMessages is a no-op to avoid double-persistence.
-    void sessionId;
-    void messages;
+    // Append to in-memory cache so getMessages() sees them immediately.
+    // Durable persistence is handled server-side by the chat route.
+    const existing = messageCache.get(sessionId) ?? [];
+    messageCache.set(sessionId, [...existing, ...messages]);
   },
 };
 
