@@ -31,15 +31,17 @@ export const sendTool: ToolConfig = defineTool({
     to: z
       .string()
       .describe(
-        "Recipient: wallet address (0x...), username, or contact label"
+        "Recipient — accepts a 0x wallet address, a @username, or a saved contact label like 'mom'. The tool resolves it automatically."
       ),
     amount: z
       .string()
-      .describe("Amount with optional token, e.g. '10 USDC', '0.5 ETH', 'all'"),
+      .describe(
+        "Human-readable amount to send. Include the token symbol, e.g. '10 USDC', '0.5 ETH'. Use 'all' to send entire balance. Do NOT pass base units — the tool converts automatically."
+      ),
     token: z
-      .string()
+      .enum(["USDC", "ETH", "WETH", "USDT", "cbETH", "USDbC"])
       .optional()
-      .describe("Token symbol if not in amount (default: USDC)"),
+      .describe("Token symbol override. Only needed if the amount string doesn't include a token. Defaults to USDC."),
   }),
   displayPropsSchema: z.object({
     recipientLabel: z.string(),

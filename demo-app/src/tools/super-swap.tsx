@@ -35,10 +35,21 @@ export const swapTool: ToolConfig = defineTool({
   description:
     "Swap tokens on Uniswap. Gets a quote with price impact and gas estimate, shows confirmation, then executes.",
   inputSchema: z.object({
-    from: z.string().describe("Token to sell (e.g. 'USDC', 'ETH', 'WETH')"),
-    to: z.string().describe("Token to buy (e.g. 'ETH', 'USDC')"),
-    amount: z.string().describe("Amount to swap (e.g. '10', '0.5', 'all')"),
-    slippage: z.number().optional().describe("Slippage tolerance % (default: 0.5)"),
+    from: z
+      .enum(["USDC", "ETH", "WETH", "USDT", "cbETH", "USDbC"])
+      .describe("Token to sell. Use the symbol exactly as shown."),
+    to: z
+      .enum(["USDC", "ETH", "WETH", "USDT", "cbETH", "USDbC"])
+      .describe("Token to buy. Must be different from 'from'."),
+    amount: z
+      .string()
+      .describe(
+        "Human-readable amount of the 'from' token to swap, e.g. '10', '0.5'. Use 'all' for entire balance. Do NOT pass base units."
+      ),
+    slippage: z
+      .number()
+      .optional()
+      .describe("Slippage tolerance as a percentage, e.g. 0.5 means 0.5%. Default is 0.5. Max 50."),
   }),
   displayPropsSchema: z.object({
     fromToken: z.string(),
