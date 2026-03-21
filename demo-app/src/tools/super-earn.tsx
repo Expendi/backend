@@ -122,29 +122,40 @@ export const earnTool: ToolConfig = defineTool({
         };
       }
 
+      // Convert base-unit amounts to human-readable for the LLM
+      const defaultDecimals = 6; // USDC
+      const fmtBase = (val: string | undefined, decimals?: number) => {
+        if (!val || val === "0") return "0";
+        return formatNumber(Number(fromBaseUnits(val, decimals ?? defaultDecimals)));
+      };
+
       const summary = {
         portfolio: {
-          totalPrincipal: portfolio.totalPrincipal,
-          totalCurrentValue: portfolio.totalCurrentValue,
-          totalYield: portfolio.totalYield,
-          averageApy: portfolio.averageApy,
+          totalPrincipal: fmtBase(portfolio.totalPrincipal) + " USDC",
+          totalCurrentValue: fmtBase(portfolio.totalCurrentValue) + " USDC",
+          totalYield: fmtBase(portfolio.totalYield) + " USDC",
+          averageApy: portfolio.averageApy + "%",
           positionCount: portfolio.positionCount,
         },
-        positions: positions.map((p) => ({
-          id: p.id,
-          vaultName: p.vaultName ?? p.vaultId,
-          principal: p.principalAmount,
-          currentValue: p.currentValue ?? p.principalAmount,
-          earned: p.earnedYield ?? "0",
-          status: p.status,
-          apy: p.estimatedApy,
-        })),
+        positions: positions.map((p) => {
+          const token = p.token ?? "USDC";
+          const dec = TOKEN_MAP[token]?.decimals ?? defaultDecimals;
+          return {
+            id: p.id,
+            vaultName: p.vaultName ?? p.vaultId,
+            principal: fmtBase(p.principalAmount, dec) + ` ${token}`,
+            currentValue: fmtBase(p.currentValue ?? p.principalAmount, dec) + ` ${token}`,
+            earned: fmtBase(p.earnedYield ?? "0", dec) + ` ${token}`,
+            status: p.status,
+            apy: (p.estimatedApy ?? "0") + "%",
+          };
+        }),
         availableVaults: vaults.map((v) => ({
           id: v.id,
           name: v.name,
-          apy: v.apy,
+          apy: v.apy + "%",
           token: v.underlyingSymbol ?? "USDC",
-          tvl: v.tvl,
+          tvl: v.tvl ? fmtBase(v.tvl, TOKEN_MAP[v.underlyingSymbol ?? "USDC"]?.decimals ?? defaultDecimals) + ` ${v.underlyingSymbol ?? "USDC"}` : undefined,
         })),
       };
 
@@ -284,7 +295,7 @@ export const earnTool: ToolConfig = defineTool({
       // Default unlock time: 30 days from now (in seconds)
       const unlockTime = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
       try {
-        const result = await callApi("/yield/positions", {
+        const result = await callApi<Record<string, unknown>>("/yield/positions", {
           method: "POST",
           body: {
             vaultId: input.vaultId,
@@ -295,7 +306,7 @@ export const earnTool: ToolConfig = defineTool({
         });
         return {
           status: "success",
-          data: JSON.stringify(result),
+          data: `Deposited ${formatNumber(depositAmount)} ${tokenSymbol} into ${vault.name}. Position created successfully.`,
           renderData: result,
         };
       } catch (err) {
@@ -361,18 +372,19 @@ export const earnTool: ToolConfig = defineTool({
         };
       }
 
-      const principal = position.principalAmount ?? "0";
-      const earned = position.earnedYield ?? "0";
-      const currentValue = position.currentValue ?? principal;
       const token = position.token ?? "USDC";
+      const dec = TOKEN_MAP[token]?.decimals ?? 6;
+      const principalHuman = Number(fromBaseUnits(position.principalAmount ?? "0", dec));
+      const earnedHuman = Number(fromBaseUnits(position.earnedYield ?? "0", dec));
+      const currentHuman = Number(fromBaseUnits(position.currentValue ?? position.principalAmount ?? "0", dec));
 
       // Show withdrawal confirmation
       const confirmed = await display.pushAndWait({
         action: "withdraw" as const,
         vaultName: position.vaultName ?? position.vaultId,
-        principal: formatNumber(Number(principal)),
-        earned: formatNumber(Number(earned)),
-        totalWithdraw: formatNumber(Number(currentValue)),
+        principal: formatNumber(principalHuman),
+        earned: formatNumber(earnedHuman),
+        totalWithdraw: formatNumber(currentHuman),
         token,
       });
 
@@ -382,13 +394,13 @@ export const earnTool: ToolConfig = defineTool({
 
       // Execute withdrawal
       try {
-        const result = await callApi(
+        const result = await callApi<Record<string, unknown>>(
           `/yield/positions/${input.positionId}/withdraw`,
           { method: "POST" }
         );
         return {
           status: "success",
-          data: JSON.stringify(result),
+          data: `Withdrew ${formatNumber(currentHuman)} ${token} (${formatNumber(principalHuman)} principal + ${formatNumber(earnedHuman)} earned).`,
           renderData: result,
         };
       } catch (err) {
