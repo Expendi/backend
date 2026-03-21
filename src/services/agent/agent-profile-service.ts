@@ -44,6 +44,11 @@ export interface AgentProfileServiceApi {
     budget: string
   ) => Effect.Effect<AgentProfile, AgentProfileError>;
 
+  readonly listActiveProfiles: () => Effect.Effect<
+    AgentProfile[],
+    AgentProfileError
+  >;
+
 }
 
 export class AgentProfileService extends Context.Tag("AgentProfileService")<
@@ -389,6 +394,16 @@ export const AgentProfileServiceLive: Layer.Layer<
           });
 
           return updated!;
+        }),
+
+      listActiveProfiles: () =>
+        Effect.tryPromise({
+          try: () => db.select().from(agentProfiles),
+          catch: (error) =>
+            new AgentProfileError({
+              message: `Failed to list active profiles: ${error}`,
+              cause: error,
+            }),
         }),
 
     };
