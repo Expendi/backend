@@ -20,6 +20,7 @@ const DOMAIN_LABELS: Record<string, string> = {
   recurring: "Recurring Payment",
   goals: "Savings Goal",
   groups: "Group Account",
+  splits: "Split Expense",
   categories: "Category",
   security: "Security Settings",
 };
@@ -544,8 +545,174 @@ async function handleCategories(
       return { status: "success", data: JSON.stringify(data) };
     }
 
+    case "spending": {
+      const since = params?.since ? String(params.since) : undefined;
+      const query = since ? { since } : undefined;
+      const data = await callApi("/categories/spending", { query });
+      return { status: "success", data: JSON.stringify(data) };
+    }
+
+    case "set_limit": {
+      if (!id) return { status: "error", data: "", message: "A category id is required to set a spending limit." };
+      if (!params?.monthlyLimit) return { status: "error", data: "", message: "Missing required parameter: monthlyLimit." };
+
+      const tokenSymbol = String(params.token ?? "USDC").toUpperCase();
+      const tokenInfo = TOKEN_MAP[tokenSymbol];
+      if (!tokenInfo) return { status: "error", data: "", message: `Unknown token "${tokenSymbol}".` };
+
+      const limitBase = toBaseUnits(String(params.monthlyLimit), tokenInfo.decimals);
+
+      if (pushAndWait) {
+        const confirmed = await pushAndWait({
+          domain: "categories",
+          action: "set_limit",
+          summary: `Set monthly spending limit of ${params.monthlyLimit} ${tokenSymbol} for this category.`,
+          details: { "Monthly Limit": `${params.monthlyLimit} ${tokenSymbol}` },
+        });
+        if (!confirmed) return { status: "success", data: "Cancelled." };
+      }
+
+      const data = await callApi(`/categories/${id}/limit`, {
+        method: "PUT",
+        body: {
+          monthlyLimit: limitBase,
+          tokenAddress: tokenInfo.address,
+          tokenSymbol: tokenInfo.symbol,
+          tokenDecimals: tokenInfo.decimals,
+        },
+      });
+      return { status: "success", data: JSON.stringify(data) };
+    }
+
     default:
-      return { status: "error", data: "", message: `Unsupported action "${action}" for categories. Supported: list, create, update.` };
+      return { status: "error", data: "", message: `Unsupported action "${action}" for categories. Supported: list, create, update, spending, set_limit.` };
+  }
+}
+
+// ── Split expenses domain handler ───────────────────────────────────────────
+
+async function handleSplits(
+  action: string,
+  id: string | undefined,
+  params: Record<string, unknown> | undefined,
+  pushAndWait: ((props: Record<string, unknown>) => Promise<boolean>) | null,
+): Promise<{ status: "success" | "error"; data: string; message?: string }> {
+  switch (action) {
+    case "list": {
+      const data = await callApi("/split-expenses");
+      return { status: "success", data: JSON.stringify(data) };
+    }
+
+    case "owed": {
+      const data = await callApi("/split-expenses/owed");
+      return { status: "success", data: JSON.stringify(data) };
+    }
+
+    case "get": {
+      if (!id) return { status: "error", data: "", message: "An id is required to view a split expense." };
+      const data = await callApi(`/split-expenses/${id}`);
+      return { status: "success", data: JSON.stringify(data) };
+    }
+
+    case "create": {
+      if (!params?.title) return { status: "error", data: "", message: "Missing required parameter: title." };
+      if (!params?.totalAmount) return { status: "error", data: "", message: "Missing required parameter: totalAmount." };
+      if (!params?.shares || !Array.isArray(params.shares) || params.shares.length === 0) {
+        return { status: "error", data: "", message: "Missing required parameter: shares (array of { userId, amount })." };
+      }
+
+      const tokenSymbol = String(params.token ?? "USDC").toUpperCase();
+      const tokenInfo = TOKEN_MAP[tokenSymbol];
+      if (!tokenInfo) return { status: "error", data: "", message: `Unknown token "${tokenSymbol}".` };
+
+      const totalBase = toBaseUnits(String(params.totalAmount), tokenInfo.decimals);
+
+      // Resolve shares — each share has a userId (username or address) and amount
+      const resolvedShares: Array<{ userId: string; amount: string }> = [];
+      for (const share of params.shares as Array<{ userId: string; amount: string }>) {
+        const shareBase = toBaseUnits(String(share.amount), tokenInfo.decimals);
+        resolvedShares.push({ userId: share.userId, amount: shareBase });
+      }
+
+      const details: Record<string, string> = {
+        Title: String(params.title),
+        Total: `${params.totalAmount} ${tokenSymbol}`,
+        Participants: `${resolvedShares.length} people`,
+      };
+
+      if (pushAndWait) {
+        const confirmed = await pushAndWait({
+          domain: "splits",
+          action,
+          summary: `Split "${params.title}" — ${params.totalAmount} ${tokenSymbol} among ${resolvedShares.length} people.`,
+          details,
+        });
+        if (!confirmed) return { status: "success", data: "Cancelled." };
+      }
+
+      const data = await callApi("/split-expenses", {
+        method: "POST",
+        body: {
+          title: String(params.title),
+          totalAmount: totalBase,
+          tokenAddress: tokenInfo.address,
+          tokenSymbol: tokenInfo.symbol,
+          tokenDecimals: tokenInfo.decimals,
+          chainId: 8453,
+          shares: resolvedShares,
+          categoryId: params.categoryId ? String(params.categoryId) : undefined,
+        },
+      });
+      return { status: "success", data: JSON.stringify(data) };
+    }
+
+    case "pay": {
+      if (!id) return { status: "error", data: "", message: "A share id is required to pay a split expense." };
+
+      let balances;
+      try { balances = await fetchBalances(); } catch { return { status: "error", data: "", message: "Failed to fetch balances." }; }
+      const userWallet = getUserWallet(balances);
+      if (!userWallet) return { status: "error", data: "", message: "No user wallet found." };
+
+      if (pushAndWait) {
+        const confirmed = await pushAndWait({
+          domain: "splits",
+          action,
+          summary: "Pay your share of this split expense.",
+          details: { "Share ID": id },
+        });
+        if (!confirmed) return { status: "success", data: "Cancelled." };
+      }
+
+      const data = await callApi(`/split-expenses/${id}/pay`, {
+        method: "POST",
+        body: {
+          walletId: userWallet.walletId,
+          walletType: "user",
+        },
+      });
+      return { status: "success", data: JSON.stringify(data) };
+    }
+
+    case "cancel": {
+      if (!id) return { status: "error", data: "", message: "An id is required to cancel a split expense." };
+
+      if (pushAndWait) {
+        const confirmed = await pushAndWait({
+          domain: "splits",
+          action,
+          summary: "Cancel this split expense. Unpaid shares will be cancelled.",
+          details: {},
+        });
+        if (!confirmed) return { status: "success", data: "Cancelled." };
+      }
+
+      const data = await callApi(`/split-expenses/${id}`, { method: "DELETE" });
+      return { status: "success", data: JSON.stringify(data) };
+    }
+
+    default:
+      return { status: "error", data: "", message: `Unsupported action "${action}" for splits. Supported: list, owed, get, create, pay, cancel.` };
   }
 }
 
@@ -575,27 +742,32 @@ async function handleSecurity(
 export const manageTool: ToolConfig = defineTool({
   name: "manage",
   description:
-    "Set up autopay, recurring payments, scheduled transfers, savings goals, group accounts, spending categories, and security settings. Use this for any payment automation — e.g. 'pay mom 50 USDC every month', 'automate my rent', 'set up a savings goal'.",
+    "Set up autopay, recurring payments, savings goals, group accounts, split expenses, spending categories, and security settings. " +
+    "Use this for any payment automation, expense splitting, or financial management.",
   inputSchema: z.object({
     domain: z
-      .enum(["recurring", "goals", "groups", "categories", "security"])
+      .enum(["recurring", "goals", "groups", "categories", "splits", "security"])
       .describe(
         "Feature area to manage. " +
         "'recurring' = autopay/scheduled payments. " +
         "'goals' = savings targets. " +
         "'groups' = shared/group accounts. " +
-        "'categories' = expense categories. " +
+        "'splits' = split expenses among people. " +
+        "'categories' = expense categories + spending analytics. " +
         "'security' = PIN and approval settings."
       ),
     action: z
-      .enum(["list", "get", "create", "update", "pause", "resume", "cancel", "deposit", "withdraw", "add_member", "remove_member", "payout"])
+      .enum(["list", "get", "create", "update", "pause", "resume", "cancel", "deposit", "withdraw", "add_member", "remove_member", "payout", "pay", "owed", "spending", "set_limit"])
       .optional()
       .describe(
         "Action to perform. Default: 'list'. " +
         "Common combos: recurring + create/pause/resume/cancel, goals + create/deposit/cancel, " +
-        "groups + create/add_member/deposit/payout, categories + create/update, security + get/update."
+        "groups + create/add_member/deposit/payout, " +
+        "splits + create/list/owed/pay/cancel, " +
+        "categories + create/update/spending/set_limit, " +
+        "security + get/update."
       ),
-    id: z.string().optional().describe("Item ID — required for get, update, pause, resume, cancel, deposit, withdraw, add_member, remove_member, payout."),
+    id: z.string().optional().describe("Item ID — required for get, update, pause, resume, cancel, deposit, withdraw, add_member, remove_member, payout, pay."),
     params: z
       .union([z.record(z.string(), z.unknown()), z.string()])
       .optional()
@@ -606,7 +778,11 @@ export const manageTool: ToolConfig = defineTool({
         "goals/deposit: { amount: '50' }. " +
         "groups/create: { name: 'Rent Pool' }. groups/add_member: { member: 'username or 0x address' }. " +
         "groups/deposit: { amount: '50', token: 'USDC' }. groups/payout: { amount: '50', token: 'USDC' }. " +
+        "splits/create: { title: 'Dinner', totalAmount: '100', token: 'USDC', shares: [{ userId: 'username', amount: '50' }], categoryId?: 'cat-id' }. " +
+        "splits/pay: (no params, just pass the share id). " +
         "categories/create: { name: 'Food & Dining', icon?: '🍔' }. " +
+        "categories/spending: { since?: '2026-01-01' } (defaults to current month). " +
+        "categories/set_limit: { monthlyLimit: '500', token: 'USDC' }. " +
         "security/update: { pin: '1234' }."
       ),
   }),
@@ -625,6 +801,7 @@ export const manageTool: ToolConfig = defineTool({
       recurring: "recurring", recurring_payments: "recurring", autopay: "recurring", scheduled: "recurring",
       goals: "goals", savings: "goals", saving: "goals",
       groups: "groups", group: "groups",
+      splits: "splits", split: "splits", split_expenses: "splits", expenses: "splits",
       categories: "categories", category: "categories",
       security: "security",
     };
@@ -639,6 +816,10 @@ export const manageTool: ToolConfig = defineTool({
       cancel: "cancel", delete: "cancel", remove: "cancel",
       deposit: "deposit", withdraw: "withdraw",
       add_member: "add_member", remove_member: "remove_member", payout: "payout",
+      pay: "pay", settle: "pay",
+      owed: "owed", debts: "owed",
+      spending: "spending", analytics: "spending",
+      set_limit: "set_limit", limit: "set_limit",
     };
     const rawAction = input.action ?? "list";
     const action = actionMap[rawAction.toLowerCase().trim()] ?? rawAction.toLowerCase().trim();
@@ -667,10 +848,12 @@ export const manageTool: ToolConfig = defineTool({
           return await handleGroups(action, id, params, pushAndWait);
         case "categories":
           return await handleCategories(action, id, params, pushAndWait);
+        case "splits":
+          return await handleSplits(action, id, params, pushAndWait);
         case "security":
           return await handleSecurity(action);
         default:
-          return { status: "error" as const, data: "", message: `Unknown domain "${domain}". Valid domains: recurring, goals, groups, categories, security.` };
+          return { status: "error" as const, data: "", message: `Unknown domain "${domain}". Valid domains: recurring, goals, groups, categories, splits, security.` };
       }
     } catch (e) {
       return { status: "error" as const, data: "", message: String(e) };
