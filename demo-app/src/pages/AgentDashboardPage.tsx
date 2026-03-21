@@ -46,6 +46,7 @@ interface MandateTrigger {
   token?: string;
   condition?: string;
   value?: number;
+  wallet?: string;
 }
 
 interface MandateAction {
@@ -55,6 +56,55 @@ interface MandateAction {
   amount?: string;
   message?: string;
   goalId?: string;
+  phone?: string;
+  country?: string;
+}
+
+type AutomationFlowStep = "idle" | "picking_template" | "filling_form" | "confirming";
+type TemplateKey = "dca" | "price_alert" | "auto_cashout" | "auto_save" | "custom";
+
+interface DcaFormState {
+  token: string;
+  amount: string;
+  frequency: string;
+  name: string;
+}
+
+interface PriceAlertFormState {
+  token: string;
+  condition: string;
+  price: string;
+  name: string;
+}
+
+interface AutoCashoutFormState {
+  threshold: string;
+  phone: string;
+  name: string;
+}
+
+interface AutoSaveFormState {
+  amount: string;
+  frequency: string;
+  goalName: string;
+  name: string;
+}
+
+interface CustomFormState {
+  name: string;
+  triggerType: string;
+  triggerFrequency: string;
+  triggerToken: string;
+  triggerCondition: string;
+  triggerValue: string;
+  triggerWallet: string;
+  actionType: string;
+  actionFrom: string;
+  actionTo: string;
+  actionAmount: string;
+  actionMessage: string;
+  actionGoalId: string;
+  actionPhone: string;
 }
 
 interface Mandate {
@@ -125,13 +175,72 @@ function toBaseUnits(humanAmount: string, decimals: number): string {
   return (BigInt(whole) * BigInt(10 ** decimals) + BigInt(frac)).toString();
 }
 
+function friendlyFrequency(freq?: string): string {
+  if (!freq) return "on a schedule";
+  switch (freq) {
+    case "1d": return "daily";
+    case "7d": return "every week";
+    case "30d": return "every month";
+    default: return `every ${freq}`;
+  }
+}
+
+function friendlyFrequencyAdverb(freq?: string): string {
+  if (!freq) return "periodically";
+  switch (freq) {
+    case "1d": return "daily";
+    case "7d": return "weekly";
+    case "30d": return "monthly";
+    default: return `every ${freq}`;
+  }
+}
+
+function formatUsdValue(value?: number): string {
+  if (value === undefined || value === null) return "$?";
+  return `$${value.toLocaleString()}`;
+}
+
+function summarizeMandate(trigger?: MandateTrigger, action?: MandateAction): string {
+  if (!trigger && !action) return "Manual automation";
+
+  if (action?.type === "swap" && trigger?.type === "schedule") {
+    const amt = action.amount ? formatBaseUnits(action.amount, 6) : "?";
+    return `Buy ${amt} ${action.from ?? "USDC"} of ${action.to ?? "?"} ${friendlyFrequency(trigger.frequency)}`;
+  }
+
+  if (action?.type === "notify" && trigger?.type === "price") {
+    const direction = trigger.condition === "below" ? "drops below" : "rises above";
+    return `Notify when ${trigger.token ?? "?"} ${direction} ${formatUsdValue(trigger.value)}`;
+  }
+
+  if (action?.type === "offramp" && trigger?.type === "balance") {
+    const threshold = trigger.value !== undefined ? formatBaseUnits(String(trigger.value), 0) : "?";
+    return `Auto cash-out when ${trigger.token ?? "USDC"} > ${threshold}`;
+  }
+
+  if (action?.type === "goal_deposit" && trigger?.type === "schedule") {
+    const amt = action.amount ? formatBaseUnits(action.amount, 6) : "?";
+    return `Save ${amt} USDC ${friendlyFrequencyAdverb(trigger.frequency)}`;
+  }
+
+  const triggerStr = summarizeTrigger(trigger);
+  const actionStr = summarizeAction(action);
+  return `${triggerStr} → ${actionStr}`;
+}
+
 function summarizeTrigger(trigger?: MandateTrigger): string {
   if (!trigger) return "Manual";
   switch (trigger.type) {
     case "schedule":
-      return `Every ${trigger.frequency ?? "?"}`;
-    case "price":
-      return `When ${trigger.token ?? "?"} ${trigger.condition ?? "?"} $${trigger.value ?? "?"}`;
+      return friendlyFrequency(trigger.frequency).replace(/^./, (c) => c.toUpperCase());
+    case "price": {
+      const direction = trigger.condition === "below" ? "drops below" : "rises above";
+      return `When ${trigger.token ?? "?"} ${direction} ${formatUsdValue(trigger.value)}`;
+    }
+    case "balance": {
+      const threshold = trigger.value !== undefined ? String(trigger.value) : "?";
+      return `When ${trigger.token ?? "USDC"} balance exceeds ${threshold}`;
+    }
     default:
       return trigger.type;
   }
@@ -142,14 +251,16 @@ function summarizeAction(action?: MandateAction): string {
   switch (action.type) {
     case "swap": {
       const amt = action.amount ? formatBaseUnits(action.amount, 6) : "?";
-      return `Swap ${amt} ${action.from ?? "?"} to ${action.to ?? "?"}`;
+      return `Buy ${amt} ${action.from ?? "USDC"} of ${action.to ?? "?"}`;
     }
     case "notify":
-      return action.message ?? "Notify";
+      return action.message ?? "Send notification";
     case "goal_deposit": {
       const amt = action.amount ? formatBaseUnits(action.amount, 6) : "?";
       return `Deposit ${amt} USDC to goal`;
     }
+    case "offramp":
+      return `Cash out to ${action.phone ?? "phone"}`;
     default:
       return action.type;
   }
@@ -222,6 +333,43 @@ const PlayIcon = () => (
 const XIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+  </svg>
+);
+
+const RepeatIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 0 1-4 4H3" />
+  </svg>
+);
+
+const BellLargeIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" />
+  </svg>
+);
+
+const CashOutIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="12" y1="1" x2="12" y2="15" /><polyline points="16 11 12 15 8 11" /><path d="M20 21H4" /><path d="M20 17H4" />
+  </svg>
+);
+
+const PiggyBankIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M19 5c-1.5 0-2.8 1.4-3 2-3.5-1.5-11-.3-11 5 0 1.8 0 3 2 4.5V20h4v-2h3v2h4v-4c1-.5 1.7-1 2-2h2v-4h-2c0-1-.5-1.5-1-2" />
+    <path d="M2 9.5a1 1 0 0 1 1-1 1.5 1.5 0 0 1 0 3 1 1 0 0 1-1-1" /><circle cx="12.5" cy="9.5" r="1" />
+  </svg>
+);
+
+const WrenchIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+  </svg>
+);
+
+const ChevronLeftIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="15 18 9 12 15 6" />
   </svg>
 );
 
@@ -505,15 +653,163 @@ function TrustTierCard() {
 
 /* ─── Automations (Mandates) Card ────────────────────────────────── */
 
+const TEMPLATE_OPTIONS: { key: TemplateKey; title: string; description: string; icon: React.ReactNode }[] = [
+  { key: "dca", title: "Buy crypto regularly", description: "Automatically buy a token on a schedule", icon: <RepeatIcon /> },
+  { key: "price_alert", title: "Price alert", description: "Get notified when a token hits a price", icon: <BellLargeIcon /> },
+  { key: "auto_cashout", title: "Auto cash-out", description: "Cash out when your balance exceeds a threshold", icon: <CashOutIcon /> },
+  { key: "auto_save", title: "Auto-save", description: "Automatically deposit to a savings goal", icon: <PiggyBankIcon /> },
+  { key: "custom", title: "Custom", description: "Set up a custom automation", icon: <WrenchIcon /> },
+];
+
+const FREQUENCY_OPTIONS: { value: string; label: string }[] = [
+  { value: "1d", label: "Daily" },
+  { value: "7d", label: "Weekly" },
+  { value: "30d", label: "Monthly" },
+];
+
+const DCA_TOKEN_OPTIONS = ["ETH", "WETH", "USDC"];
+const PRICE_TOKEN_OPTIONS = ["ETH", "WETH", "USDC", "BTC"];
+const CONDITION_OPTIONS = ["Below", "Above"];
+
+const INITIAL_DCA_FORM: DcaFormState = { token: "ETH", amount: "", frequency: "7d", name: "" };
+const INITIAL_PRICE_FORM: PriceAlertFormState = { token: "ETH", condition: "below", price: "", name: "" };
+const INITIAL_CASHOUT_FORM: AutoCashoutFormState = { threshold: "", phone: "", name: "" };
+const INITIAL_SAVE_FORM: AutoSaveFormState = { amount: "", frequency: "7d", goalName: "", name: "" };
+const INITIAL_CUSTOM_FORM: CustomFormState = {
+  name: "", triggerType: "schedule", triggerFrequency: "7d", triggerToken: "ETH",
+  triggerCondition: "below", triggerValue: "", triggerWallet: "user",
+  actionType: "swap", actionFrom: "USDC", actionTo: "ETH", actionAmount: "",
+  actionMessage: "", actionGoalId: "", actionPhone: "",
+};
+
+function buildDcaPayload(form: DcaFormState): { name: string; type: string; trigger: MandateTrigger; action: MandateAction } {
+  const name = form.name.trim() || `${form.frequency === "1d" ? "Daily" : form.frequency === "7d" ? "Weekly" : "Monthly"} ${form.token} DCA`;
+  return {
+    name,
+    type: "dca",
+    trigger: { type: "schedule", frequency: form.frequency },
+    action: { type: "swap", from: "USDC", to: form.token, amount: toBaseUnits(form.amount, 6) },
+  };
+}
+
+function buildPriceAlertPayload(form: PriceAlertFormState): { name: string; type: string; trigger: MandateTrigger; action: MandateAction } {
+  const priceNum = parseFloat(form.price);
+  const direction = form.condition === "below" ? "drops below" : "rises above";
+  const name = form.name.trim() || `${form.token} ${direction} $${form.price}`;
+  return {
+    name,
+    type: "price_alert",
+    trigger: { type: "price", token: form.token, condition: form.condition, value: priceNum },
+    action: { type: "notify", message: `${form.token} ${direction} $${form.price}` },
+  };
+}
+
+function buildCashoutPayload(form: AutoCashoutFormState): { name: string; type: string; trigger: MandateTrigger; action: MandateAction } {
+  const name = form.name.trim() || `Auto cash-out above ${form.threshold} USDC`;
+  return {
+    name,
+    type: "auto_cashout",
+    trigger: { type: "balance", wallet: "user", token: "USDC", condition: "above", value: parseInt(form.threshold, 10) },
+    action: { type: "offramp", amount: "auto", phone: form.phone, country: "KE" },
+  };
+}
+
+function buildSavePayload(form: AutoSaveFormState): { name: string; type: string; trigger: MandateTrigger; action: MandateAction } {
+  const freqLabel = form.frequency === "1d" ? "daily" : form.frequency === "7d" ? "weekly" : "monthly";
+  const name = form.name.trim() || `Save ${form.amount} USDC ${freqLabel}${form.goalName ? ` to ${form.goalName}` : ""}`;
+  return {
+    name,
+    type: "auto_save",
+    trigger: { type: "schedule", frequency: form.frequency },
+    action: { type: "goal_deposit", goalId: form.goalName, amount: toBaseUnits(form.amount, 6) },
+  };
+}
+
+function buildCustomPayload(form: CustomFormState): { name: string; type: string; trigger: MandateTrigger; action: MandateAction } {
+  const trigger: MandateTrigger = { type: form.triggerType };
+  if (form.triggerType === "schedule") {
+    trigger.frequency = form.triggerFrequency;
+  } else if (form.triggerType === "price") {
+    trigger.token = form.triggerToken;
+    trigger.condition = form.triggerCondition;
+    trigger.value = parseFloat(form.triggerValue) || 0;
+  } else if (form.triggerType === "balance") {
+    trigger.wallet = form.triggerWallet;
+    trigger.token = "USDC";
+    trigger.condition = "above";
+    trigger.value = parseInt(form.triggerValue, 10) || 0;
+  }
+
+  const action: MandateAction = { type: form.actionType };
+  if (form.actionType === "swap") {
+    action.from = form.actionFrom;
+    action.to = form.actionTo;
+    action.amount = toBaseUnits(form.actionAmount || "0", 6);
+  } else if (form.actionType === "notify") {
+    action.message = form.actionMessage;
+  } else if (form.actionType === "goal_deposit") {
+    action.goalId = form.actionGoalId;
+    action.amount = toBaseUnits(form.actionAmount || "0", 6);
+  } else if (form.actionType === "transfer") {
+    action.to = form.actionTo;
+    action.amount = toBaseUnits(form.actionAmount || "0", 6);
+  }
+
+  return {
+    name: form.name.trim() || "Custom automation",
+    type: "custom",
+    trigger,
+    action,
+  };
+}
+
+function buildConfirmationSummary(template: TemplateKey, payload: { trigger: MandateTrigger; action: MandateAction }): string {
+  return summarizeMandate(payload.trigger, payload.action);
+}
+
+function isFormValid(template: TemplateKey, dcaForm: DcaFormState, priceForm: PriceAlertFormState, cashoutForm: AutoCashoutFormState, saveForm: AutoSaveFormState, customForm: CustomFormState): boolean {
+  switch (template) {
+    case "dca": {
+      const amt = parseFloat(dcaForm.amount);
+      return !isNaN(amt) && amt > 0;
+    }
+    case "price_alert": {
+      const p = parseFloat(priceForm.price);
+      return !isNaN(p) && p > 0;
+    }
+    case "auto_cashout": {
+      const t = parseFloat(cashoutForm.threshold);
+      return !isNaN(t) && t > 0 && cashoutForm.phone.trim().length > 0;
+    }
+    case "auto_save": {
+      const a = parseFloat(saveForm.amount);
+      return !isNaN(a) && a > 0;
+    }
+    case "custom":
+      return customForm.name.trim().length > 0;
+  }
+}
+
 function AutomationsCard() {
   const { request } = useApi();
   const [mandates, setMandates] = useState<Mandate[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreate, setShowCreate] = useState(false);
-  const [createName, setCreateName] = useState("");
-  const [createType, setCreateType] = useState("recurring_swap");
-  const [createLoading, setCreateLoading] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState<string | null>(null);
+
+  /* ── Creation flow state machine ── */
+  const [flowStep, setFlowStep] = useState<AutomationFlowStep>("idle");
+  const [selectedTemplate, setSelectedTemplate] = useState<TemplateKey | null>(null);
+  const [createLoading, setCreateLoading] = useState(false);
+
+  /* ── Template form states ── */
+  const [dcaForm, setDcaForm] = useState<DcaFormState>(INITIAL_DCA_FORM);
+  const [priceForm, setPriceForm] = useState<PriceAlertFormState>(INITIAL_PRICE_FORM);
+  const [cashoutForm, setCashoutForm] = useState<AutoCashoutFormState>(INITIAL_CASHOUT_FORM);
+  const [saveForm, setSaveForm] = useState<AutoSaveFormState>(INITIAL_SAVE_FORM);
+  const [customForm, setCustomForm] = useState<CustomFormState>(INITIAL_CUSTOM_FORM);
+
+  /* ── Pending payload for confirmation step ── */
+  const [pendingPayload, setPendingPayload] = useState<{ name: string; type: string; trigger: MandateTrigger; action: MandateAction } | null>(null);
 
   const fetchMandates = useCallback(async () => {
     try {
@@ -527,6 +823,17 @@ function AutomationsCard() {
   }, [request]);
 
   useEffect(() => { fetchMandates(); }, [fetchMandates]);
+
+  const resetFlow = () => {
+    setFlowStep("idle");
+    setSelectedTemplate(null);
+    setDcaForm(INITIAL_DCA_FORM);
+    setPriceForm(INITIAL_PRICE_FORM);
+    setCashoutForm(INITIAL_CASHOUT_FORM);
+    setSaveForm(INITIAL_SAVE_FORM);
+    setCustomForm(INITIAL_CUSTOM_FORM);
+    setPendingPayload(null);
+  };
 
   const handleToggle = async (mandate: Mandate) => {
     const isPausing = mandate.status === "active";
@@ -545,7 +852,7 @@ function AutomationsCard() {
     }
   };
 
-  const handleCancel = async (id: string) => {
+  const handleCancelMandate = async (id: string) => {
     try {
       await request(`/agent/mandates/${id}`, { method: "DELETE" });
       setMandates((prev) =>
@@ -558,62 +865,64 @@ function AutomationsCard() {
     }
   };
 
-  const buildMandateDefaults = (type: string): { trigger: MandateTrigger; action: MandateAction } => {
-    switch (type) {
-      case "dca":
-        return {
-          trigger: { type: "schedule", frequency: "7d" },
-          action: { type: "swap", from: "USDC", to: "ETH", amount: "10000000" },
-        };
-      case "limit_order":
-        return {
-          trigger: { type: "price", token: "ETH", condition: "below", value: 2000 },
-          action: { type: "notify", message: "Price alert triggered" },
-        };
-      case "yield_harvest":
-        return {
-          trigger: { type: "schedule", frequency: "30d" },
-          action: { type: "goal_deposit", goalId: "", amount: "5000000" },
-        };
-      case "recurring_swap":
-        return {
-          trigger: { type: "schedule", frequency: "7d" },
-          action: { type: "swap", from: "USDC", to: "ETH", amount: "10000000" },
-        };
-      case "rebalance":
-        return {
-          trigger: { type: "schedule", frequency: "30d" },
-          action: { type: "swap", from: "USDC", to: "ETH", amount: "50000000" },
-        };
-      default:
-        return {
-          trigger: { type: "schedule", frequency: "7d" },
-          action: { type: "swap", from: "USDC", to: "ETH", amount: "10000000" },
-        };
-    }
+  const handleSelectTemplate = (key: TemplateKey) => {
+    setSelectedTemplate(key);
+    setFlowStep("filling_form");
   };
 
-  const handleCreate = async () => {
-    if (!createName.trim()) return;
+  const handleProceedToConfirm = () => {
+    if (!selectedTemplate) return;
+    let payload: { name: string; type: string; trigger: MandateTrigger; action: MandateAction };
+    switch (selectedTemplate) {
+      case "dca": payload = buildDcaPayload(dcaForm); break;
+      case "price_alert": payload = buildPriceAlertPayload(priceForm); break;
+      case "auto_cashout": payload = buildCashoutPayload(cashoutForm); break;
+      case "auto_save": payload = buildSavePayload(saveForm); break;
+      case "custom": payload = buildCustomPayload(customForm); break;
+    }
+    setPendingPayload(payload);
+    setFlowStep("confirming");
+  };
+
+  const handleConfirmCreate = async () => {
+    if (!pendingPayload) return;
     setCreateLoading(true);
     try {
-      const defaults = buildMandateDefaults(createType);
       await request("/agent/mandates", {
         method: "POST",
         body: {
-          name: createName.trim(),
-          type: createType,
-          trigger: defaults.trigger,
-          action: defaults.action,
+          name: pendingPayload.name,
+          type: pendingPayload.type,
+          trigger: pendingPayload.trigger,
+          action: pendingPayload.action,
         },
       });
-      setCreateName("");
-      setShowCreate(false);
+      resetFlow();
       await fetchMandates();
     } catch {
-      // Keep form open on failure so user can retry
+      // Keep confirmation visible so user can retry
     } finally {
       setCreateLoading(false);
+    }
+  };
+
+  const handleStartCreate = () => {
+    if (flowStep === "idle") {
+      setFlowStep("picking_template");
+    } else {
+      resetFlow();
+    }
+  };
+
+  const handleBack = () => {
+    if (flowStep === "confirming") {
+      setFlowStep("filling_form");
+      setPendingPayload(null);
+    } else if (flowStep === "filling_form") {
+      setFlowStep("picking_template");
+      setSelectedTemplate(null);
+    } else {
+      resetFlow();
     }
   };
 
@@ -633,50 +942,497 @@ function AutomationsCard() {
   }
 
   const activeMandates = mandates.filter((m) => m.status !== "revoked");
+  const isCreating = flowStep !== "idle";
+  const canProceed = selectedTemplate ? isFormValid(selectedTemplate, dcaForm, priceForm, cashoutForm, saveForm, customForm) : false;
 
   return (
     <div className="ad-card">
       <div className="ad-card-header">
         <span className="ad-card-title">Automations</span>
-        <button className="ad-card-action" onClick={() => setShowCreate(!showCreate)}>
-          {showCreate ? "Cancel" : "+ Create"}
+        <button className="ad-card-action" onClick={handleStartCreate}>
+          {isCreating ? "Cancel" : "+ Create"}
         </button>
       </div>
 
-      {showCreate && (
-        <div className="ad-create-form">
-          <input
-            className="ad-create-input"
-            placeholder="Automation name"
-            value={createName}
-            onChange={(e) => setCreateName(e.target.value)}
-            disabled={createLoading}
-          />
-          <div className="ad-create-form-row">
-            <select
-              className="ad-create-select"
-              value={createType}
-              onChange={(e) => setCreateType(e.target.value)}
-              disabled={createLoading}
+      {/* ── Step 1: Template Selection ── */}
+      {flowStep === "picking_template" && (
+        <div className="ad-template-grid">
+          {TEMPLATE_OPTIONS.map((t) => (
+            <button
+              key={t.key}
+              className="ad-template-card"
+              onClick={() => handleSelectTemplate(t.key)}
             >
-              <option value="recurring_swap">Recurring Swap</option>
-              <option value="limit_order">Limit Order</option>
-              <option value="dca">DCA Strategy</option>
-              <option value="rebalance">Portfolio Rebalance</option>
-              <option value="yield_harvest">Yield Harvest</option>
-            </select>
-          </div>
+              <span className="ad-template-card-icon">{t.icon}</span>
+              <span className="ad-template-card-title">{t.title}</span>
+              <span className="ad-template-card-desc">{t.description}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Step 2: Template-Specific Form ── */}
+      {flowStep === "filling_form" && selectedTemplate && (
+        <div className="ad-template-form">
+          <button className="ad-template-back" onClick={handleBack}>
+            <ChevronLeftIcon /> Back
+          </button>
+
+          {selectedTemplate === "dca" && (
+            <>
+              <div className="ad-form-field">
+                <label className="ad-form-label">Token to buy</label>
+                <div className="ad-segmented">
+                  {DCA_TOKEN_OPTIONS.map((tok) => (
+                    <button
+                      key={tok}
+                      className={`ad-segmented-btn ${dcaForm.token === tok ? "active" : ""}`}
+                      onClick={() => setDcaForm((f) => ({ ...f, token: tok }))}
+                    >
+                      {tok}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="ad-form-field">
+                <label className="ad-form-label">Amount per buy</label>
+                <div className="ad-form-input-wrap">
+                  <input
+                    className="ad-create-input"
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="10"
+                    value={dcaForm.amount}
+                    onChange={(e) => setDcaForm((f) => ({ ...f, amount: e.target.value }))}
+                  />
+                  <span className="ad-form-suffix">USDC</span>
+                </div>
+              </div>
+              <div className="ad-form-field">
+                <label className="ad-form-label">Frequency</label>
+                <div className="ad-segmented">
+                  {FREQUENCY_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      className={`ad-segmented-btn ${dcaForm.frequency === opt.value ? "active" : ""}`}
+                      onClick={() => setDcaForm((f) => ({ ...f, frequency: opt.value }))}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="ad-form-field">
+                <label className="ad-form-label">Name (optional)</label>
+                <input
+                  className="ad-create-input"
+                  placeholder={`${dcaForm.frequency === "1d" ? "Daily" : dcaForm.frequency === "7d" ? "Weekly" : "Monthly"} ${dcaForm.token} DCA`}
+                  value={dcaForm.name}
+                  onChange={(e) => setDcaForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+            </>
+          )}
+
+          {selectedTemplate === "price_alert" && (
+            <>
+              <div className="ad-form-field">
+                <label className="ad-form-label">Token</label>
+                <div className="ad-segmented">
+                  {PRICE_TOKEN_OPTIONS.map((tok) => (
+                    <button
+                      key={tok}
+                      className={`ad-segmented-btn ${priceForm.token === tok ? "active" : ""}`}
+                      onClick={() => setPriceForm((f) => ({ ...f, token: tok }))}
+                    >
+                      {tok}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="ad-form-field">
+                <label className="ad-form-label">Condition</label>
+                <div className="ad-segmented">
+                  {CONDITION_OPTIONS.map((c) => (
+                    <button
+                      key={c}
+                      className={`ad-segmented-btn ${priceForm.condition === c.toLowerCase() ? "active" : ""}`}
+                      onClick={() => setPriceForm((f) => ({ ...f, condition: c.toLowerCase() }))}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="ad-form-field">
+                <label className="ad-form-label">Price</label>
+                <div className="ad-form-input-wrap">
+                  <span className="ad-form-prefix">$</span>
+                  <input
+                    className="ad-create-input ad-input-with-prefix"
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="2000"
+                    value={priceForm.price}
+                    onChange={(e) => setPriceForm((f) => ({ ...f, price: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="ad-form-field">
+                <label className="ad-form-label">Name (optional)</label>
+                <input
+                  className="ad-create-input"
+                  placeholder={`${priceForm.token} price alert`}
+                  value={priceForm.name}
+                  onChange={(e) => setPriceForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+            </>
+          )}
+
+          {selectedTemplate === "auto_cashout" && (
+            <>
+              <div className="ad-form-field">
+                <label className="ad-form-label">When USDC balance exceeds</label>
+                <div className="ad-form-input-wrap">
+                  <input
+                    className="ad-create-input"
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="100"
+                    value={cashoutForm.threshold}
+                    onChange={(e) => setCashoutForm((f) => ({ ...f, threshold: e.target.value }))}
+                  />
+                  <span className="ad-form-suffix">USDC</span>
+                </div>
+              </div>
+              <div className="ad-form-field">
+                <label className="ad-form-label">Cash out to (phone number)</label>
+                <input
+                  className="ad-create-input"
+                  type="tel"
+                  inputMode="tel"
+                  placeholder="0712345678"
+                  value={cashoutForm.phone}
+                  onChange={(e) => setCashoutForm((f) => ({ ...f, phone: e.target.value }))}
+                />
+              </div>
+              <div className="ad-form-field">
+                <label className="ad-form-label">Name (optional)</label>
+                <input
+                  className="ad-create-input"
+                  placeholder="Auto cash-out"
+                  value={cashoutForm.name}
+                  onChange={(e) => setCashoutForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+            </>
+          )}
+
+          {selectedTemplate === "auto_save" && (
+            <>
+              <div className="ad-form-field">
+                <label className="ad-form-label">Amount</label>
+                <div className="ad-form-input-wrap">
+                  <input
+                    className="ad-create-input"
+                    type="number"
+                    inputMode="decimal"
+                    placeholder="50"
+                    value={saveForm.amount}
+                    onChange={(e) => setSaveForm((f) => ({ ...f, amount: e.target.value }))}
+                  />
+                  <span className="ad-form-suffix">USDC</span>
+                </div>
+              </div>
+              <div className="ad-form-field">
+                <label className="ad-form-label">Frequency</label>
+                <div className="ad-segmented">
+                  {FREQUENCY_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      className={`ad-segmented-btn ${saveForm.frequency === opt.value ? "active" : ""}`}
+                      onClick={() => setSaveForm((f) => ({ ...f, frequency: opt.value }))}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="ad-form-field">
+                <label className="ad-form-label">Goal name</label>
+                <input
+                  className="ad-create-input"
+                  placeholder="Emergency Fund"
+                  value={saveForm.goalName}
+                  onChange={(e) => setSaveForm((f) => ({ ...f, goalName: e.target.value }))}
+                />
+              </div>
+              <div className="ad-form-field">
+                <label className="ad-form-label">Name (optional)</label>
+                <input
+                  className="ad-create-input"
+                  placeholder={`Auto-save ${saveForm.amount || "50"} USDC`}
+                  value={saveForm.name}
+                  onChange={(e) => setSaveForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+            </>
+          )}
+
+          {selectedTemplate === "custom" && (
+            <>
+              <div className="ad-form-field">
+                <label className="ad-form-label">Name</label>
+                <input
+                  className="ad-create-input"
+                  placeholder="My automation"
+                  value={customForm.name}
+                  onChange={(e) => setCustomForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+              <div className="ad-form-field">
+                <label className="ad-form-label">Trigger</label>
+                <div className="ad-segmented">
+                  {(["schedule", "price", "balance"] as const).map((tt) => (
+                    <button
+                      key={tt}
+                      className={`ad-segmented-btn ${customForm.triggerType === tt ? "active" : ""}`}
+                      onClick={() => setCustomForm((f) => ({ ...f, triggerType: tt }))}
+                    >
+                      {tt === "schedule" ? "Schedule" : tt === "price" ? "Price" : "Balance"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {customForm.triggerType === "schedule" && (
+                <div className="ad-form-field">
+                  <label className="ad-form-label">Frequency</label>
+                  <div className="ad-segmented">
+                    {FREQUENCY_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        className={`ad-segmented-btn ${customForm.triggerFrequency === opt.value ? "active" : ""}`}
+                        onClick={() => setCustomForm((f) => ({ ...f, triggerFrequency: opt.value }))}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {customForm.triggerType === "price" && (
+                <>
+                  <div className="ad-form-field">
+                    <label className="ad-form-label">Token</label>
+                    <div className="ad-segmented">
+                      {PRICE_TOKEN_OPTIONS.map((tok) => (
+                        <button
+                          key={tok}
+                          className={`ad-segmented-btn ${customForm.triggerToken === tok ? "active" : ""}`}
+                          onClick={() => setCustomForm((f) => ({ ...f, triggerToken: tok }))}
+                        >
+                          {tok}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="ad-form-field">
+                    <label className="ad-form-label">Condition</label>
+                    <div className="ad-segmented">
+                      {CONDITION_OPTIONS.map((c) => (
+                        <button
+                          key={c}
+                          className={`ad-segmented-btn ${customForm.triggerCondition === c.toLowerCase() ? "active" : ""}`}
+                          onClick={() => setCustomForm((f) => ({ ...f, triggerCondition: c.toLowerCase() }))}
+                        >
+                          {c}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="ad-form-field">
+                    <label className="ad-form-label">Price</label>
+                    <div className="ad-form-input-wrap">
+                      <span className="ad-form-prefix">$</span>
+                      <input
+                        className="ad-create-input ad-input-with-prefix"
+                        type="number"
+                        inputMode="decimal"
+                        placeholder="2000"
+                        value={customForm.triggerValue}
+                        onChange={(e) => setCustomForm((f) => ({ ...f, triggerValue: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+              {customForm.triggerType === "balance" && (
+                <div className="ad-form-field">
+                  <label className="ad-form-label">Balance threshold</label>
+                  <div className="ad-form-input-wrap">
+                    <input
+                      className="ad-create-input"
+                      type="number"
+                      inputMode="decimal"
+                      placeholder="100"
+                      value={customForm.triggerValue}
+                      onChange={(e) => setCustomForm((f) => ({ ...f, triggerValue: e.target.value }))}
+                    />
+                    <span className="ad-form-suffix">USDC</span>
+                  </div>
+                </div>
+              )}
+              <div className="ad-form-field">
+                <label className="ad-form-label">Action</label>
+                <div className="ad-segmented">
+                  {(["swap", "notify", "goal_deposit", "transfer"] as const).map((at) => (
+                    <button
+                      key={at}
+                      className={`ad-segmented-btn ${customForm.actionType === at ? "active" : ""}`}
+                      onClick={() => setCustomForm((f) => ({ ...f, actionType: at }))}
+                    >
+                      {at === "swap" ? "Swap" : at === "notify" ? "Notify" : at === "goal_deposit" ? "Save" : "Transfer"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {customForm.actionType === "swap" && (
+                <>
+                  <div className="ad-form-field">
+                    <label className="ad-form-label">Amount</label>
+                    <div className="ad-form-input-wrap">
+                      <input
+                        className="ad-create-input"
+                        type="number"
+                        inputMode="decimal"
+                        placeholder="10"
+                        value={customForm.actionAmount}
+                        onChange={(e) => setCustomForm((f) => ({ ...f, actionAmount: e.target.value }))}
+                      />
+                      <span className="ad-form-suffix">{customForm.actionFrom}</span>
+                    </div>
+                  </div>
+                  <div className="ad-form-field">
+                    <label className="ad-form-label">Swap to</label>
+                    <div className="ad-segmented">
+                      {DCA_TOKEN_OPTIONS.map((tok) => (
+                        <button
+                          key={tok}
+                          className={`ad-segmented-btn ${customForm.actionTo === tok ? "active" : ""}`}
+                          onClick={() => setCustomForm((f) => ({ ...f, actionTo: tok }))}
+                        >
+                          {tok}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+              {customForm.actionType === "notify" && (
+                <div className="ad-form-field">
+                  <label className="ad-form-label">Message</label>
+                  <input
+                    className="ad-create-input"
+                    placeholder="Alert triggered"
+                    value={customForm.actionMessage}
+                    onChange={(e) => setCustomForm((f) => ({ ...f, actionMessage: e.target.value }))}
+                  />
+                </div>
+              )}
+              {customForm.actionType === "goal_deposit" && (
+                <>
+                  <div className="ad-form-field">
+                    <label className="ad-form-label">Amount</label>
+                    <div className="ad-form-input-wrap">
+                      <input
+                        className="ad-create-input"
+                        type="number"
+                        inputMode="decimal"
+                        placeholder="50"
+                        value={customForm.actionAmount}
+                        onChange={(e) => setCustomForm((f) => ({ ...f, actionAmount: e.target.value }))}
+                      />
+                      <span className="ad-form-suffix">USDC</span>
+                    </div>
+                  </div>
+                  <div className="ad-form-field">
+                    <label className="ad-form-label">Goal name</label>
+                    <input
+                      className="ad-create-input"
+                      placeholder="Emergency Fund"
+                      value={customForm.actionGoalId}
+                      onChange={(e) => setCustomForm((f) => ({ ...f, actionGoalId: e.target.value }))}
+                    />
+                  </div>
+                </>
+              )}
+              {customForm.actionType === "transfer" && (
+                <>
+                  <div className="ad-form-field">
+                    <label className="ad-form-label">Amount</label>
+                    <div className="ad-form-input-wrap">
+                      <input
+                        className="ad-create-input"
+                        type="number"
+                        inputMode="decimal"
+                        placeholder="10"
+                        value={customForm.actionAmount}
+                        onChange={(e) => setCustomForm((f) => ({ ...f, actionAmount: e.target.value }))}
+                      />
+                      <span className="ad-form-suffix">USDC</span>
+                    </div>
+                  </div>
+                  <div className="ad-form-field">
+                    <label className="ad-form-label">Recipient</label>
+                    <input
+                      className="ad-create-input"
+                      placeholder="Address or phone"
+                      value={customForm.actionTo}
+                      onChange={(e) => setCustomForm((f) => ({ ...f, actionTo: e.target.value }))}
+                    />
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
           <div className="ad-create-actions">
             <button
               className="btn-exo btn-primary"
-              onClick={handleCreate}
-              disabled={createLoading || !createName.trim()}
+              onClick={handleProceedToConfirm}
+              disabled={!canProceed}
             >
-              {createLoading ? "Creating..." : "Create"}
+              Review
+            </button>
+            <button className="btn-exo btn-secondary" onClick={resetFlow}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Step 3: Confirmation ── */}
+      {flowStep === "confirming" && pendingPayload && selectedTemplate && (
+        <div className="ad-template-form">
+          <button className="ad-template-back" onClick={handleBack}>
+            <ChevronLeftIcon /> Edit
+          </button>
+          <div className="ad-confirm-summary">
+            {buildConfirmationSummary(selectedTemplate, pendingPayload)}
+          </div>
+          <div className="ad-confirm-summary-name">{pendingPayload.name}</div>
+          <div className="ad-create-actions">
+            <button
+              className="btn-exo btn-primary"
+              onClick={handleConfirmCreate}
+              disabled={createLoading}
+            >
+              {createLoading ? "Creating..." : "Confirm"}
             </button>
             <button
               className="btn-exo btn-secondary"
-              onClick={() => { setShowCreate(false); setCreateName(""); }}
+              onClick={resetFlow}
               disabled={createLoading}
             >
               Cancel
@@ -685,23 +1441,23 @@ function AutomationsCard() {
         </div>
       )}
 
-      {activeMandates.length === 0 && !showCreate ? (
+      {/* ── Mandate list ── */}
+      {activeMandates.length === 0 && flowStep === "idle" ? (
         <div className="ad-empty">
           <span className="ad-empty-text">No automations configured</span>
           <span className="ad-empty-hint">Create one to let your agent act on your behalf</span>
         </div>
-      ) : (
+      ) : flowStep === "idle" ? (
         <div className="ad-mandate-list">
           {activeMandates.map((m) => (
             <div key={m.id} className="ad-mandate-item">
               <div className="ad-mandate-info">
                 <div className="ad-mandate-name">
                   {m.name}
-                  <span className={`ad-badge type`}>{m.type.replace(/_/g, " ")}</span>
                   <span className={`ad-badge ${m.status}`}>{m.status}</span>
                 </div>
                 <div className="ad-mandate-meta">
-                  {summarizeTrigger(m.trigger)} &rarr; {summarizeAction(m.action)}
+                  {summarizeMandate(m.trigger, m.action)}
                 </div>
                 <div className="ad-mandate-meta">
                   {m.executionCount} execution{m.executionCount !== 1 ? "s" : ""}
@@ -731,7 +1487,7 @@ function AutomationsCard() {
             </div>
           ))}
         </div>
-      )}
+      ) : null}
 
       {confirmCancel && (
         <div className="ad-confirm-overlay" onClick={(e) => { if (e.target === e.currentTarget) setConfirmCancel(null); }}>
@@ -744,7 +1500,7 @@ function AutomationsCard() {
               <button className="btn-exo btn-secondary" onClick={() => setConfirmCancel(null)}>
                 Keep
               </button>
-              <button className="btn-exo btn-danger" onClick={() => handleCancel(confirmCancel)}>
+              <button className="btn-exo btn-danger" onClick={() => handleCancelMandate(confirmCancel)}>
                 Cancel It
               </button>
             </div>
