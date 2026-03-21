@@ -30,6 +30,7 @@ import { AgentActivityServiceLive } from "../services/agent/agent-activity-servi
 import { CoinGeckoAdapterLive } from "../services/adapters/coingecko.js";
 import { AgentAutonomyServiceLive } from "../services/agent/agent-autonomy-service.js";
 import { AgentPatternServiceLive } from "../services/agent/agent-pattern-service.js";
+import { MarketResearchServiceLive } from "../services/agent/market-research-service.js";
 
 const ConfigLayer = ConfigLive;
 
@@ -184,6 +185,10 @@ const AgentPatternServiceLayer = AgentPatternServiceLive.pipe(
   Layer.provide(DatabaseLayer)
 );
 
+const MarketResearchServiceLayer = MarketResearchServiceLive.pipe(
+  Layer.provide(MarketIntelligenceServiceLayer)
+);
+
 export const MainLayer = Layer.mergeAll(
   ConfigLayer,
   DatabaseLayer,
@@ -215,5 +220,6 @@ export const MainLayer = Layer.mergeAll(
   AgentActivityServiceLayer,
   MarketIntelligenceServiceLayer,
   AgentAutonomyServiceLayer,
-  AgentPatternServiceLayer
+  AgentPatternServiceLayer,
+  MarketResearchServiceLayer
 );

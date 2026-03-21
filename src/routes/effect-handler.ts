@@ -33,6 +33,7 @@ import type { AgentActivityService } from "../services/agent/agent-activity-serv
 import type { MarketIntelligenceService } from "../services/adapters/coingecko.js";
 import type { AgentAutonomyService } from "../services/agent/agent-autonomy-service.js";
 import type { AgentPatternService } from "../services/agent/agent-pattern-service.js";
+import type { MarketResearchService } from "../services/agent/market-research-service.js";
 
 export type AppDeps =
   | WalletService
@@ -65,7 +66,8 @@ export type AppDeps =
   | AgentActivityService
   | MarketIntelligenceService
   | AgentAutonomyService
-  | AgentPatternService;
+  | AgentPatternService
+  | MarketResearchService;
 
 export type AppRuntime = ManagedRuntime.ManagedRuntime<AppDeps, ConfigError.ConfigError>;
 

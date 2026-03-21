@@ -48,3 +48,13 @@ export {
   type PatternEvidence,
   type SuggestedMandate,
 } from "./agent-pattern-service.js";
+
+export {
+  MarketResearchService,
+  MarketResearchServiceLive,
+  MarketResearchError,
+  type MarketResearchServiceApi,
+  type MarketBrief,
+  type Opportunity,
+  type TokenEvaluation,
+} from "./market-research-service.js";

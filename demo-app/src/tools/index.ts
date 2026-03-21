@@ -6,6 +6,7 @@ import { buySellTool } from "./super-buy-sell";
 import { swapTool } from "./super-swap";
 import { earnTool } from "./super-earn";
 import { manageTool } from "./super-manage";
+import { researchTool } from "./research";
 
 export { setApiFetcher, setApprovalHandler } from "./api";
 
@@ -16,6 +17,8 @@ export const allTools: ToolConfig[] = [
   swapTool,
   earnTool,
   manageTool,
+  // ── Research tool — market analysis ──
+  researchTool,
   // ── Utility tools — read-only info queries ──
   ...utilityTools,
   ...profileTools,

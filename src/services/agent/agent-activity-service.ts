@@ -1,5 +1,5 @@
 import { Effect, Context, Layer, Data } from "effect";
-import { eq, and, desc, asc, sql, count } from "drizzle-orm";
+import { eq, and, desc, asc, sql, count, isNull } from "drizzle-orm";
 import { DatabaseService } from "../../db/client.js";
 import {
   agentActivity,
@@ -26,7 +26,10 @@ export interface CreateActivityParams {
     | "alert"
     | "suggestion"
     | "balance_change"
-    | "position_matured";
+    | "position_matured"
+    | "research_finding"
+    | "action_request"
+    | "risk_alert";
   readonly title: string;
   readonly description?: string;
   readonly mandateId?: string;
@@ -54,6 +57,17 @@ export interface AgentActivityServiceApi {
   readonly getUnreadCount: (
     userId: string
   ) => Effect.Effect<number, AgentActivityError>;
+
+  readonly listPendingRequests: (
+    userId: string
+  ) => Effect.Effect<ReadonlyArray<AgentActivityRecord>, AgentActivityError>;
+
+  readonly respondToRequest: (
+    userId: string,
+    activityId: string,
+    approved: boolean,
+    note?: string
+  ) => Effect.Effect<AgentActivityRecord, AgentActivityError>;
 }
 
 export class AgentActivityService extends Context.Tag("AgentActivityService")<
@@ -155,6 +169,93 @@ export const AgentActivityServiceLive: Layer.Layer<
           catch: (error) =>
             new AgentActivityError({
               message: `Failed to get unread count: ${error}`,
+              cause: error,
+            }),
+        }),
+
+      listPendingRequests: (userId: string) =>
+        Effect.tryPromise({
+          try: async () => {
+            const results = await db
+              .select()
+              .from(agentActivity)
+              .where(
+                and(
+                  eq(agentActivity.userId, userId),
+                  eq(agentActivity.type, "action_request"),
+                  sql`(${agentActivity.metadata}->>'status') IS NULL OR (${agentActivity.metadata}->>'status') = 'pending'`
+                )
+              )
+              .orderBy(desc(agentActivity.createdAt));
+            return results;
+          },
+          catch: (error) =>
+            new AgentActivityError({
+              message: `Failed to list pending requests: ${error}`,
+              cause: error,
+            }),
+        }),
+
+      respondToRequest: (
+        userId: string,
+        activityId: string,
+        approved: boolean,
+        note?: string
+      ) =>
+        Effect.tryPromise({
+          try: async () => {
+            // First verify the activity belongs to the user and is an action_request
+            const [existing] = await db
+              .select()
+              .from(agentActivity)
+              .where(
+                and(
+                  eq(agentActivity.id, activityId),
+                  eq(agentActivity.userId, userId),
+                  eq(agentActivity.type, "action_request")
+                )
+              );
+
+            if (!existing) {
+              throw new Error(
+                `Action request ${activityId} not found or does not belong to user`
+              );
+            }
+
+            const existingMetadata =
+              (existing.metadata as Record<string, unknown>) ?? {};
+            const currentStatus = existingMetadata.status as string | undefined;
+
+            if (
+              currentStatus === "approved" ||
+              currentStatus === "rejected"
+            ) {
+              throw new Error(
+                `Action request ${activityId} has already been responded to with status: ${currentStatus}`
+              );
+            }
+
+            const updatedMetadata = {
+              ...existingMetadata,
+              status: approved ? "approved" : "rejected",
+              respondedAt: new Date().toISOString(),
+              ...(note !== undefined && { responseNote: note }),
+            };
+
+            const [updated] = await db
+              .update(agentActivity)
+              .set({
+                metadata: updatedMetadata,
+                read: true,
+              })
+              .where(eq(agentActivity.id, activityId))
+              .returning();
+
+            return updated!;
+          },
+          catch: (error) =>
+            new AgentActivityError({
+              message: `Failed to respond to request: ${error}`,
               cause: error,
             }),
         }),

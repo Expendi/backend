@@ -146,4 +146,7 @@ export const agentActivityTypeEnum = pgEnum("agent_activity_type", [
   "suggestion",
   "balance_change",
   "position_matured",
+  "research_finding",
+  "action_request",
+  "risk_alert",
 ]);
