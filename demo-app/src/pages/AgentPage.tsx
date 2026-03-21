@@ -7,7 +7,7 @@ import { useChatActions } from "../context/ChatActionsContext";
 import { useConversations, type ConversationMessage } from "../hooks/useConversations";
 import { ChatHistory } from "../components/ChatHistory";
 import { setApiFetcher } from "../tools/api";
-import { setTokenGetter } from "../lib/glove-client";
+import { setTokenGetter, setActiveConversationId } from "../lib/glove-client";
 import { Markdown } from "../components/Markdown";
 import "../styles/chat.css";
 
@@ -166,9 +166,6 @@ export function AgentPage() {
   const [restoredMessages, setRestoredMessages] = useState<ConversationMessage[]>([]);
   const [conversationKey, setConversationKey] = useState(0);
 
-  // Track messages we've already persisted to avoid duplicates
-  const persistedCountRef = useRef({ user: 0, agent: 0 });
-
   // Compaction summary tracking — compaction summaries are stored as "user" messages with is_compaction: true
   // They appear in the timeline as { kind: "user" } entries. We track indices to hide from UI and skip when persisting.
   const [compactionIndices, setCompactionIndices] = useState<Set<number>>(new Set());
@@ -196,6 +193,12 @@ export function AgentPage() {
   useEffect(() => { setTokenGetter(getAccessToken); }, [getAccessToken]);
   useEffect(() => { setApiFetcher(request); }, [request]);
 
+  // Tell the chat client which conversation to persist messages to
+  useEffect(() => {
+    setActiveConversationId(convos.activeConversation?.id ?? null);
+    return () => setActiveConversationId(null);
+  }, [convos.activeConversation?.id]);
+
   // Restore messages when active conversation loads (filter out any previously persisted compaction summaries)
   useEffect(() => {
     if (convos.activeConversation?.messages && convos.activeConversation.messages.length > 0) {
@@ -206,41 +209,10 @@ export function AgentPage() {
     } else {
       setRestoredMessages([]);
     }
-    // Reset persisted counts when conversation changes
-    persistedCountRef.current = { user: 0, agent: 0 };
   }, [convos.activeConversation?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Persist new messages to backend (skip compaction summaries)
-  useEffect(() => {
-    if (!convos.activeConversation?.id) return;
-    const convId = convos.activeConversation.id;
-
-    // Build indexed arrays so we can check timeline indices against compaction set
-    const userEntries: { entry: Extract<typeof glove.timeline[number], { kind: "user" }>; timelineIndex: number }[] = [];
-    const agentEntries: { entry: Extract<typeof glove.timeline[number], { kind: "agent_text" }>; timelineIndex: number }[] = [];
-    glove.timeline.forEach((e, i) => {
-      if (e.kind === "user") userEntries.push({ entry: e, timelineIndex: i });
-      else if (e.kind === "agent_text") agentEntries.push({ entry: e, timelineIndex: i });
-    });
-
-    // Persist new user messages (skip compaction summaries — they are stored as user messages by Glove)
-    for (let i = persistedCountRef.current.user; i < userEntries.length; i++) {
-      const { timelineIndex } = userEntries[i];
-      if (compactionIndicesRef.current.has(timelineIndex)) continue;
-      convos.appendMessage(convId, "user", userEntries[i].entry.text);
-    }
-    persistedCountRef.current.user = userEntries.length;
-
-    // Persist new agent messages (only complete ones, not while streaming, skip compaction artifacts)
-    if (!glove.busy) {
-      for (let i = persistedCountRef.current.agent; i < agentEntries.length; i++) {
-        const { entry, timelineIndex } = agentEntries[i];
-        if (compactionIndicesRef.current.has(timelineIndex)) continue;
-        convos.appendMessage(convId, "agent", entry.text);
-      }
-      persistedCountRef.current.agent = agentEntries.length;
-    }
-  }, [glove.timeline, glove.busy, convos.activeConversation?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Message persistence is handled server-side in the chat route (src/routes/chat.ts).
+  // The conversationId is passed via setActiveConversationId above.
 
   const sendMessage = useCallback(
     (text: string) => {
@@ -263,10 +235,13 @@ export function AgentPage() {
   useEffect(() => { chatActions?.registerPrefill?.(prefillInput); }, [chatActions, prefillInput]);
 
   // Auto-scroll
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  const scrollToBottom = useCallback((instant?: boolean) => {
+    messagesEndRef.current?.scrollIntoView({ behavior: instant ? "instant" : "smooth" });
   }, []);
+  // Scroll on new timeline entries or streaming
   useEffect(() => { scrollToBottom(); }, [glove.timeline.length, glove.streamingText, glove.slots.length, scrollToBottom]);
+  // Scroll instantly when restored messages load (opening a conversation)
+  useEffect(() => { if (restoredMessages.length > 0) scrollToBottom(true); }, [restoredMessages, scrollToBottom]);
 
   // Refresh dashboard after tool completions
   const lastToolCountRef = useRef(0);

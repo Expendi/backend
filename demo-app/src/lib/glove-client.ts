@@ -53,9 +53,14 @@ const CHAT_ENDPOINT = `${API_BASE}/api/chat`;
 
 type TokenGetter = () => Promise<string | null>;
 let getAccessToken: TokenGetter | null = null;
+let activeConversationId: string | null = null;
 
 export function setTokenGetter(fn: TokenGetter) {
   getAccessToken = fn;
+}
+
+export function setActiveConversationId(id: string | null) {
+  activeConversationId = id;
 }
 
 async function authFetch(request: RemotePromptRequest, signal?: AbortSignal) {
@@ -66,10 +71,14 @@ async function authFetch(request: RemotePromptRequest, signal?: AbortSignal) {
     const token = await getAccessToken();
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
+  const body: Record<string, unknown> = { ...request };
+  if (activeConversationId) {
+    body.conversationId = activeConversationId;
+  }
   const res = await fetch(CHAT_ENDPOINT, {
     method: "POST",
     headers,
-    body: JSON.stringify(request),
+    body: JSON.stringify(body),
     signal,
   });
   if (!res.ok) {
