@@ -747,7 +747,7 @@ async function handleMandates(
       if (!params?.trigger) return { status: "error", data: "", message: "Missing required parameter: trigger." };
       if (!params?.action) return { status: "error", data: "", message: "Missing required parameter: action." };
 
-      const validTypes = ["dca", "auto_offramp", "rebalance", "alert", "auto_save", "custom"];
+      const validTypes = ["dca", "auto_offramp", "rebalance", "alert", "auto_save", "custom", "price_alert", "auto_cashout", "limit_order", "yield_harvest", "recurring_swap"];
       const mandateType = String(params.type).toLowerCase();
       if (!validTypes.includes(mandateType)) {
         return { status: "error", data: "", message: `Invalid mandate type "${params.type}". Supported types: ${validTypes.join(", ")}` };

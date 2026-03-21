@@ -116,7 +116,7 @@ interface Mandate {
   id: string;
   name: string;
   type: string;
-  status: "active" | "paused" | "revoked" | "completed";
+  status: "active" | "paused" | "expired" | "revoked";
   executionCount: number;
   createdAt: string;
   lastExecutedAt?: string;
@@ -2219,7 +2219,7 @@ function AutomationsCard() {
                     {m.status === "active" ? <PauseIcon /> : <PlayIcon />}
                   </button>
                 )}
-                {m.status !== "revoked" && m.status !== "completed" && (
+                {m.status !== "revoked" && m.status !== "expired" && (
                   <button
                     className="ad-mandate-cancel"
                     onClick={() => setConfirmCancel(m.id)}
@@ -2531,7 +2531,7 @@ function CustomInstructionsCard() {
 
 type InboxCategory = "research" | "request" | "alert" | "news" | "suggestion" | "mandate_update";
 type InboxPriority = "urgent" | "high" | "medium" | "low";
-type InboxStatus = "unread" | "read" | "dismissed";
+type InboxStatus = "unread" | "read" | "actioned" | "dismissed";
 
 interface InboxItem {
   id: string;
@@ -2540,7 +2540,8 @@ interface InboxItem {
   body: string;
   priority: InboxPriority;
   status: InboxStatus;
-  actionable: boolean;
+  actionType: string | null;
+  actionPayload: Record<string, unknown> | null;
   createdAt: string;
 }
 
@@ -2820,7 +2821,7 @@ function InboxCard() {
                   <span className={`inbox-priority-badge ${getPriorityClass(item.priority)}`}>
                     {getPriorityLabel(item.priority)}
                   </span>
-                  {item.actionable && item.category === "request" && (
+                  {!!item.actionType && item.category === "request" && (
                     <div className="inbox-item-actions">
                       <button
                         className="inbox-action-btn approve"

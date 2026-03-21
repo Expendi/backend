@@ -77,35 +77,16 @@ function deepMergeProfile(
   if (patch.customInstructions !== undefined)
     merged.customInstructions = patch.customInstructions;
 
-  if (patch.preferredCategories !== undefined) {
-    const existingPref = existing.preferredCategories ?? [];
-    const newPref = patch.preferredCategories.filter(
-      (c) => !existingPref.includes(c)
-    );
-    merged.preferredCategories = [...existingPref, ...newPref];
-  }
+  // Array fields: direct replace (supports both add and remove from UI)
+  if (patch.preferredCategories !== undefined)
+    merged.preferredCategories = patch.preferredCategories;
 
-  if (patch.avoidCategories !== undefined) {
-    const existingAvoid = existing.avoidCategories ?? [];
-    const newAvoid = patch.avoidCategories.filter(
-      (c) => !existingAvoid.includes(c)
-    );
-    merged.avoidCategories = [...existingAvoid, ...newAvoid];
-  }
+  if (patch.avoidCategories !== undefined)
+    merged.avoidCategories = patch.avoidCategories;
 
-  if (patch.goals !== undefined) {
-    const existingGoals = existing.goals ?? [];
-    const newGoals = patch.goals.filter((g) => !existingGoals.includes(g));
-    merged.goals = [...existingGoals, ...newGoals];
-  }
+  if (patch.goals !== undefined) merged.goals = patch.goals;
 
-  if (patch.interests !== undefined) {
-    const existingInterests = existing.interests ?? [];
-    const newInterests = patch.interests.filter(
-      (i) => !existingInterests.includes(i)
-    );
-    merged.interests = [...existingInterests, ...newInterests];
-  }
+  if (patch.interests !== undefined) merged.interests = patch.interests;
 
   if (patch.patterns !== undefined) {
     const existingPatterns = existing.patterns ?? {};
