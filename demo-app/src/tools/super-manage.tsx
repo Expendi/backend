@@ -578,22 +578,36 @@ export const manageTool: ToolConfig = defineTool({
     "Set up autopay, recurring payments, scheduled transfers, savings goals, group accounts, spending categories, and security settings. Use this for any payment automation — e.g. 'pay mom 50 USDC every month', 'automate my rent', 'set up a savings goal'.",
   inputSchema: z.object({
     domain: z
-      .string()
-      .describe("Feature area — one of: 'recurring' (autopay/scheduled payments), 'goals' (savings targets), 'groups' (shared accounts), 'categories' (expense tracking), 'security' (approval settings)"),
+      .enum(["recurring", "goals", "groups", "categories", "security"])
+      .describe(
+        "Feature area to manage. " +
+        "'recurring' = autopay/scheduled payments. " +
+        "'goals' = savings targets. " +
+        "'groups' = shared/group accounts. " +
+        "'categories' = expense categories. " +
+        "'security' = PIN and approval settings."
+      ),
     action: z
-      .string()
+      .enum(["list", "get", "create", "update", "pause", "resume", "cancel", "deposit", "withdraw", "add_member", "remove_member", "payout"])
       .optional()
-      .describe("Action — one of: 'list', 'get', 'create', 'update', 'pause', 'resume', 'cancel', 'deposit', 'withdraw', 'add_member', 'remove_member', 'payout'. Default: 'list'"),
-    id: z.string().optional().describe("Item ID for targeted actions"),
+      .describe(
+        "Action to perform. Default: 'list'. " +
+        "Common combos: recurring + create/pause/resume/cancel, goals + create/deposit/cancel, " +
+        "groups + create/add_member/deposit/payout, categories + create/update, security + get/update."
+      ),
+    id: z.string().optional().describe("Item ID — required for get, update, pause, resume, cancel, deposit, withdraw, add_member, remove_member, payout."),
     params: z
       .union([z.record(z.string(), z.unknown()), z.string()])
       .optional()
       .describe(
-        "Domain-specific parameters as a JSON object. " +
-        "For recurring/create: { recipient (username or address), amount (human-readable e.g. '50'), token ('USDC' or 'ETH'), frequency ('daily'|'weekly'|'monthly'), label? (optional description) }. " +
-        "For goals/create: { name, targetAmount, currency, targetDate?, autoDeposit?, autoDepositAmount?, autoDepositFrequency? }. " +
-        "For groups/create: { name }. For groups/add_member: { member (username or address) }. " +
-        "For deposit/withdraw: { amount }. For categories/create: { name, icon? }."
+        "Domain-specific parameters as a JSON object. All amounts are HUMAN-READABLE (e.g. '50', not base units). " +
+        "recurring/create: { recipient: 'username or 0x address', amount: '50', token: 'USDC', frequency: 'daily' | 'weekly' | 'monthly', label?: 'rent payment' }. " +
+        "goals/create: { name: 'Emergency Fund', targetAmount: '1000', currency: 'USDC', targetDate?: '2026-12-31', autoDeposit?: true, autoDepositAmount?: '100', autoDepositFrequency?: 'monthly' }. " +
+        "goals/deposit: { amount: '50' }. " +
+        "groups/create: { name: 'Rent Pool' }. groups/add_member: { member: 'username or 0x address' }. " +
+        "groups/deposit: { amount: '50', token: 'USDC' }. groups/payout: { amount: '50', token: 'USDC' }. " +
+        "categories/create: { name: 'Food & Dining', icon?: '🍔' }. " +
+        "security/update: { pin: '1234' }."
       ),
   }),
   displayPropsSchema: z.object({

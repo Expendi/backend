@@ -56,10 +56,14 @@ export const earnTool: ToolConfig = defineTool({
     action: z
       .enum(["overview", "deposit", "withdraw"])
       .optional()
-      .describe("What to do (default: overview)"),
-    vaultId: z.string().optional().describe("Vault ID for deposit"),
-    positionId: z.string().optional().describe("Position ID for withdraw"),
-    amount: z.string().optional().describe("Amount for deposit (e.g. '100 USDC')"),
+      .describe(
+        "What to do. 'overview' (default) shows your yield portfolio, active positions, and available vaults. " +
+        "'deposit' deposits into a vault (requires vaultId and amount). " +
+        "'withdraw' pulls funds from a position (requires positionId)."
+      ),
+    vaultId: z.string().optional().describe("The vault ID to deposit into. Required when action is 'deposit'. Get vault IDs from the 'overview' action."),
+    positionId: z.string().optional().describe("The position ID to withdraw from. Required when action is 'withdraw'. Get position IDs from the 'overview' action."),
+    amount: z.string().optional().describe("Human-readable amount for deposit, e.g. '100 USDC', '0.5 ETH'. Only needed for 'deposit'. Do NOT pass base units."),
   }),
   displayPropsSchema: z.object({
     action: z.enum(["deposit", "withdraw"]),

@@ -35,29 +35,32 @@ export const buySellTool: ToolConfig = defineTool({
     direction: z
       .enum(["buy", "sell"])
       .describe(
-        "'buy' = fiat to crypto (onramp), 'sell' = crypto to fiat (offramp)"
+        "Transaction direction. 'buy' converts fiat (mobile money) into USDC. 'sell' converts USDC into fiat (mobile money cash-out)."
       ),
     amount: z
       .string()
       .describe(
-        "Amount, e.g. '10 USDC', '1000 KES', '5000'. If ambiguous, amounts >= 100 are assumed fiat."
+        "Human-readable amount. Include the unit to be precise: '10 USDC' or '1000 KES'. " +
+        "For 'buy', the amount is typically in fiat (e.g. '1000 KES'). " +
+        "For 'sell', the amount is typically in crypto (e.g. '10 USDC'). " +
+        "If just a number with no unit, amounts >= 100 are assumed fiat, < 100 assumed crypto."
       ),
     currency: z
       .string()
       .optional()
-      .describe("Fiat currency code override (e.g. KES, NGN)"),
+      .describe("Fiat currency code, e.g. 'KES', 'NGN', 'GHS', 'TZS', 'UGX'. Pulled from user preferences if omitted."),
     phoneNumber: z
       .string()
       .optional()
-      .describe("Phone number in local format (e.g. '0712345678')"),
+      .describe("Phone number in LOCAL format without country code, e.g. '0712345678'. Pulled from preferences if omitted."),
     network: z
       .string()
       .optional()
-      .describe("Mobile network override (e.g. 'Safaricom', 'MTN')"),
+      .describe("Mobile money network, e.g. 'Safaricom', 'MTN', 'Airtel'. Required for MOBILE payments. Pulled from preferences if omitted."),
     paymentType: z
       .enum(["MOBILE", "BANK_TRANSFER", "BUY_GOODS", "PAYBILL"])
       .optional()
-      .describe("Payment method (default: MOBILE)"),
+      .describe("Payment method. Default: MOBILE. Use BANK_TRANSFER for bank payments."),
   }),
   displayPropsSchema: z.object({
     direction: z.string(),
