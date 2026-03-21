@@ -365,7 +365,7 @@ src/
   trigger/              # Trigger.dev background tasks
 docs/
   expendi-api.postman_collection.json
-demo-app/               # React demo application (see demo-app/README.md)
+exo/               # React demo application (see exo/README.md)
 ```
 
 ## Postman Collection

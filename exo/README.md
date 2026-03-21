@@ -7,7 +7,7 @@ Built with React 19, React Router, [Glove React](https://glove.dterminal.net) fo
 ## Getting Started
 
 ```bash
-cd demo-app
+cd exo
 
 # Install dependencies
 pnpm install
@@ -130,7 +130,7 @@ Supports light and dark themes via CSS custom properties.
 ## Project Structure
 
 ```
-demo-app/
+exo/
   src/
     App.tsx                 # Routes and provider stack
     main.tsx                # Entry point

@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "demo-app",
+      "name": "exo",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "demo-app"],
+      "runtimeArgs": ["run", "dev", "--prefix", "exo"],
       "port": 5173
     }
   ]
