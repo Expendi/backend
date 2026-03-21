@@ -8,7 +8,7 @@ import { useChatActions } from "../context/ChatActionsContext";
 import { useConversations } from "../hooks/useConversations";
 import { ChatHistory } from "../components/ChatHistory";
 import { setApiFetcher } from "../tools/api";
-import { setTokenGetter, setActiveConversationId } from "../lib/glove-client";
+import { setTokenGetter, setActiveConversationId, clearSessionCache } from "../lib/glove-client";
 import { Markdown } from "../components/Markdown";
 import "../styles/chat.css";
 import "../styles/agent-dashboard.css";
@@ -205,6 +205,11 @@ export function AgentPage() {
   // Tell the chat client which conversation to persist messages to (for server-side persistence in chat.ts)
   useEffect(() => {
     setActiveConversationId(conversationId ?? null);
+    // Reset compaction tracking for the new conversation
+    compactionIndicesRef.current = new Set();
+    setCompactionIndices(new Set());
+    wasCompactingRef.current = false;
+    preCompactionLengthRef.current = 0;
     return () => setActiveConversationId(null);
   }, [conversationId]);
 
@@ -273,11 +278,15 @@ export function AgentPage() {
       setHistoryOpen(false);
       return;
     }
+    // Clear stale in-memory cache so the store re-hydrates from the backend
+    clearSessionCache(id);
     await convos.loadConversation(id);
     setHistoryOpen(false);
   }, [convos]);
 
   const handleNewConversation = useCallback(async () => {
+    // Clear all session caches so the new conversation starts fresh
+    clearSessionCache();
     await convos.createConversation();
     setHistoryOpen(false);
   }, [convos]);

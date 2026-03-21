@@ -65,6 +65,20 @@ export function setActiveConversationId(id: string | null) {
   activeConversationId = id;
 }
 
+/**
+ * Clear the in-memory message cache for a session (or all sessions).
+ * Call this before switching conversations so the store re-hydrates from the backend.
+ */
+export function clearSessionCache(sessionId?: string) {
+  if (sessionId) {
+    messageCache.delete(sessionId);
+    cacheHydrated.delete(sessionId);
+  } else {
+    messageCache.clear();
+    cacheHydrated.clear();
+  }
+}
+
 /** Authenticated fetch helper shared by model + store */
 async function authedFetch(url: string, init?: RequestInit): Promise<Response> {
   const headers: Record<string, string> = {
@@ -134,7 +148,14 @@ const storeActions = {
         // Silently fail — cache stays empty
       }
     }
-    return messageCache.get(sessionId) ?? [];
+    const cached = messageCache.get(sessionId) ?? [];
+    // When a conversation has no messages (new/empty chat), return a sentinel
+    // that messagesToTimeline() ignores but that triggers Glove's timeline
+    // replacement (Glove skips hydration when messages.length === 0).
+    if (cached.length === 0) {
+      return [{ sender: "_clear", text: "" }];
+    }
+    return cached;
   },
 
   async appendMessages(sessionId: string, messages: Array<{ sender: string; text: string }>) {

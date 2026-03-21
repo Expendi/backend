@@ -193,8 +193,10 @@ export function createChatRoutes(runtime: AppRuntime) {
 
     const tools = body.tools?.length ? deserializeTools(body.tools) : [];
 
-    // Track the last user message and agent response for post-stream reflection
-    const lastUserMessage = body.messages[body.messages.length - 1];
+    // Find the last actual user text message (skip tool_result messages which also have sender "user")
+    const lastUserMessage = [...body.messages].reverse().find(
+      (m: Message) => m.sender === "user" && m.text && !("tool_results" in m)
+    );
     let agentResponseText = "";
 
     return streamSSE(c, async (stream) => {
@@ -271,13 +273,15 @@ export function createChatRoutes(runtime: AppRuntime) {
           }),
         });
 
-        // Fire-and-forget: persist messages and trigger profile reflection
+        // Fire-and-forget: persist messages and trigger profile reflection.
+        // Only persist on the final response (when agentResponseText is non-empty)
+        // to avoid duplicating user messages across multi-request tool-call turns.
         if (userId && agentResponseText) {
           const now = new Date().toISOString();
 
           const messagesToAppend: ConversationMessage[] = [];
 
-          if (lastUserMessage && lastUserMessage.sender === "user" && lastUserMessage.text) {
+          if (lastUserMessage?.text) {
             messagesToAppend.push({
               role: "user",
               content: lastUserMessage.text,
