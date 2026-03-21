@@ -1,4 +1,4 @@
-import { GloveClient, createRemoteModel, parseSSEStream } from "glove-react";
+import { GloveClient, createRemoteModel, createRemoteStore, parseSSEStream } from "glove-react";
 import type { RemotePromptRequest, RemotePromptResponse, RemoteStreamEvent } from "glove-react";
 import { allTools } from "../tools";
 
@@ -53,10 +53,9 @@ const CHAT_ENDPOINT = `${API_BASE}/api/chat`;
 
 type TokenGetter = () => Promise<string | null>;
 let getAccessToken: TokenGetter | null = null;
-let activeConversationId: string | null = null;
 
-/** Previous conversation messages to prepend to every LLM request for context continuity. */
-let historyMessages: Array<{ sender: "user" | "agent"; text: string }> = [];
+/** The active conversation ID, passed to the chat endpoint for server-side persistence. */
+let activeConversationId: string | null = null;
 
 export function setTokenGetter(fn: TokenGetter) {
   getAccessToken = fn;
@@ -66,34 +65,26 @@ export function setActiveConversationId(id: string | null) {
   activeConversationId = id;
 }
 
-/**
- * Set restored conversation messages so they're included in the LLM context.
- * Call this when loading a conversation's persisted messages.
- */
-export function setHistoryMessages(messages: Array<{ role: "user" | "agent"; content: string }>) {
-  historyMessages = messages.map((m) => ({
-    sender: m.role === "user" ? "user" : "agent",
-    text: m.content,
-  }));
-}
-
-async function authFetch(request: RemotePromptRequest, signal?: AbortSignal) {
+/** Authenticated fetch helper shared by model + store */
+async function authedFetch(url: string, init?: RequestInit): Promise<Response> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    ...(init?.headers as Record<string, string> ?? {}),
   };
   if (getAccessToken) {
     const token = await getAccessToken();
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
-  // Prepend history messages so the LLM has full conversation context
-  const messages = [...historyMessages, ...request.messages];
-  const body: Record<string, unknown> = { ...request, messages };
+  return fetch(url, { ...init, headers });
+}
+
+async function authFetch(request: RemotePromptRequest, signal?: AbortSignal) {
+  const body: Record<string, unknown> = { ...request };
   if (activeConversationId) {
     body.conversationId = activeConversationId;
   }
-  const res = await fetch(CHAT_ENDPOINT, {
+  const res = await authedFetch(CHAT_ENDPOINT, {
     method: "POST",
-    headers,
     body: JSON.stringify(body),
     signal,
   });
@@ -102,6 +93,38 @@ async function authFetch(request: RemotePromptRequest, signal?: AbortSignal) {
   }
   return res;
 }
+
+/**
+ * Store actions that map Glove's store interface to our conversation API.
+ * The sessionId parameter is the conversation UUID.
+ */
+const storeActions = {
+  async getMessages(sessionId: string) {
+    try {
+      const res = await authedFetch(`${API_BASE}/api/agent/conversations/${sessionId}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      const conversation = data?.data ?? data;
+      const messages = conversation?.messages ?? [];
+      // Convert backend format { role, content } → Glove format { sender, text }
+      return messages
+        .filter((m: { content?: string }) => m.content && !m.content.startsWith("[Conversation summary from compaction]"))
+        .map((m: { role: string; content: string }) => ({
+          sender: m.role === "user" ? "user" : "agent",
+          text: m.content,
+        }));
+    } catch {
+      return [];
+    }
+  },
+
+  async appendMessages(sessionId: string, messages: Array<{ sender: string; text: string }>) {
+    // Messages are persisted server-side by the chat route.
+    // The store's appendMessages is a no-op to avoid double-persistence.
+    void sessionId;
+    void messages;
+  },
+};
 
 export const gloveClient = new GloveClient({
   createModel: () =>
@@ -125,6 +148,7 @@ export const gloveClient = new GloveClient({
         yield* parseSSEStream(res);
       },
     }),
+  createStore: (sessionId: string) => createRemoteStore(sessionId, storeActions),
   systemPrompt: SYSTEM_PROMPT,
   tools: allTools,
 });
