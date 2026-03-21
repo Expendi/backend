@@ -281,6 +281,8 @@ export const earnTool: ToolConfig = defineTool({
 
       // Execute deposit
       const baseUnits = toBaseUnits(depositAmount.toString(), tokenDecimals);
+      // Default unlock time: 30 days from now (in seconds)
+      const unlockTime = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
       try {
         const result = await callApi("/yield/positions", {
           method: "POST",
@@ -288,6 +290,7 @@ export const earnTool: ToolConfig = defineTool({
             vaultId: input.vaultId,
             amount: baseUnits,
             walletType: "user",
+            unlockTime,
           },
         });
         return {

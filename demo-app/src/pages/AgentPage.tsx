@@ -4,10 +4,10 @@ import { useGlove, Render } from "glove-react";
 import { useApi } from "../hooks/useApi";
 import { useDashboard } from "../context/DashboardContext";
 import { useChatActions } from "../context/ChatActionsContext";
-import { useConversations, type ConversationMessage } from "../hooks/useConversations";
+import { useConversations } from "../hooks/useConversations";
 import { ChatHistory } from "../components/ChatHistory";
 import { setApiFetcher } from "../tools/api";
-import { setTokenGetter } from "../lib/glove-client";
+import { setTokenGetter, setActiveConversationId } from "../lib/glove-client";
 import { Markdown } from "../components/Markdown";
 import "../styles/chat.css";
 
@@ -92,32 +92,6 @@ function MessageSkeleton() {
   );
 }
 
-/* ─── Restored Message (from backend) ────────────────────────────── */
-
-function RestoredMessage({ message }: { message: ConversationMessage }) {
-  const isUser = message.role === "user";
-  return (
-    <div className={`chat-message ${isUser ? "user" : "assistant"} restored`}>
-      <div className="chat-avatar" aria-hidden="true">
-        {isUser ? (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-          </svg>
-        ) : (
-          <span className="avatar-exo">e</span>
-        )}
-      </div>
-      <div className="chat-body">
-        {isUser ? (
-          message.content.split("\n").map((line, j) => <div key={j}>{line || "\u00A0"}</div>)
-        ) : (
-          <Markdown content={message.content} />
-        )}
-      </div>
-    </div>
-  );
-}
-
 /* ─── Empty State ─────────────────────────────────────────────────── */
 
 function AgentEmptyState({ onAction }: { onAction: (prompt: string, autoSend: boolean) => void }) {
@@ -153,21 +127,22 @@ function AgentEmptyState({ onAction }: { onAction: (prompt: string, autoSend: bo
 export function AgentPage() {
   const { request } = useApi();
   const { getAccessToken } = usePrivy();
-  const glove = useGlove();
+
+  // Conversation persistence — drives the sessionId for Glove's store
+  const convos = useConversations();
+  const conversationId = convos.activeConversation?.id ?? undefined;
+
+  // Glove uses the conversation ID as sessionId.
+  // The store adapter (createRemoteStore in glove-client.ts) fetches/saves messages via the conversation API.
+  // When conversationId changes, Glove remounts with the new session and auto-loads messages.
+  const glove = useGlove({ sessionId: conversationId });
+
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const dashboard = useDashboard();
   const chatActions = useChatActions();
-
-  // Conversation persistence
-  const convos = useConversations();
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [restoredMessages, setRestoredMessages] = useState<ConversationMessage[]>([]);
-  const [conversationKey, setConversationKey] = useState(0);
-
-  // Track messages we've already persisted to avoid duplicates
-  const persistedCountRef = useRef({ user: 0, agent: 0 });
 
   // Compaction summary tracking — compaction summaries are stored as "user" messages with is_compaction: true
   // They appear in the timeline as { kind: "user" } entries. We track indices to hide from UI and skip when persisting.
@@ -177,11 +152,9 @@ export function AgentPage() {
   const preCompactionLengthRef = useRef(0);
   useEffect(() => {
     if (glove.isCompacting && !wasCompactingRef.current) {
-      // Compaction starting — record current timeline length so we can mark new entries as artifacts
       preCompactionLengthRef.current = glove.timeline.length;
     }
     if (wasCompactingRef.current && !glove.isCompacting) {
-      // Compaction ended — mark all entries that appeared during compaction as artifacts
       const updated = new Set(compactionIndicesRef.current);
       for (let i = preCompactionLengthRef.current; i < glove.timeline.length; i++) {
         updated.add(i);
@@ -196,51 +169,11 @@ export function AgentPage() {
   useEffect(() => { setTokenGetter(getAccessToken); }, [getAccessToken]);
   useEffect(() => { setApiFetcher(request); }, [request]);
 
-  // Restore messages when active conversation loads (filter out any previously persisted compaction summaries)
+  // Tell the chat client which conversation to persist messages to (for server-side persistence in chat.ts)
   useEffect(() => {
-    if (convos.activeConversation?.messages && convos.activeConversation.messages.length > 0) {
-      const filtered = convos.activeConversation.messages.filter(
-        (msg) => !msg.content.startsWith("[Conversation summary from compaction]")
-      );
-      setRestoredMessages(filtered);
-    } else {
-      setRestoredMessages([]);
-    }
-    // Reset persisted counts when conversation changes
-    persistedCountRef.current = { user: 0, agent: 0 };
-  }, [convos.activeConversation?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Persist new messages to backend (skip compaction summaries)
-  useEffect(() => {
-    if (!convos.activeConversation?.id) return;
-    const convId = convos.activeConversation.id;
-
-    // Build indexed arrays so we can check timeline indices against compaction set
-    const userEntries: { entry: Extract<typeof glove.timeline[number], { kind: "user" }>; timelineIndex: number }[] = [];
-    const agentEntries: { entry: Extract<typeof glove.timeline[number], { kind: "agent_text" }>; timelineIndex: number }[] = [];
-    glove.timeline.forEach((e, i) => {
-      if (e.kind === "user") userEntries.push({ entry: e, timelineIndex: i });
-      else if (e.kind === "agent_text") agentEntries.push({ entry: e, timelineIndex: i });
-    });
-
-    // Persist new user messages (skip compaction summaries — they are stored as user messages by Glove)
-    for (let i = persistedCountRef.current.user; i < userEntries.length; i++) {
-      const { timelineIndex } = userEntries[i];
-      if (compactionIndicesRef.current.has(timelineIndex)) continue;
-      convos.appendMessage(convId, "user", userEntries[i].entry.text);
-    }
-    persistedCountRef.current.user = userEntries.length;
-
-    // Persist new agent messages (only complete ones, not while streaming, skip compaction artifacts)
-    if (!glove.busy) {
-      for (let i = persistedCountRef.current.agent; i < agentEntries.length; i++) {
-        const { entry, timelineIndex } = agentEntries[i];
-        if (compactionIndicesRef.current.has(timelineIndex)) continue;
-        convos.appendMessage(convId, "agent", entry.text);
-      }
-      persistedCountRef.current.agent = agentEntries.length;
-    }
-  }, [glove.timeline, glove.busy, convos.activeConversation?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    setActiveConversationId(conversationId ?? null);
+    return () => setActiveConversationId(null);
+  }, [conversationId]);
 
   const sendMessage = useCallback(
     (text: string) => {
@@ -263,10 +196,22 @@ export function AgentPage() {
   useEffect(() => { chatActions?.registerPrefill?.(prefillInput); }, [chatActions, prefillInput]);
 
   // Auto-scroll
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  const scrollToBottom = useCallback((instant?: boolean) => {
+    messagesEndRef.current?.scrollIntoView({ behavior: instant ? "instant" : "smooth" });
   }, []);
+  // Scroll on new timeline entries or streaming
   useEffect(() => { scrollToBottom(); }, [glove.timeline.length, glove.streamingText, glove.slots.length, scrollToBottom]);
+  // Scroll to bottom when conversation changes (Glove auto-loads messages via store)
+  const prevConvId = useRef(conversationId);
+  useEffect(() => {
+    if (conversationId && conversationId !== prevConvId.current) {
+      // Small delay to let Glove populate the timeline from the store
+      const t = setTimeout(() => scrollToBottom(true), 100);
+      prevConvId.current = conversationId;
+      return () => clearTimeout(t);
+    }
+    prevConvId.current = conversationId;
+  }, [conversationId, scrollToBottom]);
 
   // Refresh dashboard after tool completions
   const lastToolCountRef = useRef(0);
@@ -296,30 +241,23 @@ export function AgentPage() {
       return;
     }
     await convos.loadConversation(id);
-    setConversationKey(k => k + 1); // Force Glove remount
     setHistoryOpen(false);
   }, [convos]);
 
   const handleNewConversation = useCallback(async () => {
     await convos.createConversation();
-    setRestoredMessages([]);
-    setConversationKey(k => k + 1); // Force Glove remount
     setHistoryOpen(false);
   }, [convos]);
 
   const handleDeleteConversation = useCallback(async (id: string) => {
     await convos.deleteConversation(id);
-    if (id === convos.activeConversation?.id) {
-      setRestoredMessages([]);
-      setConversationKey(k => k + 1);
-    }
   }, [convos]);
 
   const handleRenameConversation = useCallback(async (id: string, title: string) => {
     await convos.updateTitle(id, title);
   }, [convos]);
 
-  const hasMessages = glove.timeline.length > 0 || restoredMessages.length > 0;
+  const hasMessages = glove.timeline.length > 0;
   const isInitialLoading = convos.loading && glove.timeline.length === 0;
 
   // Determine if we should show the thinking indicator:
@@ -328,7 +266,7 @@ export function AgentPage() {
   const showThinking = glove.busy && !glove.streamingText && !hasRunningTool && !glove.isCompacting;
 
   return (
-    <div className="chat-page" key={conversationKey}>
+    <div className="chat-page">
       {/* Chat History Toggle */}
       <div className="chat-header-bar">
         <button
@@ -366,12 +304,7 @@ export function AgentPage() {
             <>
               {!hasMessages && <AgentEmptyState onAction={handleQuickAction} />}
 
-              {/* Restored messages from backend */}
-              {restoredMessages.map((msg, i) => (
-                <RestoredMessage key={`restored-${i}`} message={msg} />
-              ))}
-
-              {/* Live Glove timeline */}
+              {/* Glove timeline — includes restored messages loaded via store adapter */}
               <Render
                 glove={glove}
                 strategy="interleaved"
