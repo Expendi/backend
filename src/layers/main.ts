@@ -172,6 +172,10 @@ const AgentActivityServiceLayer = AgentActivityServiceLive.pipe(
 
 const MarketIntelligenceServiceLayer = CoinGeckoAdapterLive;
 
+const MarketResearchServiceLayer = MarketResearchServiceLive.pipe(
+  Layer.provide(MarketIntelligenceServiceLayer)
+);
+
 const AgentAutonomyServiceLayer = AgentAutonomyServiceLive.pipe(
   Layer.provide(DatabaseLayer),
   Layer.provide(AdapterServiceLayer),
@@ -184,10 +188,6 @@ const AgentAutonomyServiceLayer = AgentAutonomyServiceLive.pipe(
 
 const AgentPatternServiceLayer = AgentPatternServiceLive.pipe(
   Layer.provide(DatabaseLayer)
-);
-
-const MarketResearchServiceLayer = MarketResearchServiceLive.pipe(
-  Layer.provide(MarketIntelligenceServiceLayer)
 );
 
 export const MainLayer = Layer.mergeAll(
