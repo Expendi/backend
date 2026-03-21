@@ -37,6 +37,7 @@ export {
   type AgentAutonomyServiceApi,
   type ExecutionSummary,
   type MandateResult,
+  type ResearchCycleResult,
 } from "./agent-autonomy-service.js";
 
 export {

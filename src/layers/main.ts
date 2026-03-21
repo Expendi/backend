@@ -178,7 +178,8 @@ const AgentAutonomyServiceLayer = AgentAutonomyServiceLive.pipe(
   Layer.provide(WalletServiceLayer),
   Layer.provide(AgentMandateServiceLayer),
   Layer.provide(AgentProfileServiceLayer),
-  Layer.provide(AgentActivityServiceLayer)
+  Layer.provide(AgentActivityServiceLayer),
+  Layer.provide(MarketResearchServiceLayer)
 );
 
 const AgentPatternServiceLayer = AgentPatternServiceLive.pipe(
