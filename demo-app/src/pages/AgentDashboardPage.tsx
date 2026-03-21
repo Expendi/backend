@@ -2938,9 +2938,189 @@ function PendingRequestsCard() {
   );
 }
 
+/* ─── Overview: Compact Wallet Summary ───────────────────────────── */
+
+function WalletSummary() {
+  const { request } = useApi();
+  const [balance, setBalance] = useState<AgentWalletBalance | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    request<AgentWalletBalance>("/agent/wallet/balance")
+      .then(setBalance)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [request]);
+
+  if (loading) {
+    return (
+      <div className="ad-card ad-wallet-summary">
+        <div className="ad-loading"><div className="ad-skeleton md" /></div>
+      </div>
+    );
+  }
+
+  const usdc = balance?.balances?.USDC ? formatBaseUnits(balance.balances.USDC, 6) : "0";
+  const eth = balance?.balances?.ETH ? formatBaseUnits(balance.balances.ETH, 18) : "0";
+
+  return (
+    <div className="ad-card ad-wallet-summary">
+      <div className="ad-card-header">
+        <span className="ad-card-title">Agent Wallet</span>
+      </div>
+      <div className="ad-wallet-summary-row">
+        <div className="ad-wallet-summary-item">
+          <span className="ad-wallet-token">USDC</span>
+          <span className="ad-wallet-amount">{usdc}</span>
+        </div>
+        <div className="ad-wallet-summary-divider" />
+        <div className="ad-wallet-summary-item">
+          <span className="ad-wallet-token">ETH</span>
+          <span className="ad-wallet-amount" style={{ fontSize: 18 }}>{eth}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Overview: Compact Inbox Preview ────────────────────────────── */
+
+function InboxPreview({ onSeeAll }: { onSeeAll: () => void }) {
+  const { request } = useApi();
+  const [items, setItems] = useState<InboxItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [unreadTotal, setUnreadTotal] = useState(0);
+
+  useEffect(() => {
+    Promise.all([
+      request<InboxItem[]>("/agent/inbox", { query: { limit: 4 } }),
+      request<InboxUnreadCounts>("/agent/inbox/unread"),
+    ])
+      .then(([inboxItems, counts]) => {
+        setItems(inboxItems);
+        setUnreadTotal(counts.total);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [request]);
+
+  if (loading) {
+    return (
+      <div className="ad-card">
+        <div className="ad-card-header">
+          <span className="ad-card-title">Inbox</span>
+        </div>
+        <div className="ad-loading">
+          <div className="ad-skeleton md" />
+          <div className="ad-skeleton sm" />
+        </div>
+      </div>
+    );
+  }
+
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="ad-card">
+      <div className="ad-card-header">
+        <div className="inbox-header-left">
+          <span className="ad-card-title">Inbox</span>
+          {unreadTotal > 0 && <span className="inbox-unread-badge">{unreadTotal}</span>}
+        </div>
+        <button className="ad-card-action" onClick={onSeeAll}>See all</button>
+      </div>
+      <div className="inbox-list">
+        {items.slice(0, 4).map((item) => (
+          <div key={item.id} className={`inbox-item inbox-item--compact ${item.status === "unread" ? "unread" : ""}`}>
+            <div className={`inbox-item-icon ${getInboxIconClass(item.category)}`}>
+              <InboxCategoryIcon category={item.category} />
+            </div>
+            <div className="inbox-item-content">
+              <div className="inbox-item-title">{item.title}</div>
+              <div className="inbox-item-time">{formatTimeAgo(item.createdAt)}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Overview: Quick Status ─────────────────────────────────────── */
+
+function QuickStatus() {
+  const { request } = useApi();
+  const [profile, setProfile] = useState<AgentProfile | null>(null);
+  const [mandateCount, setMandateCount] = useState<number>(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      request<Record<string, unknown>>("/agent/profile").then(parseAgentProfile),
+      request<Mandate[]>("/agent/mandates").catch(() => [] as Mandate[]),
+    ])
+      .then(([p, mandates]) => {
+        setProfile(p);
+        setMandateCount(mandates.filter((m) => m.status === "active").length);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [request]);
+
+  if (loading || !profile) {
+    return null;
+  }
+
+  return (
+    <div className="ad-quick-status">
+      <div className="ad-status-chip">
+        <span className="ad-status-chip-label">Trust</span>
+        <span className={`ad-tier-badge ${profile.trustTier}`}>
+          {TRUST_TIER_LABELS[profile.trustTier]}
+        </span>
+      </div>
+      <div className="ad-status-chip">
+        <span className="ad-status-chip-label">Automations</span>
+        <span className="ad-status-chip-value">{mandateCount} active</span>
+      </div>
+      <div className="ad-status-chip">
+        <span className="ad-status-chip-label">Risk</span>
+        <span className="ad-status-chip-value">{profile.riskTolerance}</span>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Dashboard Tabs ─────────────────────────────────────────────── */
+
+type DashboardTab = "overview" | "inbox" | "automations" | "settings";
+
+const DASHBOARD_TABS: { key: DashboardTab; label: string }[] = [
+  { key: "overview", label: "Overview" },
+  { key: "inbox", label: "Inbox" },
+  { key: "automations", label: "Automations" },
+  { key: "settings", label: "Settings" },
+];
+
 /* ─── Page ───────────────────────────────────────────────────────── */
 
 export function AgentDashboardPage() {
+  const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
+  const tabBarRef = useRef<HTMLDivElement>(null);
+
+  /* scroll the active tab pill into view when it changes */
+  useEffect(() => {
+    if (!tabBarRef.current) return;
+    const activeEl = tabBarRef.current.querySelector(".ad-tab-pill.active");
+    if (activeEl) {
+      activeEl.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    }
+  }, [activeTab]);
+
+  const switchToInbox = useCallback(() => setActiveTab("inbox"), []);
+
   return (
     <div className="agent-dash">
       <div className="agent-dash-header">
@@ -2948,13 +3128,56 @@ export function AgentDashboardPage() {
         <p className="agent-dash-subtitle">Configure and monitor your AI assistant</p>
       </div>
 
-      <PendingRequestsCard />
-      <AgentWalletCard />
-      <TrustTierCard />
-      <AutomationsCard />
-      <PreferencesCard />
-      <CustomInstructionsCard />
-      <InboxCard />
+      {/* ── Sticky Tab Bar ── */}
+      <div className="ad-tab-bar-wrapper">
+        <div className="ad-tab-bar" ref={tabBarRef} role="tablist" aria-label="Dashboard sections">
+          {DASHBOARD_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              role="tab"
+              aria-selected={activeTab === tab.key}
+              aria-controls={`ad-panel-${tab.key}`}
+              className={`ad-tab-pill ${activeTab === tab.key ? "active" : ""}`}
+              onClick={() => setActiveTab(tab.key)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Tab Panels ── */}
+      <div className="ad-tab-content">
+        {activeTab === "overview" && (
+          <div id="ad-panel-overview" role="tabpanel" className="ad-tab-panel">
+            <PendingRequestsCard />
+            <WalletSummary />
+            <QuickStatus />
+            <InboxPreview onSeeAll={switchToInbox} />
+          </div>
+        )}
+
+        {activeTab === "inbox" && (
+          <div id="ad-panel-inbox" role="tabpanel" className="ad-tab-panel">
+            <InboxCard />
+          </div>
+        )}
+
+        {activeTab === "automations" && (
+          <div id="ad-panel-automations" role="tabpanel" className="ad-tab-panel">
+            <AutomationsCard />
+          </div>
+        )}
+
+        {activeTab === "settings" && (
+          <div id="ad-panel-settings" role="tabpanel" className="ad-tab-panel">
+            <AgentWalletCard />
+            <TrustTierCard />
+            <PreferencesCard />
+            <CustomInstructionsCard />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

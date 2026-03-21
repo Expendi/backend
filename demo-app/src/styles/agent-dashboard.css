@@ -1961,3 +1961,185 @@
 .awm-tx-link:hover {
   opacity: 0.8;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Dashboard Tab Navigation
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Sticky wrapper sits below the page header, above scrollable content */
+.ad-tab-bar-wrapper {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--bg-primary);
+  padding: 0 0 12px;
+  margin: 0 -16px;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+/* Horizontal scrollable row of pill-shaped tabs */
+.ad-tab-bar {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: 4px 0;
+}
+
+.ad-tab-bar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Individual tab pill */
+.ad-tab-pill {
+  flex-shrink: 0;
+  padding: 8px 18px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ad-tab-pill:hover {
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+}
+
+/* Active tab: lime bg, dark text -- the signature exo. treatment */
+.ad-tab-pill.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+/* ─── Tab Content Area ──────────────────────────────────────────── */
+
+.ad-tab-content {
+  min-height: 200px;
+}
+
+.ad-tab-panel {
+  animation: adTabFadeIn 0.2s ease-out;
+}
+
+@keyframes adTabFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Overview Tab — Compact Summary Widgets
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ─── Wallet Summary (compact two-column balance) ─────────────── */
+
+.ad-wallet-summary .ad-wallet-summary-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.ad-wallet-summary-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ad-wallet-summary-divider {
+  width: 1px;
+  height: 36px;
+  background: var(--border);
+  margin: 0 16px;
+  flex-shrink: 0;
+}
+
+/* ─── Quick Status Row ────────────────────────────────────────── */
+
+.ad-quick-status {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.ad-quick-status::-webkit-scrollbar {
+  display: none;
+}
+
+.ad-status-chip {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.ad-status-chip-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.ad-status-chip-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: capitalize;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Tier badge inside status chip — override spacing */
+.ad-status-chip .ad-tier-badge {
+  font-size: 9px;
+  padding: 3px 8px;
+  align-self: flex-start;
+}
+
+/* ─── Compact Inbox Item (no body text, just title + time) ───── */
+
+.inbox-item--compact {
+  padding: 10px 8px;
+}
+
+.inbox-item--compact .inbox-item-body {
+  display: none;
+}
+
+/* ─── Responsive: wider screens get a fixed tab bar ──────────── */
+
+@media (min-width: 521px) {
+  .ad-tab-bar {
+    justify-content: center;
+  }
+
+  .ad-quick-status {
+    gap: 12px;
+  }
+}
