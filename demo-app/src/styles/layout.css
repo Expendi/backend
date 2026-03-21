@@ -389,6 +389,120 @@
   padding: 10px 28px;
 }
 
+/* ─── Username Step ─────────────────────────────────────────────── */
+
+.exo-onboarding-username {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  width: 100%;
+  max-width: 300px;
+}
+
+.exo-onboarding-subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 24px;
+  line-height: 1.4;
+}
+
+.exo-onboarding-input-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  background: var(--bg-elevated);
+  border: 2px solid var(--border);
+  border-radius: 14px;
+  padding: 0 16px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.exo-onboarding-input-row:focus-within {
+  border-color: var(--exo-lime);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--exo-lime) 12%, transparent);
+}
+
+.exo-onboarding-at {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-muted);
+  user-select: none;
+  margin-right: 2px;
+}
+
+.exo-onboarding-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: var(--font-body);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding: 14px 0;
+  min-width: 0;
+}
+
+.exo-onboarding-input::placeholder {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.exo-onboarding-input.error {
+  color: var(--exo-coral);
+}
+
+.exo-onboarding-input-error {
+  font-size: 12px;
+  color: var(--exo-coral);
+  margin-top: 8px;
+  font-weight: 500;
+}
+
+.exo-onboarding-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-top: 24px;
+}
+
+.exo-onboarding-continue {
+  width: 100%;
+  padding: 14px 24px;
+  font-size: 15px;
+  font-weight: 700;
+  border-radius: 14px;
+}
+
+.exo-onboarding-continue:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.exo-onboarding-skip {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-family: var(--font-body);
+  cursor: pointer;
+  padding: 8px 16px;
+  transition: color 0.15s ease;
+}
+
+.exo-onboarding-skip:hover {
+  color: var(--text-secondary);
+}
+
+.exo-onboarding-skip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* Responsive */
 @media (max-width: 767px) {
   .exo-onboarding-logo {
