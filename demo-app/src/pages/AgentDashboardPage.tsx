@@ -20,6 +20,21 @@ interface AgentProfile {
   customInstructions: string;
 }
 
+/** Flatten the raw API response into our AgentProfile shape */
+function parseAgentProfile(raw: Record<string, unknown>): AgentProfile {
+  const profile = (raw.profile ?? {}) as Record<string, unknown>;
+  return {
+    id: String(raw.id ?? ""),
+    trustTier: (raw.trustTier ?? "observe") as TrustTier,
+    budgetLimit: String(raw.agentBudget ?? raw.budgetLimit ?? "0"),
+    interests: Array.isArray(profile.interests) ? profile.interests : [],
+    goals: Array.isArray(profile.goals) ? profile.goals : [],
+    riskTolerance: (profile.riskTolerance ?? "moderate") as RiskTolerance,
+    knowledgeLevel: (profile.knowledgeLevel ?? "beginner") as KnowledgeLevel,
+    customInstructions: String(profile.customInstructions ?? ""),
+  };
+}
+
 type TrustTier = "observe" | "notify" | "act_within_limits" | "full";
 type RiskTolerance = "conservative" | "moderate" | "aggressive";
 type KnowledgeLevel = "beginner" | "intermediate" | "advanced";
@@ -173,7 +188,7 @@ function AgentWalletCard() {
     try {
       const [balData, profileData] = await Promise.all([
         request<AgentWalletBalance>("/agent/wallet/balance"),
-        request<AgentProfile>("/agent/profile"),
+        request<Record<string, unknown>>("/agent/profile").then(parseAgentProfile),
       ]);
       setBalance(balData);
       setBudgetLimit(profileData.budgetLimit ?? "0");
@@ -303,7 +318,7 @@ function TrustTierCard() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    request<AgentProfile>("/agent/profile")
+    request<Record<string, unknown>>("/agent/profile").then(parseAgentProfile)
       .then((p) => setTier(p.trustTier))
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -598,7 +613,7 @@ function PreferencesCard() {
   const [newGoal, setNewGoal] = useState("");
 
   useEffect(() => {
-    request<AgentProfile>("/agent/profile")
+    request<Record<string, unknown>>("/agent/profile").then(parseAgentProfile)
       .then(setProfile)
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -612,10 +627,12 @@ function PreferencesCard() {
       await request("/agent/profile", {
         method: "PATCH",
         body: {
-          interests: merged.interests,
-          goals: merged.goals,
-          riskTolerance: merged.riskTolerance,
-          knowledgeLevel: merged.knowledgeLevel,
+          profile: {
+            interests: merged.interests,
+            goals: merged.goals,
+            riskTolerance: merged.riskTolerance,
+            knowledgeLevel: merged.knowledgeLevel,
+          },
         },
       });
       setProfile(merged);
@@ -781,7 +798,7 @@ function CustomInstructionsCard() {
   const savedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    request<AgentProfile>("/agent/profile")
+    request<Record<string, unknown>>("/agent/profile").then(parseAgentProfile)
       .then((p) => setInstructions(p.customInstructions ?? ""))
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -792,7 +809,7 @@ function CustomInstructionsCard() {
       try {
         await request("/agent/profile", {
           method: "PATCH",
-          body: { customInstructions: value },
+          body: { profile: { customInstructions: value } },
         });
         setShowSaved(true);
         if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
