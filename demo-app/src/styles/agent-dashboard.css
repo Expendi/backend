@@ -1415,3 +1415,549 @@
     font-size: 9px;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Agent Wallet Modal (awm-)
+   ═══════════════════════════════════════════════════════════════════ */
+
+.awm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: awm-overlay-in 0.2s ease-out;
+}
+
+.awm-overlay.closing {
+  animation: awm-overlay-out 0.2s ease-in forwards;
+}
+
+@keyframes awm-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes awm-overlay-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+.awm-card {
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  animation: awm-card-in 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.awm-overlay.closing .awm-card {
+  animation: awm-card-out 0.2s ease-in forwards;
+}
+
+@keyframes awm-card-in {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+@keyframes awm-card-out {
+  from { transform: translateY(0); }
+  to   { transform: translateY(100%); }
+}
+
+@media (min-width: 481px) {
+  .awm-overlay {
+    align-items: center;
+  }
+  .awm-card {
+    border-radius: var(--radius-lg);
+    max-height: 85vh;
+  }
+}
+
+/* ─── Header ─── */
+
+.awm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.awm-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 17px;
+  line-height: 1.2;
+}
+
+.awm-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius);
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.awm-close:hover {
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
+}
+
+/* ─── Tabs ─── */
+
+.awm-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 20px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.awm-tab {
+  flex: 1;
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--transition);
+  text-align: center;
+}
+
+.awm-tab:hover {
+  color: var(--text-secondary);
+}
+
+.awm-tab.active {
+  background: var(--bg-card);
+  color: var(--accent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* ─── Body ─── */
+
+.awm-body {
+  padding: 20px;
+}
+
+/* ─── Form ─── */
+
+.awm-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.awm-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.awm-field-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.awm-input {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color var(--transition);
+  width: 100%;
+}
+
+.awm-input::placeholder {
+  color: var(--text-muted);
+}
+
+.awm-input:focus {
+  border-color: var(--accent);
+}
+
+.awm-select {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color var(--transition);
+  width: 100%;
+}
+
+.awm-select:focus {
+  border-color: var(--accent);
+}
+
+/* ─── Token pills ─── */
+
+.awm-token-selector {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.awm-token-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.awm-token-pill:hover {
+  border-color: var(--accent);
+  color: var(--text-secondary);
+}
+
+.awm-token-pill.active {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ─── Amount section ─── */
+
+.awm-amount-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.awm-amount-input {
+  width: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color var(--transition);
+  text-align: center;
+  -moz-appearance: textfield;
+}
+
+.awm-amount-input::-webkit-inner-spin-button,
+.awm-amount-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.awm-amount-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.4;
+}
+
+.awm-amount-input:focus {
+  border-color: var(--accent);
+}
+
+.awm-balance-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.awm-balance-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.awm-balance-value {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.awm-max-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: none;
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.awm-max-btn:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.awm-conversion {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--exo-lime);
+  text-align: center;
+}
+
+.awm-fee-hint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ─── Wallet options ─── */
+
+.awm-wallet-options {
+  display: flex;
+  gap: 6px;
+}
+
+.awm-wallet-opt {
+  flex: 1;
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--transition);
+  text-align: center;
+}
+
+.awm-wallet-opt:hover {
+  border-color: var(--accent);
+  color: var(--text-secondary);
+}
+
+.awm-wallet-opt.active {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ─── Destination hint ─── */
+
+.awm-destination-hint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border-radius: var(--radius);
+  letter-spacing: 0.3px;
+}
+
+.awm-loading-hint {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 10px 0;
+}
+
+/* ─── Submit button ─── */
+
+.awm-submit-btn {
+  width: 100%;
+  padding: 14px;
+}
+
+/* ─── Review ─── */
+
+.awm-review {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.awm-review-amount {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.awm-review-amount-value {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.awm-review-amount-symbol {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+.awm-review-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.awm-review-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.awm-review-row:last-child {
+  border-bottom: none;
+}
+
+.awm-review-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.3px;
+}
+
+.awm-review-value {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-align: right;
+}
+
+/* ─── Actions ─── */
+
+.awm-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.awm-actions .btn-exo {
+  flex: 1;
+  padding: 12px;
+}
+
+/* ─── Feedback states ─── */
+
+.awm-feedback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 32px 16px;
+  text-align: center;
+}
+
+.awm-feedback-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 18px;
+}
+
+.awm-feedback-sub {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.awm-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: awm-spin 0.7s linear infinite;
+}
+
+@keyframes awm-spin {
+  to { transform: rotate(360deg); }
+}
+
+.awm-success-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--exo-lime) 15%, transparent);
+  color: var(--exo-lime);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.awm-error-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--exo-coral) 15%, transparent);
+  color: var(--exo-coral);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.awm-tx-link {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent);
+  text-decoration: none;
+  transition: opacity var(--transition);
+}
+
+.awm-tx-link:hover {
+  opacity: 0.8;
+}

@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useApi } from "../hooks/useApi";
+import { useApi, ApiRequestError } from "../hooks/useApi";
 import { useApprovalContext } from "../context/ApprovalContext";
+import { useDashboard } from "../context/DashboardContext";
+import { usePreferences } from "../context/PreferencesContext";
+import { ONRAMP_COUNTRIES, OFFRAMP_COUNTRIES, ONRAMP_ASSETS } from "../lib/constants";
+import type { OnrampTransaction, OfframpTransaction, FeeEstimate } from "../lib/types";
 import "../styles/agent-dashboard.css";
 
 /* ─── Types ──────────────────────────────────────────────────────── */
@@ -392,18 +396,39 @@ function ActivityTypeIcon({ type }: { type: string }) {
 
 /* ─── Agent Wallet Card ──────────────────────────────────────────── */
 
+type WalletModalMode = "fund" | "withdraw" | null;
+type WalletModalTab = "transfer" | "buy" | "sell";
+type WalletModalStep = "input" | "review" | "processing" | "success" | "error";
+type TransferToken = "USDC" | "ETH";
+type TransferWalletType = "user" | "server";
+
+const TOKEN_DECIMALS_MAP: Record<TransferToken, number> = { USDC: 6, ETH: 18 };
+
+const PAYMENT_TYPE_LABELS_WALLET: Record<string, string> = {
+  MOBILE: "Mobile Money",
+  BUY_GOODS: "Buy Goods (Till)",
+  PAYBILL: "Paybill",
+  BANK_TRANSFER: "Bank Transfer",
+};
+
+const WALLET_LABELS: Record<TransferWalletType, string> = {
+  user: "Personal",
+  server: "Custodial",
+};
+
 function AgentWalletCard() {
   const { request } = useApi();
-  const approval = useApprovalContext();
+  const approvalCtx = useApprovalContext();
+  const { walletBalances, refresh: refreshDashboard } = useDashboard();
+  const { preferences } = usePreferences();
+
   const [balance, setBalance] = useState<AgentWalletBalance | null>(null);
   const [budgetLimit, setBudgetLimit] = useState<string>("");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [fundAmount, setFundAmount] = useState("");
-  const [withdrawAmount, setWithdrawAmount] = useState("");
-  const [showFund, setShowFund] = useState(false);
-  const [showWithdraw, setShowWithdraw] = useState(false);
-  const [actionLoading, setActionLoading] = useState(false);
+
+  // Modal state
+  const [modalMode, setModalMode] = useState<WalletModalMode>(null);
+  const [modalClosing, setModalClosing] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -423,71 +448,23 @@ function AgentWalletCard() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const doTransfer = async (from: string, to: string, amount: string) => {
-    const body = {
-      from,
-      to,
-      amount: toBaseUnits(amount, 6),
-      token: "USDC",
-    };
-
-    try {
-      await request("/wallets/transfer", { method: "POST", body });
-      return true;
-    } catch (err: unknown) {
-      // Handle transaction approval required (PIN)
-      if (err && typeof err === "object" && "_tag" in err && (err as { _tag: string })._tag === "TransactionApprovalRequired") {
-        if (!approval) throw err;
-        const method = (err as { method?: string }).method ?? "pin";
-        const token = await approval.requestApproval(method);
-        if (!token) {
-          setError("Approval cancelled");
-          return false;
-        }
-        await request("/wallets/transfer", { method: "POST", body, approvalToken: token });
-        return true;
-      }
-      throw err;
-    }
+  const openModal = (mode: WalletModalMode) => {
+    setModalMode(mode);
+    setModalClosing(false);
   };
 
-  const handleFund = async () => {
-    const amt = parseFloat(fundAmount);
-    if (!amt || amt <= 0) return;
-    setActionLoading(true);
-    setError(null);
-    try {
-      const ok = await doTransfer("user", "agent", fundAmount);
-      if (ok) {
-        setFundAmount("");
-        setShowFund(false);
-        await fetchData();
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Transfer failed");
-    } finally {
-      setActionLoading(false);
-    }
-  };
+  const closeModal = useCallback(() => {
+    setModalClosing(true);
+    setTimeout(() => {
+      setModalMode(null);
+      setModalClosing(false);
+    }, 200);
+  }, []);
 
-  const handleWithdraw = async () => {
-    const amt = parseFloat(withdrawAmount);
-    if (!amt || amt <= 0) return;
-    setActionLoading(true);
-    setError(null);
-    try {
-      const ok = await doTransfer("agent", "user", withdrawAmount);
-      if (ok) {
-        setWithdrawAmount("");
-        setShowWithdraw(false);
-        await fetchData();
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Transfer failed");
-    } finally {
-      setActionLoading(false);
-    }
-  };
+  const handleSuccess = useCallback(() => {
+    fetchData();
+    refreshDashboard();
+  }, [fetchData, refreshDashboard]);
 
   if (loading) {
     return (
@@ -505,84 +482,830 @@ function AgentWalletCard() {
   }
 
   return (
-    <div className="ad-card">
-      <div className="ad-card-header">
-        <span className="ad-card-title">Agent Wallet</span>
+    <>
+      <div className="ad-card">
+        <div className="ad-card-header">
+          <span className="ad-card-title">Agent Wallet</span>
+        </div>
+        <div className="ad-wallet-balances">
+          <div className="ad-wallet-row">
+            <span className="ad-wallet-token">USDC</span>
+            <span className="ad-wallet-amount">{balance?.balances?.USDC ? formatBaseUnits(balance.balances.USDC, 6) : "0"}</span>
+          </div>
+          <div className="ad-wallet-row">
+            <span className="ad-wallet-token">ETH</span>
+            <span className="ad-wallet-amount">{balance?.balances?.ETH ? formatBaseUnits(balance.balances.ETH, 18) : "0"}</span>
+          </div>
+        </div>
+        {budgetLimit && budgetLimit !== "0" && (
+          <div className="ad-wallet-budget">
+            <span className="ad-wallet-budget-label">Budget Limit</span>
+            <span className="ad-wallet-budget-value">{budgetLimit} USDC</span>
+          </div>
+        )}
+        <div className="ad-wallet-actions">
+          <button className="btn-exo btn-primary" onClick={() => openModal("fund")}>Fund</button>
+          <button className="btn-exo btn-secondary" onClick={() => openModal("withdraw")}>Withdraw</button>
+        </div>
       </div>
-      <div className="ad-wallet-balances">
-        <div className="ad-wallet-row">
-          <span className="ad-wallet-token">USDC</span>
-          <span className="ad-wallet-amount">{balance?.balances?.USDC ? formatBaseUnits(balance.balances.USDC, 6) : "0"}</span>
-        </div>
-        <div className="ad-wallet-row">
-          <span className="ad-wallet-token">ETH</span>
-          <span className="ad-wallet-amount">{balance?.balances?.ETH ? formatBaseUnits(balance.balances.ETH, 18) : "0"}</span>
-        </div>
-      </div>
-      {budgetLimit && (
-        <div className="ad-wallet-budget">
-          <span className="ad-wallet-budget-label">Budget Limit</span>
-          <span className="ad-wallet-budget-value">{budgetLimit} USDC</span>
-        </div>
+
+      {modalMode && (
+        <AgentWalletModal
+          mode={modalMode}
+          closing={modalClosing}
+          onClose={closeModal}
+          onSuccess={handleSuccess}
+          agentBalance={balance}
+          walletBalances={walletBalances}
+          preferences={preferences}
+          request={request}
+          approvalCtx={approvalCtx}
+        />
       )}
-      {showFund && (
-        <div className="ad-fund-row">
-          <input
-            className="ad-fund-input"
-            type="number"
-            inputMode="decimal"
-            placeholder="Amount (USDC)"
-            value={fundAmount}
-            onChange={(e) => setFundAmount(e.target.value)}
-            disabled={actionLoading}
-          />
-          <button
-            className="btn-exo btn-primary"
-            onClick={handleFund}
-            disabled={actionLoading || !fundAmount || parseFloat(fundAmount) <= 0}
-            style={{ padding: "10px 20px" }}
-          >
-            {actionLoading ? "..." : "Confirm Fund"}
-          </button>
+    </>
+  );
+}
+
+/* ─── Agent Wallet Modal ─────────────────────────────────────────── */
+
+interface AgentWalletModalProps {
+  mode: "fund" | "withdraw";
+  closing: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+  agentBalance: AgentWalletBalance | null;
+  walletBalances: { walletId: string; type: string; address: string; balances: Record<string, string> }[];
+  preferences: { country?: string; currency?: string; phoneNumber?: string; mobileNetwork?: string };
+  request: <T>(path: string, options?: { method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH"; body?: unknown; approvalToken?: string | null; query?: Record<string, string | number | undefined> }) => Promise<T>;
+  approvalCtx: ReturnType<typeof useApprovalContext>;
+}
+
+function AgentWalletModal({
+  mode, closing, onClose, onSuccess,
+  agentBalance, walletBalances, preferences,
+  request, approvalCtx,
+}: AgentWalletModalProps) {
+  const isFund = mode === "fund";
+  const defaultTab: WalletModalTab = isFund ? "transfer" : "transfer";
+  const [tab, setTab] = useState<WalletModalTab>(defaultTab);
+  const [step, setStep] = useState<WalletModalStep>("input");
+
+  // Transfer state
+  const [transferToken, setTransferToken] = useState<TransferToken>("USDC");
+  const [transferAmount, setTransferAmount] = useState("");
+  const [transferWallet, setTransferWallet] = useState<TransferWalletType>("user");
+  const [transferError, setTransferError] = useState("");
+  const [transferTxHash, setTransferTxHash] = useState<string | null>(null);
+
+  // Buy (onramp) state
+  type OnrampCountryCode = typeof ONRAMP_COUNTRIES[number]["code"];
+  type OfframpCountryCode = typeof OFFRAMP_COUNTRIES[number]["code"];
+  const defaultBuyCountry = ONRAMP_COUNTRIES.find(c => c.code === preferences.country) ?? ONRAMP_COUNTRIES[0];
+  const [buyCountry, setBuyCountry] = useState<OnrampCountryCode>(defaultBuyCountry.code);
+  const [buyFiatAmount, setBuyFiatAmount] = useState("");
+  const [buyPhone, setBuyPhone] = useState(preferences.phoneNumber ?? "");
+  const [buyNetwork, setBuyNetwork] = useState(preferences.mobileNetwork ?? defaultBuyCountry.networks[0] ?? "");
+  const [buyAsset, setBuyAsset] = useState<string>("USDC");
+  const [buyError, setBuyError] = useState("");
+  const [buyResult, setBuyResult] = useState<OnrampTransaction | null>(null);
+
+  // Sell (offramp) state
+  const defaultSellCountry = OFFRAMP_COUNTRIES.find(c => c.code === preferences.country) ?? OFFRAMP_COUNTRIES[0];
+  const [sellCountry, setSellCountry] = useState<OfframpCountryCode>(defaultSellCountry.code);
+  const [sellUsdcAmount, setSellUsdcAmount] = useState("");
+  const [sellPhone, setSellPhone] = useState(preferences.phoneNumber ?? "");
+  const [sellNetwork, setSellNetwork] = useState(preferences.mobileNetwork ?? defaultSellCountry.networks[0] ?? "");
+  const [sellPaymentType, setSellPaymentType] = useState<string>(defaultSellCountry.paymentTypes[0] ?? "MOBILE");
+  const [sellError, setSellError] = useState("");
+  const [sellResult, setSellResult] = useState<OfframpTransaction | null>(null);
+
+  // Bank transfer fields
+  const [sellBankAccount, setSellBankAccount] = useState("");
+  const [sellBankCode, setSellBankCode] = useState("");
+  const [sellBankName, setSellBankName] = useState("");
+  const [sellAccountName, setSellAccountName] = useState("");
+  const [sellAccountNumber, setSellAccountNumber] = useState("");
+  const [banks, setBanks] = useState<{ Code: string; Name: string }[]>([]);
+  const [banksLoading, setBanksLoading] = useState(false);
+
+  // Exchange rate state
+  const [buyingRate, setBuyingRate] = useState<number | null>(null);
+  const [sellingRate, setSellingRate] = useState<number | null>(null);
+  const [rateLoading, setRateLoading] = useState(false);
+
+  // Fee state
+  const [buyFee, setBuyFee] = useState<number | null>(null);
+  const [buyNetAmount, setBuyNetAmount] = useState<number | null>(null);
+  const [sellFee, setSellFee] = useState<number | null>(null);
+  const [sellNetAmount, setSellNetAmount] = useState<number | null>(null);
+
+  const autoCloseRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (autoCloseRef.current) clearTimeout(autoCloseRef.current);
+    };
+  }, []);
+
+  // Request with approval support
+  const requestWithApproval = useCallback(
+    async <T,>(path: string, options?: { method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH"; body?: unknown }) => {
+      try {
+        return await request<T>(path, options);
+      } catch (err) {
+        if (err instanceof ApiRequestError && err._tag === "TransactionApprovalRequired" && approvalCtx) {
+          const token = await approvalCtx.requestApproval(err.method ?? "pin");
+          if (!token) throw new Error("Approval cancelled");
+          return request<T>(path, { ...options, approvalToken: token });
+        }
+        throw err;
+      }
+    },
+    [request, approvalCtx]
+  );
+
+  // Country objects
+  const buyCountryObj = ONRAMP_COUNTRIES.find(c => c.code === buyCountry) ?? ONRAMP_COUNTRIES[0];
+  const sellCountryObj = OFFRAMP_COUNTRIES.find(c => c.code === sellCountry) ?? OFFRAMP_COUNTRIES[0];
+
+  // Fetch exchange rate
+  const fetchRate = useCallback(async (currency: string) => {
+    setRateLoading(true);
+    try {
+      const data = await request<{ buyingRate: number; sellingRate: number }>(`/pretium/exchange-rate/${currency}`);
+      setBuyingRate(data.buyingRate);
+      setSellingRate(data.sellingRate);
+    } catch {
+      setBuyingRate(null);
+      setSellingRate(null);
+    } finally {
+      setRateLoading(false);
+    }
+  }, [request]);
+
+  useEffect(() => {
+    if (tab === "buy") fetchRate(buyCountryObj.currency);
+    if (tab === "sell") fetchRate(sellCountryObj.currency);
+  }, [tab, buyCountry, sellCountry, fetchRate, buyCountryObj.currency, sellCountryObj.currency]);
+
+  // Update network when buy country changes
+  useEffect(() => {
+    setBuyNetwork(buyCountryObj.networks[0] ?? "");
+  }, [buyCountry, buyCountryObj.networks]);
+
+  // Update sell fields when country/payment type changes
+  useEffect(() => {
+    setSellNetwork(sellCountryObj.networks[0] ?? "");
+    setSellPaymentType(sellCountryObj.paymentTypes[0] ?? "MOBILE");
+    setSellBankAccount("");
+    setSellBankCode("");
+    setSellBankName("");
+    setSellAccountName("");
+    setSellAccountNumber("");
+    setSellPhone(preferences.phoneNumber ?? "");
+  }, [sellCountry, sellCountryObj.networks, sellCountryObj.paymentTypes, preferences.phoneNumber]);
+
+  useEffect(() => {
+    setSellBankAccount("");
+    setSellBankCode("");
+    setSellBankName("");
+    setSellAccountName("");
+    setSellAccountNumber("");
+    if (sellPaymentType === "MOBILE") {
+      setSellPhone(preferences.phoneNumber ?? "");
+    } else {
+      setSellPhone("");
+    }
+  }, [sellPaymentType, preferences.phoneNumber]);
+
+  // Fetch banks for bank transfer
+  useEffect(() => {
+    if (sellPaymentType !== "BANK_TRANSFER" || (sellCountry !== "KE" && sellCountry !== "NG")) {
+      setBanks([]);
+      return;
+    }
+    let cancelled = false;
+    setBanksLoading(true);
+    request<{ Code: string; Name: string }[]>(`/pretium/banks/${sellCountry}`)
+      .then(data => {
+        if (!cancelled) {
+          setBanks(data);
+          if (data.length > 0) {
+            setSellBankCode(data[0].Code);
+            setSellBankName(data[0].Name);
+          }
+        }
+      })
+      .catch(() => { if (!cancelled) setBanks([]); })
+      .finally(() => { if (!cancelled) setBanksLoading(false); });
+    return () => { cancelled = true; };
+  }, [sellPaymentType, sellCountry, request]);
+
+  // Conversions
+  const buyConversion = buyingRate && buyFiatAmount && Number(buyFiatAmount) > 0
+    ? (Number(buyFiatAmount) / buyingRate).toFixed(2) : null;
+  const sellConversion = sellingRate && sellUsdcAmount && Number(sellUsdcAmount) > 0
+    ? (Number(sellUsdcAmount) * sellingRate).toFixed(0) : null;
+
+  // Buy fee estimate
+  useEffect(() => {
+    if (!buyFiatAmount || Number(buyFiatAmount) <= 0) { setBuyFee(null); setBuyNetAmount(null); return; }
+    let cancelled = false;
+    request<FeeEstimate>(`/pretium/fee-estimate`, { query: { amount: buyFiatAmount } })
+      .then(data => { if (!cancelled) { setBuyFee(data.fee); setBuyNetAmount(data.netAmount); } })
+      .catch(() => { if (!cancelled) { setBuyFee(null); setBuyNetAmount(null); } });
+    return () => { cancelled = true; };
+  }, [buyFiatAmount, request]);
+
+  // Sell fee estimate
+  useEffect(() => {
+    if (!sellConversion || Number(sellConversion) <= 0) { setSellFee(null); setSellNetAmount(null); return; }
+    let cancelled = false;
+    request<FeeEstimate>(`/pretium/fee-estimate`, { query: { amount: sellConversion } })
+      .then(data => { if (!cancelled) { setSellFee(data.fee); setSellNetAmount(data.netAmount); } })
+      .catch(() => { if (!cancelled) { setSellFee(null); setSellNetAmount(null); } });
+    return () => { cancelled = true; };
+  }, [sellConversion, request]);
+
+  // Get source/dest wallet balance for transfer tab
+  const getWalletBalance = (walletType: string, token: TransferToken): string => {
+    if (walletType === "agent") {
+      return agentBalance?.balances?.[token] ?? "0";
+    }
+    const wallet = walletBalances.find(w => w.type === walletType);
+    return wallet?.balances?.[token] ?? "0";
+  };
+
+  const transferSourceType = isFund ? transferWallet : "agent";
+  const transferDestType = isFund ? "agent" : transferWallet;
+  const transferSourceBalance = getWalletBalance(transferSourceType, transferToken);
+  const transferSourceBalanceHuman = formatBaseUnits(transferSourceBalance, TOKEN_DECIMALS_MAP[transferToken]);
+  const transferMaxAmount = formatBaseUnits(transferSourceBalance, TOKEN_DECIMALS_MAP[transferToken]);
+
+  // Agent wallet ID for onramp/offramp
+  const agentWalletId = agentBalance?.walletId ?? "";
+  const agentAddress = agentBalance?.address ?? "";
+
+  // Transfer validation
+  const transferValidationError = (() => {
+    if (!transferAmount || Number(transferAmount) <= 0) return "Enter an amount";
+    const amountBase = BigInt(toBaseUnits(transferAmount, TOKEN_DECIMALS_MAP[transferToken]));
+    const balBase = BigInt(transferSourceBalance);
+    if (amountBase > balBase) return "Insufficient balance";
+    if (amountBase === 0n) return "Amount must be greater than zero";
+    return null;
+  })();
+
+  // Sell validation
+  const isSellValid = (() => {
+    if (!sellUsdcAmount || Number(sellUsdcAmount) <= 0) return false;
+    switch (sellPaymentType) {
+      case "MOBILE": return !!sellPhone && !!sellNetwork;
+      case "BUY_GOODS": return !!sellPhone;
+      case "PAYBILL": return !!sellPhone && !!sellAccountNumber;
+      case "BANK_TRANSFER":
+        if (sellCountry === "NG") return !!sellBankAccount && !!sellBankCode && !!sellAccountName;
+        return !!sellBankAccount && !!sellBankCode;
+      default: return false;
+    }
+  })();
+
+  // Handle transfer
+  const handleTransfer = async () => {
+    setStep("processing");
+    setTransferError("");
+    setTransferTxHash(null);
+    try {
+      const body: Record<string, string> = {
+        from: transferSourceType,
+        to: transferDestType,
+        amount: toBaseUnits(transferAmount, TOKEN_DECIMALS_MAP[transferToken]),
+      };
+      if (transferToken === "USDC") body.token = "usdc";
+      const result = await requestWithApproval<{ txHash?: string }>("/wallets/transfer", { method: "POST", body });
+      setTransferTxHash(result.txHash ?? null);
+      setStep("success");
+      onSuccess();
+      autoCloseRef.current = setTimeout(onClose, 4000);
+    } catch (err) {
+      setTransferError(err instanceof Error ? err.message : "Transfer failed");
+      setStep("error");
+    }
+  };
+
+  // Handle buy (onramp to agent wallet)
+  const handleBuy = async () => {
+    setStep("processing");
+    setBuyError("");
+    try {
+      const result = await requestWithApproval<OnrampTransaction>("/pretium/onramp", {
+        method: "POST",
+        body: {
+          country: buyCountry,
+          walletId: agentWalletId,
+          fiatAmount: Number(buyFiatAmount),
+          phoneNumber: buyPhone,
+          mobileNetwork: buyNetwork,
+          asset: buyAsset,
+          address: agentAddress,
+        },
+      });
+      setBuyResult(result);
+      setStep("success");
+      onSuccess();
+    } catch (err) {
+      setBuyError(err instanceof Error ? err.message : "Transaction failed");
+      setStep("error");
+    }
+  };
+
+  // Handle sell (offramp from agent wallet)
+  const handleSell = async () => {
+    setStep("processing");
+    setSellError("");
+    try {
+      const body: Record<string, unknown> = {
+        country: sellCountry,
+        walletId: agentWalletId,
+        usdcAmount: Number(sellUsdcAmount),
+        phoneNumber: sellPhone,
+        mobileNetwork: sellNetwork,
+        paymentType: sellPaymentType,
+      };
+      if (sellPaymentType === "BANK_TRANSFER") {
+        body.bankAccount = sellBankAccount;
+        body.bankCode = sellBankCode;
+        body.bankName = sellBankName;
+        if (sellCountry === "NG") body.accountName = sellAccountName;
+      }
+      if (sellPaymentType === "PAYBILL") body.accountNumber = sellAccountNumber;
+      const result = await requestWithApproval<OfframpTransaction>("/pretium/offramp", { method: "POST", body });
+      setSellResult(result);
+      setStep("success");
+      onSuccess();
+    } catch (err) {
+      setSellError(err instanceof Error ? err.message : "Transaction failed");
+      setStep("error");
+    }
+  };
+
+  // Reset step when switching tabs
+  const handleTabChange = (newTab: WalletModalTab) => {
+    setTab(newTab);
+    setStep("input");
+    setTransferError("");
+    setBuyError("");
+    setSellError("");
+  };
+
+  const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget && step !== "processing") onClose();
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && step !== "processing") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose, step]);
+
+  const currentError = tab === "transfer" ? transferError : tab === "buy" ? buyError : sellError;
+
+  return (
+    <div className={`awm-overlay${closing ? " closing" : ""}`} onClick={handleOverlayClick} role="dialog" aria-modal="true">
+      <div className="awm-card">
+        {/* Header */}
+        <div className="awm-header">
+          <span className="awm-title">{isFund ? "Fund Agent Wallet" : "Withdraw from Agent Wallet"}</span>
+          {step !== "processing" && (
+            <button className="awm-close" onClick={onClose} aria-label="Close">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          )}
         </div>
-      )}
-      {showWithdraw && (
-        <div className="ad-fund-row">
-          <input
-            className="ad-fund-input"
-            type="number"
-            inputMode="decimal"
-            placeholder="Amount (USDC)"
-            value={withdrawAmount}
-            onChange={(e) => setWithdrawAmount(e.target.value)}
-            disabled={actionLoading}
-          />
-          <button
-            className="btn-exo btn-secondary"
-            onClick={handleWithdraw}
-            disabled={actionLoading || !withdrawAmount || parseFloat(withdrawAmount) <= 0}
-            style={{ padding: "10px 20px" }}
-          >
-            {actionLoading ? "..." : "Confirm Withdraw"}
-          </button>
+
+        {/* Tab selector */}
+        {step === "input" && (
+          <div className="awm-tabs">
+            <button className={`awm-tab${tab === "transfer" ? " active" : ""}`} onClick={() => handleTabChange("transfer")}>Transfer</button>
+            <button
+              className={`awm-tab${tab === (isFund ? "buy" : "sell") ? " active" : ""}`}
+              onClick={() => handleTabChange(isFund ? "buy" : "sell")}
+            >
+              {isFund ? "Buy" : "Sell"}
+            </button>
+          </div>
+        )}
+
+        <div className="awm-body">
+          {/* ─── Processing ─── */}
+          {step === "processing" && (
+            <div className="awm-feedback">
+              <div className="awm-spinner" />
+              <div className="awm-feedback-title">Processing...</div>
+              <div className="awm-feedback-sub">
+                {tab === "transfer" ? "Transferring between wallets" : tab === "buy" ? "Check your phone for the payment prompt" : "Sending USDC and initiating payout"}
+              </div>
+            </div>
+          )}
+
+          {/* ─── Success ─── */}
+          {step === "success" && (
+            <div className="awm-feedback">
+              <div className="awm-success-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </div>
+              <div className="awm-feedback-title">
+                {tab === "transfer" ? "Transfer complete" : tab === "buy" ? "Funding initiated" : "Withdrawal initiated"}
+              </div>
+              {tab === "transfer" && transferTxHash && (
+                <a className="awm-tx-link" href={`https://basescan.org/tx/${transferTxHash}`} target="_blank" rel="noopener noreferrer">
+                  {transferTxHash.slice(0, 10)}...{transferTxHash.slice(-6)}
+                </a>
+              )}
+              {tab === "buy" && buyResult && (
+                <div className="awm-feedback-sub">{buyResult.fiatAmount} {buyResult.currency} for {buyAsset}</div>
+              )}
+              {tab === "sell" && sellResult && (
+                <div className="awm-feedback-sub">{sellResult.usdcAmount} USDC for {sellResult.fiatAmount} {sellResult.currency}</div>
+              )}
+              <div className="awm-actions">
+                <button className="btn-exo btn-secondary" onClick={onClose}>Close</button>
+              </div>
+            </div>
+          )}
+
+          {/* ─── Error ─── */}
+          {step === "error" && (
+            <div className="awm-feedback">
+              <div className="awm-error-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
+                </svg>
+              </div>
+              <div className="awm-feedback-title">Transaction failed</div>
+              <div className="awm-feedback-sub">{currentError}</div>
+              <div className="awm-actions">
+                <button className="btn-exo btn-secondary" onClick={() => setStep("review")}>Back to review</button>
+                <button className="btn-exo btn-primary" onClick={() => {
+                  if (tab === "transfer") handleTransfer();
+                  else if (tab === "buy") handleBuy();
+                  else handleSell();
+                }}>Retry</button>
+              </div>
+            </div>
+          )}
+
+          {/* ─── Review ─── */}
+          {step === "review" && (
+            <div className="awm-review">
+              {tab === "transfer" && (
+                <>
+                  <div className="awm-review-amount">
+                    <span className="awm-review-amount-value">{transferAmount}</span>
+                    <span className="awm-review-amount-symbol">{transferToken}</span>
+                  </div>
+                  <div className="awm-review-details">
+                    <div className="awm-review-row"><span className="awm-review-label">Token</span><span className="awm-review-value">{transferToken}</span></div>
+                    <div className="awm-review-row"><span className="awm-review-label">From</span><span className="awm-review-value">{isFund ? WALLET_LABELS[transferWallet] : "Agent"} wallet</span></div>
+                    <div className="awm-review-row"><span className="awm-review-label">To</span><span className="awm-review-value">{isFund ? "Agent" : WALLET_LABELS[transferWallet]} wallet</span></div>
+                    <div className="awm-review-row"><span className="awm-review-label">Network</span><span className="awm-review-value">Base</span></div>
+                  </div>
+                  <div className="awm-actions">
+                    <button className="btn-exo btn-secondary" onClick={() => setStep("input")}>Back</button>
+                    <button className="btn-exo btn-primary" onClick={handleTransfer}>Confirm transfer</button>
+                  </div>
+                </>
+              )}
+
+              {tab === "buy" && (
+                <>
+                  <div className="awm-review-details">
+                    <div className="awm-review-row"><span className="awm-review-label">You Pay</span><span className="awm-review-value">{Number(buyFiatAmount).toLocaleString()} {buyCountryObj.currency}</span></div>
+                    {buyFee !== null && (
+                      <div className="awm-review-row"><span className="awm-review-label">Fee</span><span className="awm-review-value">{buyFee.toLocaleString()} {buyCountryObj.currency}</span></div>
+                    )}
+                    {buyNetAmount !== null && (
+                      <div className="awm-review-row"><span className="awm-review-label">Net Amount</span><span className="awm-review-value">{buyNetAmount.toLocaleString()} {buyCountryObj.currency}</span></div>
+                    )}
+                    <div className="awm-review-row"><span className="awm-review-label">You Receive</span><span className="awm-review-value" style={{ color: "var(--exo-lime)" }}>~{buyConversion} {buyAsset}</span></div>
+                    <div className="awm-review-row"><span className="awm-review-label">Rate</span><span className="awm-review-value">1 USD = {buyingRate} {buyCountryObj.currency}</span></div>
+                    <div className="awm-review-row"><span className="awm-review-label">Phone</span><span className="awm-review-value">{buyPhone}</span></div>
+                    <div className="awm-review-row"><span className="awm-review-label">Network</span><span className="awm-review-value">{buyNetwork}</span></div>
+                    <div className="awm-review-row"><span className="awm-review-label">Destination</span><span className="awm-review-value">Agent wallet</span></div>
+                  </div>
+                  <div className="awm-actions">
+                    <button className="btn-exo btn-secondary" onClick={() => setStep("input")}>Back</button>
+                    <button className="btn-exo btn-primary" onClick={handleBuy}>Add funding</button>
+                  </div>
+                </>
+              )}
+
+              {tab === "sell" && (
+                <>
+                  <div className="awm-review-details">
+                    <div className="awm-review-row"><span className="awm-review-label">You Sell</span><span className="awm-review-value">{sellUsdcAmount} USDC</span></div>
+                    <div className="awm-review-row"><span className="awm-review-label">Gross Amount</span><span className="awm-review-value">~{Number(sellConversion).toLocaleString()} {sellCountryObj.currency}</span></div>
+                    {sellFee !== null && (
+                      <div className="awm-review-row"><span className="awm-review-label">Fee</span><span className="awm-review-value">{sellFee.toLocaleString()} {sellCountryObj.currency}</span></div>
+                    )}
+                    <div className="awm-review-row">
+                      <span className="awm-review-label">You Receive</span>
+                      <span className="awm-review-value" style={{ color: "var(--exo-lime)" }}>
+                        ~{sellNetAmount !== null ? sellNetAmount.toLocaleString() : Number(sellConversion).toLocaleString()} {sellCountryObj.currency}
+                      </span>
+                    </div>
+                    <div className="awm-review-row"><span className="awm-review-label">Rate</span><span className="awm-review-value">1 USD = {sellingRate} {sellCountryObj.currency}</span></div>
+                    <div className="awm-review-row"><span className="awm-review-label">Payment</span><span className="awm-review-value">{PAYMENT_TYPE_LABELS_WALLET[sellPaymentType] ?? sellPaymentType}</span></div>
+                    <div className="awm-review-row"><span className="awm-review-label">Source</span><span className="awm-review-value">Agent wallet</span></div>
+
+                    {sellPaymentType === "MOBILE" && (
+                      <>
+                        <div className="awm-review-row"><span className="awm-review-label">Phone</span><span className="awm-review-value">{sellPhone}</span></div>
+                        <div className="awm-review-row"><span className="awm-review-label">Network</span><span className="awm-review-value">{sellNetwork}</span></div>
+                      </>
+                    )}
+                    {sellPaymentType === "BUY_GOODS" && (
+                      <div className="awm-review-row"><span className="awm-review-label">Till Number</span><span className="awm-review-value">{sellPhone}</span></div>
+                    )}
+                    {sellPaymentType === "PAYBILL" && (
+                      <>
+                        <div className="awm-review-row"><span className="awm-review-label">Paybill Number</span><span className="awm-review-value">{sellPhone}</span></div>
+                        <div className="awm-review-row"><span className="awm-review-label">Account Number</span><span className="awm-review-value">{sellAccountNumber}</span></div>
+                      </>
+                    )}
+                    {sellPaymentType === "BANK_TRANSFER" && (
+                      <>
+                        <div className="awm-review-row"><span className="awm-review-label">Bank</span><span className="awm-review-value">{sellBankName}</span></div>
+                        {sellCountry === "NG" && (
+                          <div className="awm-review-row"><span className="awm-review-label">Account Name</span><span className="awm-review-value">{sellAccountName}</span></div>
+                        )}
+                        <div className="awm-review-row"><span className="awm-review-label">Account Number</span><span className="awm-review-value">{sellBankAccount}</span></div>
+                      </>
+                    )}
+                  </div>
+                  <div className="awm-actions">
+                    <button className="btn-exo btn-secondary" onClick={() => setStep("input")}>Back</button>
+                    <button className="btn-exo btn-primary" onClick={handleSell}>Confirm withdrawal</button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ─── Input: Transfer Tab ─── */}
+          {step === "input" && tab === "transfer" && (
+            <div className="awm-form">
+              {/* Token selector */}
+              <div className="awm-token-selector">
+                {(["USDC", "ETH"] as TransferToken[]).map(t => (
+                  <button key={t} className={`awm-token-pill${transferToken === t ? " active" : ""}`} onClick={() => { setTransferToken(t); setTransferAmount(""); }}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+
+              {/* Amount input */}
+              <div className="awm-amount-section">
+                <input
+                  className="awm-amount-input"
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={transferAmount}
+                  onChange={e => {
+                    const val = e.target.value;
+                    const maxDec = TOKEN_DECIMALS_MAP[transferToken];
+                    const parts = val.split(".");
+                    if (parts[1] && parts[1].length > maxDec) return;
+                    if (Number(val) < 0) return;
+                    setTransferAmount(val);
+                  }}
+                  aria-label={`Amount in ${transferToken}`}
+                />
+                <div className="awm-balance-row">
+                  <span className="awm-balance-label">
+                    {isFund ? WALLET_LABELS[transferWallet] : "Agent"} wallet:
+                  </span>
+                  <span className="awm-balance-value">{transferSourceBalanceHuman} {transferToken}</span>
+                  <button className="awm-max-btn" onClick={() => setTransferAmount(transferMaxAmount)} aria-label="Set maximum amount">MAX</button>
+                </div>
+              </div>
+
+              {/* Wallet selector */}
+              <div className="awm-field-group">
+                <span className="awm-field-label">{isFund ? "Source Wallet" : "Destination Wallet"}</span>
+                <div className="awm-wallet-options">
+                  {(["user", "server"] as TransferWalletType[]).map(wt => (
+                    <button
+                      key={wt}
+                      className={`awm-wallet-opt${transferWallet === wt ? " active" : ""}`}
+                      onClick={() => { setTransferWallet(wt); setTransferAmount(""); }}
+                    >
+                      {WALLET_LABELS[wt]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                className="btn-exo btn-primary awm-submit-btn"
+                disabled={transferValidationError !== null}
+                onClick={() => setStep("review")}
+                title={transferValidationError ?? undefined}
+              >
+                Review transfer
+              </button>
+            </div>
+          )}
+
+          {/* ─── Input: Buy Tab ─── */}
+          {step === "input" && tab === "buy" && (
+            <div className="awm-form">
+              <div className="awm-field-group">
+                <span className="awm-field-label">Country</span>
+                <select className="awm-select" value={buyCountry} onChange={e => setBuyCountry(e.target.value as OnrampCountryCode)}>
+                  {ONRAMP_COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+                </select>
+              </div>
+              <div className="awm-field-group">
+                <span className="awm-field-label">Network</span>
+                <select className="awm-select" value={buyNetwork} onChange={e => setBuyNetwork(e.target.value)}>
+                  {buyCountryObj.networks.map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+              <div className="awm-amount-section">
+                <input
+                  className="awm-amount-input"
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={buyFiatAmount}
+                  onChange={e => setBuyFiatAmount(e.target.value)}
+                />
+                <div className="awm-balance-row">
+                  <span className="awm-balance-label">{buyCountryObj.currency} amount to spend</span>
+                </div>
+                {buyConversion && (
+                  <div className="awm-conversion">~ {buyConversion} {buyAsset}</div>
+                )}
+                {buyFee !== null && buyNetAmount !== null && (
+                  <div className="awm-fee-hint">
+                    Fee: {buyFee.toLocaleString()} {buyCountryObj.currency} | Net: {buyNetAmount.toLocaleString()} {buyCountryObj.currency}
+                  </div>
+                )}
+                {rateLoading && <div className="awm-fee-hint">Loading rate...</div>}
+              </div>
+              <div className="awm-field-group">
+                <span className="awm-field-label">Phone Number</span>
+                <input className="awm-input" value={buyPhone} onChange={e => setBuyPhone(e.target.value)} placeholder="0712345678" inputMode="tel" />
+              </div>
+              <div className="awm-field-group">
+                <span className="awm-field-label">Receive Asset</span>
+                <div className="awm-token-selector">
+                  {ONRAMP_ASSETS.map(a => (
+                    <button key={a} className={`awm-token-pill${buyAsset === a ? " active" : ""}`} onClick={() => setBuyAsset(a)}>{a}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="awm-destination-hint">Funds will be deposited into the agent wallet</div>
+              <button
+                className="btn-exo btn-primary awm-submit-btn"
+                disabled={!buyFiatAmount || !buyPhone || Number(buyFiatAmount) <= 0}
+                onClick={() => setStep("review")}
+              >
+                Review funding
+              </button>
+            </div>
+          )}
+
+          {/* ─── Input: Sell Tab ─── */}
+          {step === "input" && tab === "sell" && (
+            <div className="awm-form">
+              <div className="awm-field-group">
+                <span className="awm-field-label">Country</span>
+                <select className="awm-select" value={sellCountry} onChange={e => setSellCountry(e.target.value as OfframpCountryCode)}>
+                  {OFFRAMP_COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+                </select>
+              </div>
+              {sellCountryObj.paymentTypes.length > 1 && (
+                <div className="awm-field-group">
+                  <span className="awm-field-label">Payment Type</span>
+                  <div className="awm-token-selector">
+                    {sellCountryObj.paymentTypes.map(t => (
+                      <button key={t} className={`awm-token-pill${sellPaymentType === t ? " active" : ""}`} onClick={() => setSellPaymentType(t)}>
+                        {PAYMENT_TYPE_LABELS_WALLET[t] ?? t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="awm-amount-section">
+                <input
+                  className="awm-amount-input"
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={sellUsdcAmount}
+                  onChange={e => setSellUsdcAmount(e.target.value)}
+                />
+                <div className="awm-balance-row">
+                  <span className="awm-balance-label">USDC amount to withdraw</span>
+                  <span className="awm-balance-value">{agentBalance?.balances?.USDC ? formatBaseUnits(agentBalance.balances.USDC, 6) : "0"} available</span>
+                </div>
+                {sellConversion && (
+                  <div className="awm-conversion">~ {Number(sellConversion).toLocaleString()} {sellCountryObj.currency}</div>
+                )}
+                {sellFee !== null && sellNetAmount !== null && (
+                  <div className="awm-fee-hint">
+                    Fee: {sellFee.toLocaleString()} {sellCountryObj.currency} | You receive: {sellNetAmount.toLocaleString()} {sellCountryObj.currency}
+                  </div>
+                )}
+              </div>
+
+              {/* Payment type specific fields */}
+              {sellPaymentType === "MOBILE" && (
+                <>
+                  <div className="awm-field-group">
+                    <span className="awm-field-label">Phone Number</span>
+                    <input className="awm-input" value={sellPhone} onChange={e => setSellPhone(e.target.value)} placeholder="0712345678" inputMode="tel" />
+                  </div>
+                  <div className="awm-field-group">
+                    <span className="awm-field-label">Network</span>
+                    <select className="awm-select" value={sellNetwork} onChange={e => setSellNetwork(e.target.value)}>
+                      {sellCountryObj.networks.map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </div>
+                </>
+              )}
+              {sellPaymentType === "BUY_GOODS" && (
+                <div className="awm-field-group">
+                  <span className="awm-field-label">Till Number</span>
+                  <input className="awm-input" value={sellPhone} onChange={e => setSellPhone(e.target.value)} placeholder="123456" inputMode="numeric" />
+                </div>
+              )}
+              {sellPaymentType === "PAYBILL" && (
+                <>
+                  <div className="awm-field-group">
+                    <span className="awm-field-label">Paybill Number</span>
+                    <input className="awm-input" value={sellPhone} onChange={e => setSellPhone(e.target.value)} placeholder="888880" inputMode="numeric" />
+                  </div>
+                  <div className="awm-field-group">
+                    <span className="awm-field-label">Account Number</span>
+                    <input className="awm-input" value={sellAccountNumber} onChange={e => setSellAccountNumber(e.target.value)} placeholder="Account number" />
+                  </div>
+                </>
+              )}
+              {sellPaymentType === "BANK_TRANSFER" && (
+                <>
+                  <div className="awm-field-group">
+                    <span className="awm-field-label">Bank</span>
+                    {banksLoading ? (
+                      <div className="awm-loading-hint">Loading banks...</div>
+                    ) : (
+                      <select
+                        className="awm-select"
+                        value={sellBankCode}
+                        onChange={e => {
+                          const selected = banks.find(b => b.Code === e.target.value);
+                          setSellBankCode(e.target.value);
+                          setSellBankName(selected?.Name ?? "");
+                        }}
+                      >
+                        {banks.length === 0 && <option value="">No banks available</option>}
+                        {banks.map(b => <option key={b.Code} value={b.Code}>{b.Name}</option>)}
+                      </select>
+                    )}
+                  </div>
+                  {sellCountry === "NG" && (
+                    <div className="awm-field-group">
+                      <span className="awm-field-label">Account Name</span>
+                      <input className="awm-input" value={sellAccountName} onChange={e => setSellAccountName(e.target.value)} placeholder="Full name on account" />
+                    </div>
+                  )}
+                  <div className="awm-field-group">
+                    <span className="awm-field-label">Account Number</span>
+                    <input className="awm-input" value={sellBankAccount} onChange={e => setSellBankAccount(e.target.value)} placeholder="Bank account number" inputMode="numeric" />
+                  </div>
+                </>
+              )}
+
+              <div className="awm-destination-hint">USDC will be sold from the agent wallet</div>
+              <button
+                className="btn-exo btn-primary awm-submit-btn"
+                disabled={!isSellValid}
+                onClick={() => setStep("review")}
+              >
+                Review withdrawal
+              </button>
+            </div>
+          )}
         </div>
-      )}
-      {error && <p className="ad-error" role="alert">{error}</p>}
-      <div className="ad-wallet-actions">
-        <button
-          className="btn-exo btn-primary"
-          onClick={() => { setShowFund(!showFund); setShowWithdraw(false); }}
-          disabled={actionLoading}
-        >
-          Fund
-        </button>
-        <button
-          className="btn-exo btn-secondary"
-          onClick={() => { setShowWithdraw(!showWithdraw); setShowFund(false); }}
-          disabled={actionLoading}
-        >
-          Withdraw
-        </button>
       </div>
     </div>
   );
