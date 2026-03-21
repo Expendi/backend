@@ -23,6 +23,8 @@ const DOMAIN_LABELS: Record<string, string> = {
   splits: "Split Expense",
   categories: "Category",
   security: "Security Settings",
+  mandates: "Mandate",
+  agent_wallet: "Agent Wallet",
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -38,6 +40,8 @@ const ACTION_LABELS: Record<string, string> = {
   add_member: "Add Member to",
   remove_member: "Remove Member from",
   payout: "Payout from",
+  balance: "View Balance",
+  fund: "Fund",
 };
 
 function capitalize(s: string): string {
@@ -52,7 +56,7 @@ function buildTitle(action: string, domain: string): string {
 
 // ── Determine if an action is a mutation (needs confirmation) ───────────────
 
-const READ_ACTIONS = new Set(["list", "get"]);
+const READ_ACTIONS = new Set(["list", "get", "balance"]);
 
 function isMutation(action: string): boolean {
   return !READ_ACTIONS.has(action);
@@ -716,6 +720,140 @@ async function handleSplits(
   }
 }
 
+// ── Mandates domain handler ─────────────────────────────────────────────────
+
+async function handleMandates(
+  action: string,
+  id: string | undefined,
+  params: Record<string, unknown> | undefined,
+  pushAndWait: ((props: Record<string, unknown>) => Promise<boolean>) | null,
+): Promise<{ status: "success" | "error"; data: string; message?: string }> {
+  switch (action) {
+    case "list": {
+      const data = await callApi("/agent/mandates");
+      return { status: "success", data: JSON.stringify(data) };
+    }
+
+    case "get": {
+      if (!id) return { status: "error", data: "", message: "An id is required to view a mandate." };
+      const data = await callApi(`/agent/mandates/${id}`);
+      return { status: "success", data: JSON.stringify(data) };
+    }
+
+    case "create": {
+      if (!params?.type) return { status: "error", data: "", message: "Missing required parameter: type." };
+      if (!params?.name) return { status: "error", data: "", message: "Missing required parameter: name." };
+      if (!params?.trigger) return { status: "error", data: "", message: "Missing required parameter: trigger." };
+      if (!params?.action) return { status: "error", data: "", message: "Missing required parameter: action." };
+
+      const validTypes = ["dca", "auto_offramp", "rebalance", "alert", "auto_save", "custom"];
+      const mandateType = String(params.type).toLowerCase();
+      if (!validTypes.includes(mandateType)) {
+        return { status: "error", data: "", message: `Invalid mandate type "${params.type}". Supported types: ${validTypes.join(", ")}` };
+      }
+
+      const trigger = typeof params.trigger === "string" ? JSON.parse(params.trigger) : params.trigger;
+      const actionConfig = typeof params.action === "string" ? JSON.parse(params.action) : params.action;
+
+      // Convert human-readable amounts to base units in the action config
+      const convertedAction = { ...actionConfig };
+      if (convertedAction.amount && convertedAction.type) {
+        let actionToken = "USDC";
+        if (convertedAction.type === "swap" && convertedAction.from) {
+          actionToken = String(convertedAction.from).toUpperCase();
+        } else if (convertedAction.type === "transfer" && convertedAction.token) {
+          actionToken = String(convertedAction.token).toUpperCase();
+        }
+        const tokenInfo = TOKEN_MAP[actionToken];
+        if (tokenInfo) {
+          convertedAction.amount = toBaseUnits(String(convertedAction.amount), tokenInfo.decimals);
+        }
+      }
+
+      const details: Record<string, string> = {
+        Name: String(params.name),
+        Type: mandateType,
+        Trigger: JSON.stringify(trigger),
+        Action: JSON.stringify(actionConfig),
+      };
+      if (params.description) details["Description"] = String(params.description);
+      if (params.constraints) details["Constraints"] = JSON.stringify(params.constraints);
+      if (params.expiresAt) details["Expires At"] = new Date(String(params.expiresAt)).toLocaleDateString();
+
+      if (pushAndWait) {
+        const confirmed = await pushAndWait({
+          domain: "mandates",
+          action: "create",
+          summary: `Create a "${mandateType}" mandate: ${params.name}.`,
+          details,
+        });
+        if (!confirmed) return { status: "success", data: "Cancelled." };
+      }
+
+      const body: Record<string, unknown> = {
+        type: mandateType,
+        name: String(params.name),
+        trigger,
+        action: convertedAction,
+      };
+      if (params.description) body.description = String(params.description);
+      if (params.constraints) body.constraints = typeof params.constraints === "string" ? JSON.parse(params.constraints) : params.constraints;
+      if (params.expiresAt) body.expiresAt = String(params.expiresAt);
+
+      const data = await callApi("/agent/mandates", { method: "POST", body });
+      return { status: "success", data: JSON.stringify(data) };
+    }
+
+    case "pause": {
+      if (!id) return { status: "error", data: "", message: "An id is required to pause a mandate." };
+      if (pushAndWait) {
+        const confirmed = await pushAndWait({
+          domain: "mandates",
+          action,
+          summary: "Pause this mandate. It will stop executing until resumed.",
+          details: { "Mandate ID": id },
+        });
+        if (!confirmed) return { status: "success", data: "Cancelled." };
+      }
+      const data = await callApi(`/agent/mandates/${id}/pause`, { method: "POST" });
+      return { status: "success", data: JSON.stringify(data) };
+    }
+
+    case "resume": {
+      if (!id) return { status: "error", data: "", message: "An id is required to resume a mandate." };
+      if (pushAndWait) {
+        const confirmed = await pushAndWait({
+          domain: "mandates",
+          action,
+          summary: "Resume this mandate. It will start executing again.",
+          details: { "Mandate ID": id },
+        });
+        if (!confirmed) return { status: "success", data: "Cancelled." };
+      }
+      const data = await callApi(`/agent/mandates/${id}/resume`, { method: "POST" });
+      return { status: "success", data: JSON.stringify(data) };
+    }
+
+    case "cancel": {
+      if (!id) return { status: "error", data: "", message: "An id is required to cancel a mandate." };
+      if (pushAndWait) {
+        const confirmed = await pushAndWait({
+          domain: "mandates",
+          action,
+          summary: "Permanently revoke this mandate. This cannot be undone.",
+          details: { "Mandate ID": id },
+        });
+        if (!confirmed) return { status: "success", data: "Cancelled." };
+      }
+      const data = await callApi(`/agent/mandates/${id}`, { method: "DELETE" });
+      return { status: "success", data: JSON.stringify(data) };
+    }
+
+    default:
+      return { status: "error", data: "", message: `Unsupported action "${action}" for mandates. Supported: list, get, create, pause, resume, cancel.` };
+  }
+}
+
 // ── Security domain handler ─────────────────────────────────────────────────
 
 async function handleSecurity(
@@ -737,16 +875,88 @@ async function handleSecurity(
   }
 }
 
+// ── Agent wallet domain handler ─────────────────────────────────────────────
+
+async function handleAgentWallet(
+  action: string,
+  _id: string | undefined,
+  params: Record<string, unknown> | undefined,
+  pushAndWait: ((props: Record<string, unknown>) => Promise<boolean>) | null,
+): Promise<{ status: "success" | "error"; data: string; message?: string }> {
+  switch (action) {
+    case "list":
+    case "balance": {
+      const data = await callApi("/agent/wallet/balance");
+      return { status: "success", data: JSON.stringify(data) };
+    }
+
+    case "fund": {
+      if (!params?.amount) return { status: "error", data: "", message: "Missing required parameter: amount." };
+
+      const tokenSymbol = String(params.token ?? "USDC").toUpperCase();
+      const tokenInfo = TOKEN_MAP[tokenSymbol];
+      if (!tokenInfo) return { status: "error", data: "", message: `Unknown token "${tokenSymbol}". Supported tokens: ${Object.keys(TOKEN_MAP).join(", ")}` };
+
+      const baseUnits = toBaseUnits(String(params.amount), tokenInfo.decimals);
+
+      if (pushAndWait) {
+        const confirmed = await pushAndWait({
+          domain: "agent_wallet",
+          action: "fund",
+          summary: `Fund agent wallet with ${params.amount} ${tokenSymbol}.`,
+          details: { Amount: `${params.amount} ${tokenSymbol}` },
+        });
+        if (!confirmed) return { status: "success", data: "Cancelled." };
+      }
+
+      const data = await callApi("/agent/wallet/fund", {
+        method: "POST",
+        body: { amount: baseUnits, token: tokenSymbol },
+      });
+      return { status: "success", data: JSON.stringify(data) };
+    }
+
+    case "withdraw": {
+      if (!params?.amount) return { status: "error", data: "", message: "Missing required parameter: amount." };
+
+      const tokenSymbol = String(params.token ?? "USDC").toUpperCase();
+      const tokenInfo = TOKEN_MAP[tokenSymbol];
+      if (!tokenInfo) return { status: "error", data: "", message: `Unknown token "${tokenSymbol}". Supported tokens: ${Object.keys(TOKEN_MAP).join(", ")}` };
+
+      const baseUnits = toBaseUnits(String(params.amount), tokenInfo.decimals);
+
+      if (pushAndWait) {
+        const confirmed = await pushAndWait({
+          domain: "agent_wallet",
+          action: "withdraw",
+          summary: `Withdraw ${params.amount} ${tokenSymbol} from agent wallet.`,
+          details: { Amount: `${params.amount} ${tokenSymbol}` },
+        });
+        if (!confirmed) return { status: "success", data: "Cancelled." };
+      }
+
+      const data = await callApi("/agent/wallet/withdraw", {
+        method: "POST",
+        body: { amount: baseUnits, token: tokenSymbol },
+      });
+      return { status: "success", data: JSON.stringify(data) };
+    }
+
+    default:
+      return { status: "error", data: "", message: `Unsupported action "${action}" for agent wallet. Supported: list (or balance), fund, withdraw.` };
+  }
+}
+
 // ── The manage super tool ───────────────────────────────────────────────────
 
 export const manageTool: ToolConfig = defineTool({
   name: "manage",
   description:
-    "Set up autopay, recurring payments, savings goals, group accounts, split expenses, spending categories, and security settings. " +
-    "Use this for any payment automation, expense splitting, or financial management.",
+    "Set up autopay, recurring payments, savings goals, group accounts, split expenses, spending categories, security settings, automated mandates (DCA, alerts, rebalancing), and agent wallet management. " +
+    "Use this for any payment automation, expense splitting, financial management, or agent wallet operations.",
   inputSchema: z.object({
     domain: z
-      .enum(["recurring", "goals", "groups", "categories", "splits", "security"])
+      .enum(["recurring", "goals", "groups", "categories", "splits", "security", "mandates", "agent_wallet"])
       .describe(
         "Feature area to manage. " +
         "'recurring' = autopay/scheduled payments. " +
@@ -754,10 +964,12 @@ export const manageTool: ToolConfig = defineTool({
         "'groups' = shared/group accounts. " +
         "'splits' = split expenses among people. " +
         "'categories' = expense categories + spending analytics. " +
-        "'security' = PIN and approval settings."
+        "'security' = PIN and approval settings. " +
+        "'mandates' = automated rules (DCA, auto-offramp, rebalance, alerts, auto-save). " +
+        "'agent_wallet' = agent wallet balances, funding, and withdrawals."
       ),
     action: z
-      .enum(["list", "get", "create", "update", "pause", "resume", "cancel", "deposit", "withdraw", "add_member", "remove_member", "payout", "pay", "owed", "spending", "set_limit"])
+      .enum(["list", "get", "create", "update", "pause", "resume", "cancel", "deposit", "withdraw", "add_member", "remove_member", "payout", "pay", "owed", "spending", "set_limit", "balance", "fund"])
       .optional()
       .describe(
         "Action to perform. Default: 'list'. " +
@@ -765,7 +977,9 @@ export const manageTool: ToolConfig = defineTool({
         "groups + create/add_member/deposit/payout, " +
         "splits + create/list/owed/pay/cancel, " +
         "categories + create/update/spending/set_limit, " +
-        "security + get/update."
+        "security + get/update, " +
+        "mandates + list/get/create/pause/resume/cancel, " +
+        "agent_wallet + list (or balance)/fund/withdraw."
       ),
     id: z.string().optional().describe("Item ID — required for get, update, pause, resume, cancel, deposit, withdraw, add_member, remove_member, payout, pay."),
     params: z
@@ -783,7 +997,10 @@ export const manageTool: ToolConfig = defineTool({
         "categories/create: { name: 'Food & Dining', icon?: '🍔' }. " +
         "categories/spending: { since?: '2026-01-01' } (defaults to current month). " +
         "categories/set_limit: { monthlyLimit: '500', token: 'USDC' }. " +
-        "security/update: { pin: '1234' }."
+        "security/update: { pin: '1234' }. " +
+        "mandates/create: { type: 'dca' | 'auto_offramp' | 'rebalance' | 'alert' | 'auto_save' | 'custom', name: 'Weekly ETH DCA', trigger: { type: 'schedule', frequency: '7d' }, action: { type: 'swap', from: 'USDC', to: 'ETH', amount: '10' }, description?: 'Buy ETH weekly', constraints?: { maxPerExecution: '100', maxPerDay: '200' }, expiresAt?: '2026-12-31' }. " +
+        "agent_wallet/fund: { amount: '100', token?: 'USDC' }. " +
+        "agent_wallet/withdraw: { amount: '50', token?: 'USDC' }."
       ),
   }),
   displayPropsSchema: z.object({
@@ -804,6 +1021,8 @@ export const manageTool: ToolConfig = defineTool({
       splits: "splits", split: "splits", split_expenses: "splits", expenses: "splits",
       categories: "categories", category: "categories",
       security: "security",
+      mandates: "mandates", mandate: "mandates", automation: "mandates", automate: "mandates", dca: "mandates", auto: "mandates",
+      agent_wallet: "agent_wallet", wallet: "agent_wallet", agent: "agent_wallet", budget: "agent_wallet",
     };
     const domain = domainMap[input.domain?.toLowerCase().trim()] ?? input.domain?.toLowerCase().trim();
 
@@ -820,6 +1039,8 @@ export const manageTool: ToolConfig = defineTool({
       owed: "owed", debts: "owed",
       spending: "spending", analytics: "spending",
       set_limit: "set_limit", limit: "set_limit",
+      balance: "balance", balances: "balance",
+      fund: "fund",
     };
     const rawAction = input.action ?? "list";
     const action = actionMap[rawAction.toLowerCase().trim()] ?? rawAction.toLowerCase().trim();
@@ -852,8 +1073,12 @@ export const manageTool: ToolConfig = defineTool({
           return await handleSplits(action, id, params, pushAndWait);
         case "security":
           return await handleSecurity(action);
+        case "mandates":
+          return await handleMandates(action, id, params, pushAndWait);
+        case "agent_wallet":
+          return await handleAgentWallet(action, id, params, pushAndWait);
         default:
-          return { status: "error" as const, data: "", message: `Unknown domain "${domain}". Valid domains: recurring, goals, groups, categories, splits, security.` };
+          return { status: "error" as const, data: "", message: `Unknown domain "${domain}". Valid domains: recurring, goals, groups, categories, splits, security, mandates, agent_wallet.` };
       }
     } catch (e) {
       return { status: "error" as const, data: "", message: String(e) };

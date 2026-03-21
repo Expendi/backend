@@ -44,6 +44,12 @@ export interface AgentProfileData {
   interests?: string[];
   communicationStyle?: string;
   onboardingComplete?: boolean;
+  riskScore?: number;
+  investmentHorizon?: "short" | "medium" | "long";
+  maxSingleTradePercent?: number;
+  preferredCategories?: string[];
+  avoidCategories?: string[];
+  customInstructions?: string;
 }
 
 // ── Conversation messages shape ───────────────────────────────────────
