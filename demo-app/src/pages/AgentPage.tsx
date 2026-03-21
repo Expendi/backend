@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { usePrivy } from "@privy-io/react-auth";
 import { useGlove, Render } from "glove-react";
 import { useApi } from "../hooks/useApi";
@@ -10,6 +11,7 @@ import { setApiFetcher } from "../tools/api";
 import { setTokenGetter, setActiveConversationId } from "../lib/glove-client";
 import { Markdown } from "../components/Markdown";
 import "../styles/chat.css";
+import "../styles/agent-dashboard.css";
 
 /* ─── Quick Suggestions (agent-appropriate) ─────────────────────── */
 
@@ -127,6 +129,37 @@ function AgentEmptyState({ onAction }: { onAction: (prompt: string, autoSend: bo
 export function AgentPage() {
   const { request } = useApi();
   const { getAccessToken } = usePrivy();
+  const navigate = useNavigate();
+
+  // Inbox banner state
+  const [inboxUnreadCount, setInboxUnreadCount] = useState(0);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const fetchUnread = async () => {
+      try {
+        const data = await request<{ total: number }>("/agent/inbox/unread");
+        if (mounted) {
+          setInboxUnreadCount(data.total);
+          if (data.total === 0) setBannerDismissed(false);
+        }
+      } catch {
+        // Silently ignore polling failures
+      }
+    };
+
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 30000);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [request]);
+
+  const showBanner = inboxUnreadCount > 0 && !bannerDismissed;
 
   // Conversation persistence — drives the sessionId for Glove's store
   const convos = useConversations();
@@ -295,6 +328,29 @@ export function AgentPage() {
           </svg>
         </button>
       </div>
+
+      {showBanner && (
+        <div
+          className="inbox-banner"
+          onClick={() => navigate("/agent/dashboard")}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigate("/agent/dashboard"); }}
+        >
+          <span className="inbox-banner-text">
+            exo has <strong>{inboxUnreadCount}</strong> new insight{inboxUnreadCount !== 1 ? "s" : ""} — tap to view
+          </span>
+          <button
+            className="inbox-banner-close"
+            onClick={(e) => { e.stopPropagation(); setBannerDismissed(true); }}
+            aria-label="Dismiss banner"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       <div className="chat-container">
         <div className="chat-messages">

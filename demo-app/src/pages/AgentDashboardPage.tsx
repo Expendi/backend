@@ -1026,103 +1026,342 @@ function CustomInstructionsCard() {
   );
 }
 
-/* ─── Activity Feed Card ─────────────────────────────────────────── */
+/* ─── Inbox Types ────────────────────────────────────────────────── */
 
-function ActivityFeedCard() {
+type InboxCategory = "research" | "request" | "alert" | "news" | "suggestion" | "mandate_update";
+type InboxPriority = "urgent" | "high" | "medium" | "low";
+type InboxStatus = "unread" | "read" | "dismissed";
+
+interface InboxItem {
+  id: string;
+  category: InboxCategory;
+  title: string;
+  body: string;
+  priority: InboxPriority;
+  status: InboxStatus;
+  actionable: boolean;
+  createdAt: string;
+}
+
+interface InboxUnreadCounts {
+  total: number;
+  research: number;
+  request: number;
+  alert: number;
+  news: number;
+  suggestion: number;
+  mandate_update: number;
+}
+
+const INBOX_CATEGORIES: { key: InboxCategory | "all"; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "research", label: "Research" },
+  { key: "request", label: "Requests" },
+  { key: "alert", label: "Alerts" },
+  { key: "news", label: "News" },
+  { key: "suggestion", label: "Suggestions" },
+  { key: "mandate_update", label: "Updates" },
+];
+
+/* ─── Inbox Icons ────────────────────────────────────────────────── */
+
+const SearchCircleIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+  </svg>
+);
+
+const NewspaperIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2" />
+    <path d="M18 14h-8" /><path d="M15 18h-5" /><path d="M10 6h8v4h-8V6Z" />
+  </svg>
+);
+
+const RobotIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="11" width="18" height="10" rx="2" /><circle cx="12" cy="5" r="2" /><path d="M12 7v4" />
+    <line x1="8" y1="16" x2="8" y2="16" /><line x1="16" y1="16" x2="16" y2="16" />
+  </svg>
+);
+
+const GearIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+  </svg>
+);
+
+function InboxCategoryIcon({ category }: { category: InboxCategory }) {
+  switch (category) {
+    case "research": return <SearchCircleIcon />;
+    case "alert": return <AlertIcon />;
+    case "suggestion": return <LightbulbIcon />;
+    case "news": return <NewspaperIcon />;
+    case "request": return <RobotIcon />;
+    case "mandate_update": return <GearIcon />;
+  }
+}
+
+function getInboxIconClass(category: InboxCategory): string {
+  switch (category) {
+    case "research": return "research";
+    case "alert": return "alert";
+    case "suggestion": return "suggestion";
+    case "news": return "news";
+    case "request": return "request";
+    case "mandate_update": return "mandate-update";
+  }
+}
+
+function getPriorityClass(priority: InboxPriority): string {
+  switch (priority) {
+    case "urgent": return "urgent";
+    case "high": return "high";
+    case "medium": return "medium";
+    case "low": return "low";
+  }
+}
+
+function getPriorityLabel(priority: InboxPriority): string {
+  switch (priority) {
+    case "urgent": return "Urgent";
+    case "high": return "High";
+    case "medium": return "Medium";
+    case "low": return "Low";
+  }
+}
+
+/* ─── Inbox Card ─────────────────────────────────────────────────── */
+
+function InboxCard() {
   const { request } = useApi();
-  const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [items, setItems] = useState<InboxItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
-  const limit = 10;
+  const [activeCategory, setActiveCategory] = useState<InboxCategory | "all">("all");
+  const [unreadCounts, setUnreadCounts] = useState<InboxUnreadCounts>({
+    total: 0, research: 0, request: 0, alert: 0, news: 0, suggestion: 0, mandate_update: 0,
+  });
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const limit = 20;
 
-  useEffect(() => {
-    request<ActivityItem[]>("/agent/activity", {
-      query: { limit },
-    })
-      .then((data) => {
-        setActivities(data);
-        setHasMore(data.length === limit);
-        setOffset(data.length);
-      })
-      .catch(() => setActivities([]))
-      .finally(() => setLoading(false));
+  const fetchUnreadCounts = useCallback(async () => {
+    try {
+      const counts = await request<InboxUnreadCounts>("/agent/inbox/unread");
+      setUnreadCounts(counts);
+    } catch {
+      // Keep existing counts on failure
+    }
   }, [request]);
 
-  const loadMore = async () => {
-    setLoadingMore(true);
+  const fetchItems = useCallback(async (category: InboxCategory | "all", append = false) => {
+    if (!append) setLoading(true);
+    else setLoadingMore(true);
     try {
-      const data = await request<ActivityItem[]>("/agent/activity", {
-        query: { limit, offset },
-      });
-      setActivities((prev) => [...prev, ...data]);
+      const query: Record<string, string | number | undefined> = { limit };
+      if (category !== "all") query.category = category;
+      if (append) query.offset = items.length;
+      const data = await request<InboxItem[]>("/agent/inbox", { query });
+      if (append) {
+        setItems((prev) => [...prev, ...data]);
+      } else {
+        setItems(data);
+      }
       setHasMore(data.length === limit);
-      setOffset((prev) => prev + data.length);
     } catch {
-      // Keep existing data on failure
+      if (!append) setItems([]);
     } finally {
+      setLoading(false);
       setLoadingMore(false);
+    }
+  }, [request, items.length]);
+
+  useEffect(() => {
+    fetchItems(activeCategory);
+    fetchUnreadCounts();
+  }, [activeCategory]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleCategoryChange = (category: InboxCategory | "all") => {
+    if (category === activeCategory) return;
+    setActiveCategory(category);
+    setHasMore(true);
+  };
+
+  const handleMarkRead = async (item: InboxItem) => {
+    if (item.status === "read") return;
+    try {
+      await request(`/agent/inbox/${item.id}/read`, { method: "POST" });
+      setItems((prev) => prev.map((i) => i.id === item.id ? { ...i, status: "read" } : i));
+      setUnreadCounts((prev) => ({
+        ...prev,
+        total: Math.max(0, prev.total - 1),
+        [item.category]: Math.max(0, prev[item.category] - 1),
+      }));
+    } catch {
+      // Keep current state on failure
     }
   };
 
-  if (loading) {
-    return (
-      <div className="ad-card">
-        <div className="ad-card-header">
-          <span className="ad-card-title">Activity</span>
+  const handleDismiss = async (id: string, category: InboxCategory, wasUnread: boolean) => {
+    try {
+      await request(`/agent/inbox/${id}/dismiss`, { method: "POST" });
+      setItems((prev) => prev.filter((i) => i.id !== id));
+      if (wasUnread) {
+        setUnreadCounts((prev) => ({
+          ...prev,
+          total: Math.max(0, prev.total - 1),
+          [category]: Math.max(0, prev[category] - 1),
+        }));
+      }
+    } catch {
+      // Keep current state on failure
+    }
+  };
+
+  const handleAction = async (id: string, approved: boolean) => {
+    setActionLoadingId(id);
+    try {
+      await request(`/agent/inbox/${id}/action`, {
+        method: "POST",
+        body: { approved },
+      });
+      setItems((prev) => prev.filter((i) => i.id !== id));
+    } catch {
+      // Keep current state on failure
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      await request("/agent/inbox/read-all", { method: "POST" });
+      setItems((prev) => prev.map((i) => ({ ...i, status: "read" as InboxStatus })));
+      setUnreadCounts({ total: 0, research: 0, request: 0, alert: 0, news: 0, suggestion: 0, mandate_update: 0 });
+    } catch {
+      // Keep current state on failure
+    }
+  };
+
+  return (
+    <div className="ad-card inbox-card">
+      {/* Header */}
+      <div className="ad-card-header">
+        <div className="inbox-header-left">
+          <span className="ad-card-title">Inbox</span>
+          {unreadCounts.total > 0 && (
+            <span className="inbox-unread-badge">{unreadCounts.total}</span>
+          )}
         </div>
+        {unreadCounts.total > 0 && (
+          <button className="ad-card-action" onClick={handleMarkAllRead}>
+            Mark all read
+          </button>
+        )}
+      </div>
+
+      {/* Category filter pills */}
+      <div className="inbox-categories">
+        {INBOX_CATEGORIES.map((cat) => {
+          const hasUnread = cat.key === "all"
+            ? unreadCounts.total > 0
+            : cat.key in unreadCounts && unreadCounts[cat.key as InboxCategory] > 0;
+          return (
+            <button
+              key={cat.key}
+              className={`inbox-category-pill ${activeCategory === cat.key ? "active" : ""}`}
+              onClick={() => handleCategoryChange(cat.key)}
+            >
+              {cat.label}
+              {hasUnread && <span className="inbox-pill-dot" />}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Content */}
+      {loading ? (
         <div className="ad-loading">
           <div className="ad-skeleton md" />
           <div className="ad-skeleton lg" />
           <div className="ad-skeleton sm" />
+          <div className="ad-skeleton md" />
         </div>
-      </div>
-    );
-  }
-
-  if (activities.length === 0) {
-    return (
-      <div className="ad-card">
-        <div className="ad-card-header">
-          <span className="ad-card-title">Activity</span>
-        </div>
+      ) : items.length === 0 ? (
         <div className="ad-empty">
-          <span className="ad-empty-text">No agent activity yet</span>
-          <span className="ad-empty-hint">Activity will appear here once the agent starts working</span>
+          <span className="ad-empty-text">Your inbox is empty</span>
+          <span className="ad-empty-hint">
+            As exo monitors markets and learns your patterns, insights will appear here.
+          </span>
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="ad-card">
-      <div className="ad-card-header">
-        <span className="ad-card-title">Activity</span>
-      </div>
-      <div className="ad-activity-list">
-        {activities.map((item) => (
-          <div key={item.id} className="ad-activity-item">
-            <div className={`ad-activity-icon ${getActivityIconClass(item.type)}`}>
-              <ActivityTypeIcon type={item.type} />
-            </div>
-            <div className="ad-activity-info">
-              <div className="ad-activity-title">{item.title}</div>
-              <div className="ad-activity-time">{formatTimeAgo(item.createdAt)}</div>
-            </div>
-            <span className={`ad-badge type`}>{item.type.replace(/_/g, " ")}</span>
+      ) : (
+        <>
+          <div className="inbox-list">
+            {items.map((item) => (
+              <div
+                key={item.id}
+                className={`inbox-item ${item.status === "unread" ? "unread" : ""}`}
+                onClick={() => handleMarkRead(item)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleMarkRead(item); } }}
+              >
+                <div className={`inbox-item-icon ${getInboxIconClass(item.category)}`}>
+                  <InboxCategoryIcon category={item.category} />
+                </div>
+                <div className="inbox-item-content">
+                  <div className="inbox-item-title">{item.title}</div>
+                  <div className="inbox-item-body">{item.body}</div>
+                  <div className="inbox-item-time">{formatTimeAgo(item.createdAt)}</div>
+                </div>
+                <div className="inbox-item-right">
+                  <span className={`inbox-priority-badge ${getPriorityClass(item.priority)}`}>
+                    {getPriorityLabel(item.priority)}
+                  </span>
+                  {item.actionable && item.category === "request" && (
+                    <div className="inbox-item-actions">
+                      <button
+                        className="inbox-action-btn approve"
+                        onClick={(e) => { e.stopPropagation(); handleAction(item.id, true); }}
+                        disabled={actionLoadingId === item.id}
+                        aria-label="Approve"
+                      >
+                        {actionLoadingId === item.id ? "..." : "Approve"}
+                      </button>
+                      <button
+                        className="inbox-action-btn reject"
+                        onClick={(e) => { e.stopPropagation(); handleAction(item.id, false); }}
+                        disabled={actionLoadingId === item.id}
+                        aria-label="Reject"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  )}
+                  <button
+                    className="inbox-dismiss-btn"
+                    onClick={(e) => { e.stopPropagation(); handleDismiss(item.id, item.category, item.status === "unread"); }}
+                    aria-label="Dismiss"
+                    title="Dismiss"
+                  >
+                    <XIcon />
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      {hasMore && (
-        <button
-          className="ad-card-action"
-          onClick={loadMore}
-          disabled={loadingMore}
-          style={{ width: "100%", textAlign: "center", marginTop: 12, padding: "10px" }}
-        >
-          {loadingMore ? "Loading..." : "Load More"}
-        </button>
+          {hasMore && (
+            <button
+              className="ad-card-action"
+              onClick={() => fetchItems(activeCategory, true)}
+              disabled={loadingMore}
+              style={{ width: "100%", textAlign: "center", marginTop: 12, padding: "10px" }}
+            >
+              {loadingMore ? "Loading..." : "Load more"}
+            </button>
+          )}
+        </>
       )}
     </div>
   );
@@ -1214,7 +1453,7 @@ export function AgentDashboardPage() {
       <AutomationsCard />
       <PreferencesCard />
       <CustomInstructionsCard />
-      <ActivityFeedCard />
+      <InboxCard />
     </div>
   );
 }

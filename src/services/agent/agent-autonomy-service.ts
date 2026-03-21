@@ -6,6 +6,7 @@ import { WalletService } from "../wallet/wallet-service.js";
 import { AgentMandateService } from "./agent-mandate-service.js";
 import { AgentProfileService } from "./agent-profile-service.js";
 import { AgentActivityService } from "./agent-activity-service.js";
+import { AgentInboxService } from "./agent-inbox-service.js";
 import { MarketResearchService } from "./market-research-service.js";
 import type { AgentProfileData } from "../../db/schema/index.js";
 import {
@@ -106,6 +107,7 @@ export const AgentAutonomyServiceLive: Layer.Layer<
   | AgentMandateService
   | AgentProfileService
   | AgentActivityService
+  | AgentInboxService
   | MarketResearchService
 > = Layer.effect(
   AgentAutonomyService,
@@ -114,6 +116,8 @@ export const AgentAutonomyServiceLive: Layer.Layer<
     const mandateService = yield* AgentMandateService;
     const profileService = yield* AgentProfileService;
     const activityService = yield* AgentActivityService;
+    const inboxService = yield* AgentInboxService;
+    const researchService = yield* MarketResearchService;
     const adapterService = yield* AdapterService;
     const walletService = yield* WalletService;
 
@@ -588,10 +592,6 @@ export const AgentAutonomyServiceLive: Layer.Layer<
     // ── Research cycle ──────────────────────────────────────────────
     const runResearchCycle = (userId: string) =>
       Effect.gen(function* () {
-        const profileService = yield* AgentProfileService;
-        const researchService = yield* MarketResearchService;
-        const activityService = yield* AgentActivityService;
-
         // Get user profile
         const agentProfile = yield* profileService.getProfile(userId).pipe(
           Effect.mapError(
@@ -641,21 +641,38 @@ export const AgentAutonomyServiceLive: Layer.Layer<
         let suggestionsCreated = 0;
 
         for (const opp of topOpportunities) {
+          const oppMetadata = {
+            symbol: opp.token.symbol,
+            name: opp.token.name,
+            riskLevel: opp.riskLevel,
+            relevanceScore: opp.relevanceScore,
+            priceChange24h: opp.token.priceChange24h,
+          };
+          const oppDescription = `${opp.token.name} (${opp.token.symbol}) — risk: ${opp.riskLevel}, relevance: ${opp.relevanceScore}/10. 24h change: ${opp.token.priceChange24h.toFixed(1)}%.`;
+
           yield* activityService
             .createActivity({
               userId,
               type: "research_finding",
               title: `${opp.token.symbol}: ${opp.reason}`,
-              description: `${opp.token.name} (${opp.token.symbol}) — risk: ${opp.riskLevel}, relevance: ${opp.relevanceScore}/10. 24h change: ${opp.token.priceChange24h.toFixed(1)}%.`,
-              metadata: {
-                symbol: opp.token.symbol,
-                name: opp.token.name,
-                riskLevel: opp.riskLevel,
-                relevanceScore: opp.relevanceScore,
-                priceChange24h: opp.token.priceChange24h,
-              },
+              description: oppDescription,
+              metadata: oppMetadata,
             })
             .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+
+          // Create inbox item: "research" for opportunities, "suggestion" for actionable ones
+          const isActionable = opp.relevanceScore >= 7;
+          yield* inboxService
+            .addItem({
+              userId,
+              category: isActionable ? "suggestion" : "research",
+              title: `${opp.token.symbol}: ${opp.reason}`,
+              body: oppDescription,
+              metadata: oppMetadata,
+              priority: opp.riskLevel === "high" ? "high" : "medium",
+            })
+            .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+
           suggestionsCreated++;
         }
 

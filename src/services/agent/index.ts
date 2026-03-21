@@ -51,6 +51,16 @@ export {
 } from "./agent-pattern-service.js";
 
 export {
+  AgentInboxService,
+  AgentInboxServiceLive,
+  AgentInboxError,
+  type AgentInboxServiceApi,
+  type CreateInboxItemParams,
+  type InboxFilters,
+  type UnreadCount,
+} from "./agent-inbox-service.js";
+
+export {
   MarketResearchService,
   MarketResearchServiceLive,
   MarketResearchError,

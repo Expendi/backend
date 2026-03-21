@@ -839,3 +839,408 @@
   background: var(--border);
   margin: 12px 0;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Inbox Card
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ─── Header ─────────────────────────────────────────────────────── */
+
+.inbox-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inbox-unread-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--exo-lime);
+  color: var(--accent-text);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* ─── Category Pills ─────────────────────────────────────────────── */
+
+.inbox-categories {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 12px;
+  margin-bottom: 4px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.inbox-categories::-webkit-scrollbar {
+  display: none;
+}
+
+.inbox-category-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.inbox-category-pill:hover {
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+}
+
+.inbox-category-pill.active {
+  background: color-mix(in srgb, var(--exo-lime) 12%, transparent);
+  border-color: color-mix(in srgb, var(--exo-lime) 30%, transparent);
+  color: var(--exo-lime);
+}
+
+.inbox-pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--exo-lime);
+  flex-shrink: 0;
+}
+
+/* ─── Item List ──────────────────────────────────────────────────── */
+
+.inbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.inbox-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background var(--transition);
+  border-left: 3px solid transparent;
+}
+
+.inbox-item:hover {
+  background: var(--bg-elevated);
+}
+
+.inbox-item.unread {
+  border-left-color: var(--exo-lime);
+  background: color-mix(in srgb, var(--exo-lime) 4%, transparent);
+}
+
+.inbox-item.unread:hover {
+  background: color-mix(in srgb, var(--exo-lime) 7%, transparent);
+}
+
+/* ─── Item Icon ──────────────────────────────────────────────────── */
+
+.inbox-item-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.inbox-item-icon.research {
+  color: var(--exo-sky);
+  background: color-mix(in srgb, var(--exo-sky) 10%, transparent);
+}
+
+.inbox-item-icon.alert {
+  color: var(--exo-coral);
+  background: color-mix(in srgb, var(--exo-coral) 10%, transparent);
+}
+
+.inbox-item-icon.suggestion {
+  color: var(--exo-lime);
+  background: color-mix(in srgb, var(--exo-lime) 10%, transparent);
+}
+
+.inbox-item-icon.news {
+  color: var(--exo-violet);
+  background: color-mix(in srgb, var(--exo-violet) 10%, transparent);
+}
+
+.inbox-item-icon.request {
+  color: var(--exo-peach);
+  background: color-mix(in srgb, var(--exo-peach) 10%, transparent);
+}
+
+.inbox-item-icon.mandate-update {
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+}
+
+/* ─── Item Content ───────────────────────────────────────────────── */
+
+.inbox-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.inbox-item-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+  line-height: 1.3;
+}
+
+.inbox-item-body {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.inbox-item-time {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* ─── Item Right Side ────────────────────────────────────────────── */
+
+.inbox-item-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ─── Priority Badge ─────────────────────────────────────────────── */
+
+.inbox-priority-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+
+.inbox-priority-badge.urgent {
+  color: var(--exo-coral);
+  background: color-mix(in srgb, var(--exo-coral) 12%, transparent);
+}
+
+.inbox-priority-badge.high {
+  color: var(--exo-peach);
+  background: color-mix(in srgb, var(--exo-peach) 12%, transparent);
+}
+
+.inbox-priority-badge.medium {
+  color: var(--exo-lime-dim);
+  background: color-mix(in srgb, var(--exo-lime-dim) 12%, transparent);
+}
+
+.inbox-priority-badge.low {
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+}
+
+/* ─── Action Buttons ─────────────────────────────────────────────── */
+
+.inbox-item-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.inbox-action-btn {
+  padding: 4px 10px;
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.inbox-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.inbox-action-btn.approve {
+  background: color-mix(in srgb, var(--exo-lime) 12%, transparent);
+  color: var(--exo-lime);
+  border-color: color-mix(in srgb, var(--exo-lime) 25%, transparent);
+}
+
+.inbox-action-btn.approve:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--exo-lime) 20%, transparent);
+}
+
+.inbox-action-btn.reject {
+  background: color-mix(in srgb, var(--exo-coral) 12%, transparent);
+  color: var(--exo-coral);
+  border-color: color-mix(in srgb, var(--exo-coral) 25%, transparent);
+}
+
+.inbox-action-btn.reject:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--exo-coral) 20%, transparent);
+}
+
+/* ─── Dismiss Button ─────────────────────────────────────────────── */
+
+.inbox-dismiss-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition);
+  padding: 0;
+  opacity: 0;
+}
+
+.inbox-item:hover .inbox-dismiss-btn {
+  opacity: 1;
+}
+
+.inbox-dismiss-btn:hover {
+  color: var(--exo-coral);
+  background: color-mix(in srgb, var(--exo-coral) 10%, transparent);
+}
+
+/* ─── Chat Inbox Banner ──────────────────────────────────────────── */
+
+.inbox-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--exo-lime) 8%, var(--bg-card));
+  border-bottom: 1px solid color-mix(in srgb, var(--exo-lime) 20%, var(--border));
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.inbox-banner:hover {
+  background: color-mix(in srgb, var(--exo-lime) 12%, var(--bg-card));
+}
+
+.inbox-banner-text {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.inbox-banner-text strong {
+  color: var(--exo-lime);
+  font-weight: 600;
+}
+
+.inbox-banner-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition);
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.inbox-banner-close:hover {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+
+/* ─── Tab Notification Badge ─────────────────────────────────────── */
+
+.bottom-tab-icon-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tab-unread-badge {
+  position: absolute;
+  top: -4px;
+  right: -8px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--exo-lime);
+  color: var(--accent-text);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* ─── Responsive tweaks for inbox on mobile ──────────────────────── */
+
+@media (max-width: 480px) {
+  .inbox-item {
+    padding: 12px 8px;
+    gap: 10px;
+  }
+
+  .inbox-dismiss-btn {
+    opacity: 1;
+  }
+
+  .inbox-item-right {
+    gap: 6px;
+  }
+
+  .inbox-action-btn {
+    padding: 3px 8px;
+    font-size: 9px;
+  }
+}

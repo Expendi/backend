@@ -30,6 +30,7 @@ import type { AgentConversationService } from "../services/agent/agent-conversat
 import type { AgentProfileService } from "../services/agent/agent-profile-service.js";
 import type { AgentMandateService } from "../services/agent/agent-mandate-service.js";
 import type { AgentActivityService } from "../services/agent/agent-activity-service.js";
+import type { AgentInboxService } from "../services/agent/agent-inbox-service.js";
 import type { MarketIntelligenceService } from "../services/adapters/coingecko.js";
 import type { AgentAutonomyService } from "../services/agent/agent-autonomy-service.js";
 import type { AgentPatternService } from "../services/agent/agent-pattern-service.js";
@@ -67,7 +68,8 @@ export type AppDeps =
   | MarketIntelligenceService
   | AgentAutonomyService
   | AgentPatternService
-  | MarketResearchService;
+  | MarketResearchService
+  | AgentInboxService;
 
 export type AppRuntime = ManagedRuntime.ManagedRuntime<AppDeps, ConfigError.ConfigError>;
 

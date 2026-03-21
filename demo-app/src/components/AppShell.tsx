@@ -4,6 +4,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useAuth } from "../context/AuthContext";
 import { useDashboard } from "../context/DashboardContext";
 import { useAppMode } from "../context/AppModeContext";
+import { useApi } from "../hooks/useApi";
 import { SecuritySettings } from "./SecuritySettings";
 import { PageTransition } from "./PageTransition";
 import { BottomSheet } from "./BottomSheet";
@@ -288,9 +289,37 @@ export function AppShell() {
   const { theme, toggleTheme } = useAuth();
   const { loading: dashLoading, refresh } = useDashboard();
   const { mode } = useAppMode();
+  const { request } = useApi();
   const location = useLocation();
   const navigate = useNavigate();
   const [exploreOpen, setExploreOpen] = useState(false);
+  const [inboxUnreadCount, setInboxUnreadCount] = useState(0);
+
+  // Poll inbox unread count every 30 seconds when in agent mode
+  useEffect(() => {
+    if (mode !== "agent") {
+      return;
+    }
+
+    let mounted = true;
+
+    const fetchUnread = async () => {
+      try {
+        const data = await request<{ total: number }>("/agent/inbox/unread");
+        if (mounted) setInboxUnreadCount(data.total);
+      } catch {
+        // Silently ignore polling failures
+      }
+    };
+
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 30000);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [mode, request]);
 
   const [viewportWidth, setViewportWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1200);
   useEffect(() => {
@@ -485,7 +514,16 @@ export function AppShell() {
             <span className="bottom-tab-label">Chat</span>
           </button>
           <button className={`bottom-tab ${agentTab === "agent" ? "active" : ""}`} onClick={() => navigateAgentTab("agent")} aria-label="Agent">
-            <span className="bottom-tab-icon"><AgentDashIcon /></span>
+            <span className="bottom-tab-icon">
+              <span className="bottom-tab-icon-wrapper">
+                <AgentDashIcon />
+                {inboxUnreadCount > 0 && (
+                  <span className="tab-unread-badge">
+                    {inboxUnreadCount > 99 ? "99+" : inboxUnreadCount}
+                  </span>
+                )}
+              </span>
+            </span>
             <span className="bottom-tab-label">Agent</span>
           </button>
           <button className={`bottom-tab ${agentTab === "portfolio" ? "active" : ""}`} onClick={() => navigateAgentTab("portfolio")} aria-label="Portfolio">

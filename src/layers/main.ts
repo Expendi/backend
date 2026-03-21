@@ -27,6 +27,7 @@ import { AgentConversationServiceLive } from "../services/agent/agent-conversati
 import { AgentProfileServiceLive } from "../services/agent/agent-profile-service.js";
 import { AgentMandateServiceLive } from "../services/agent/agent-mandate-service.js";
 import { AgentActivityServiceLive } from "../services/agent/agent-activity-service.js";
+import { AgentInboxServiceLive } from "../services/agent/agent-inbox-service.js";
 import { CoinGeckoAdapterLive } from "../services/adapters/coingecko.js";
 import { AgentAutonomyServiceLive } from "../services/agent/agent-autonomy-service.js";
 import { AgentPatternServiceLive } from "../services/agent/agent-pattern-service.js";
@@ -170,6 +171,10 @@ const AgentActivityServiceLayer = AgentActivityServiceLive.pipe(
   Layer.provide(DatabaseLayer)
 );
 
+const AgentInboxServiceLayer = AgentInboxServiceLive.pipe(
+  Layer.provide(DatabaseLayer)
+);
+
 const MarketIntelligenceServiceLayer = CoinGeckoAdapterLive;
 
 const MarketResearchServiceLayer = MarketResearchServiceLive.pipe(
@@ -183,6 +188,7 @@ const AgentAutonomyServiceLayer = AgentAutonomyServiceLive.pipe(
   Layer.provide(AgentMandateServiceLayer),
   Layer.provide(AgentProfileServiceLayer),
   Layer.provide(AgentActivityServiceLayer),
+  Layer.provide(AgentInboxServiceLayer),
   Layer.provide(MarketResearchServiceLayer)
 );
 
@@ -222,5 +228,6 @@ export const MainLayer = Layer.mergeAll(
   MarketIntelligenceServiceLayer,
   AgentAutonomyServiceLayer,
   AgentPatternServiceLayer,
-  MarketResearchServiceLayer
+  MarketResearchServiceLayer,
+  AgentInboxServiceLayer
 );

@@ -25,6 +25,7 @@ const DOMAIN_LABELS: Record<string, string> = {
   security: "Security Settings",
   mandates: "Mandate",
   agent_wallet: "Agent Wallet",
+  inbox: "Inbox",
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -56,7 +57,7 @@ function buildTitle(action: string, domain: string): string {
 
 // ── Determine if an action is a mutation (needs confirmation) ───────────────
 
-const READ_ACTIONS = new Set(["list", "get", "balance"]);
+const READ_ACTIONS = new Set(["list", "get", "balance", "unread"]);
 
 function isMutation(action: string): boolean {
   return !READ_ACTIONS.has(action);
@@ -947,16 +948,120 @@ async function handleAgentWallet(
   }
 }
 
+// ── Inbox domain handler ─────────────────────────────────────────────────────
+
+async function handleInbox(
+  action: string,
+  id: string | undefined,
+  params: Record<string, unknown> | undefined,
+  pushAndWait: ((props: Record<string, unknown>) => Promise<boolean>) | null,
+): Promise<{ status: "success" | "error"; data: string; message?: string }> {
+  switch (action) {
+    case "list": {
+      const query: Record<string, string> = {};
+      if (params?.category) query.category = String(params.category);
+      if (params?.status) query.status = String(params.status);
+      if (params?.priority) query.priority = String(params.priority);
+      if (params?.limit) query.limit = String(params.limit);
+      if (params?.offset) query.offset = String(params.offset);
+      const data = await callApi("/agent/inbox", { query });
+      return { status: "success", data: JSON.stringify(data) };
+    }
+
+    case "unread": {
+      const data = await callApi("/agent/inbox/unread");
+      return { status: "success", data: JSON.stringify(data) };
+    }
+
+    case "read": {
+      if (!id) return { status: "error", data: "", message: "An id is required to mark an inbox item as read." };
+      if (pushAndWait) {
+        const confirmed = await pushAndWait({
+          domain: "inbox",
+          action,
+          summary: "Mark this inbox item as read.",
+          details: { "Item ID": id },
+        });
+        if (!confirmed) return { status: "success", data: "Cancelled." };
+      }
+      const data = await callApi(`/agent/inbox/${id}/read`, { method: "POST" });
+      return { status: "success", data: JSON.stringify(data) };
+    }
+
+    case "read_all": {
+      if (pushAndWait) {
+        const details: Record<string, string> = {};
+        if (params?.category) details["Category"] = String(params.category);
+        const confirmed = await pushAndWait({
+          domain: "inbox",
+          action,
+          summary: params?.category
+            ? `Mark all "${params.category}" inbox items as read.`
+            : "Mark all inbox items as read.",
+          details,
+        });
+        if (!confirmed) return { status: "success", data: "Cancelled." };
+      }
+      const body: Record<string, unknown> = {};
+      if (params?.category) body.category = String(params.category);
+      const data = await callApi("/agent/inbox/read-all", { method: "POST", body });
+      return { status: "success", data: JSON.stringify(data) };
+    }
+
+    case "dismiss": {
+      if (!id) return { status: "error", data: "", message: "An id is required to dismiss an inbox item." };
+      if (pushAndWait) {
+        const confirmed = await pushAndWait({
+          domain: "inbox",
+          action,
+          summary: "Dismiss this inbox item.",
+          details: { "Item ID": id },
+        });
+        if (!confirmed) return { status: "success", data: "Cancelled." };
+      }
+      const data = await callApi(`/agent/inbox/${id}/dismiss`, { method: "POST" });
+      return { status: "success", data: JSON.stringify(data) };
+    }
+
+    case "action": {
+      if (!id) return { status: "error", data: "", message: "An id is required to act on an inbox item." };
+      const approved = params?.approved !== undefined ? Boolean(params.approved) : true;
+
+      if (pushAndWait) {
+        const confirmed = await pushAndWait({
+          domain: "inbox",
+          action,
+          summary: approved ? "Approve this inbox action." : "Reject this inbox action.",
+          details: {
+            "Item ID": id,
+            Decision: approved ? "Approve" : "Reject",
+            ...(params?.note ? { Note: String(params.note) } : {}),
+          },
+        });
+        if (!confirmed) return { status: "success", data: "Cancelled." };
+      }
+
+      const body: Record<string, unknown> = { approved };
+      if (params?.note) body.note = String(params.note);
+      const data = await callApi(`/agent/inbox/${id}/action`, { method: "POST", body });
+      return { status: "success", data: JSON.stringify(data) };
+    }
+
+    default:
+      return { status: "error", data: "", message: `Unsupported action "${action}" for inbox. Supported: list, unread, read, read_all, dismiss, action.` };
+  }
+}
+
 // ── The manage super tool ───────────────────────────────────────────────────
 
 export const manageTool: ToolConfig = defineTool({
   name: "manage",
   description:
-    "Set up autopay, recurring payments, savings goals, group accounts, split expenses, spending categories, security settings, automated mandates (DCA, alerts, rebalancing), and agent wallet management. " +
-    "Use this for any payment automation, expense splitting, financial management, or agent wallet operations.",
+    "Set up autopay, recurring payments, savings goals, group accounts, split expenses, spending categories, security settings, automated mandates (DCA, alerts, rebalancing), agent wallet management, and agent inbox (messages, notifications, actionable items). " +
+    "Use this for any payment automation, expense splitting, financial management, agent wallet operations, or inbox management.",
   inputSchema: z.object({
     domain: z
-      .enum(["recurring", "goals", "groups", "categories", "splits", "security", "mandates", "agent_wallet"])
+      .enum(["recurring", "goals", "groups", "categories", "splits", "security", "mandates", "agent_wallet", "inbox"])
       .describe(
         "Feature area to manage. " +
         "'recurring' = autopay/scheduled payments. " +
@@ -966,10 +1071,11 @@ export const manageTool: ToolConfig = defineTool({
         "'categories' = expense categories + spending analytics. " +
         "'security' = PIN and approval settings. " +
         "'mandates' = automated rules (DCA, auto-offramp, rebalance, alerts, auto-save). " +
-        "'agent_wallet' = agent wallet balances, funding, and withdrawals."
+        "'agent_wallet' = agent wallet balances, funding, and withdrawals. " +
+        "'inbox' = agent inbox messages, notifications, and actionable items."
       ),
     action: z
-      .enum(["list", "get", "create", "update", "pause", "resume", "cancel", "deposit", "withdraw", "add_member", "remove_member", "payout", "pay", "owed", "spending", "set_limit", "balance", "fund"])
+      .enum(["list", "get", "create", "update", "pause", "resume", "cancel", "deposit", "withdraw", "add_member", "remove_member", "payout", "pay", "owed", "spending", "set_limit", "balance", "fund", "unread", "read", "read_all", "dismiss", "action"])
       .optional()
       .describe(
         "Action to perform. Default: 'list'. " +
@@ -979,7 +1085,8 @@ export const manageTool: ToolConfig = defineTool({
         "categories + create/update/spending/set_limit, " +
         "security + get/update, " +
         "mandates + list/get/create/pause/resume/cancel, " +
-        "agent_wallet + list (or balance)/fund/withdraw."
+        "agent_wallet + list (or balance)/fund/withdraw, " +
+        "inbox + list/unread/read/read_all/dismiss/action."
       ),
     id: z.string().optional().describe("Item ID — required for get, update, pause, resume, cancel, deposit, withdraw, add_member, remove_member, payout, pay."),
     params: z
@@ -1000,7 +1107,11 @@ export const manageTool: ToolConfig = defineTool({
         "security/update: { pin: '1234' }. " +
         "mandates/create: { type: 'dca' | 'auto_offramp' | 'rebalance' | 'alert' | 'auto_save' | 'custom', name: 'Weekly ETH DCA', trigger: { type: 'schedule', frequency: '7d' }, action: { type: 'swap', from: 'USDC', to: 'ETH', amount: '10' }, description?: 'Buy ETH weekly', constraints?: { maxPerExecution: '100', maxPerDay: '200' }, expiresAt?: '2026-12-31' }. " +
         "agent_wallet/fund: { amount: '100', token?: 'USDC' }. " +
-        "agent_wallet/withdraw: { amount: '50', token?: 'USDC' }."
+        "agent_wallet/withdraw: { amount: '50', token?: 'USDC' }. " +
+        "inbox/list: { category?: 'research' | 'request' | 'alert' | 'news' | 'suggestion' | 'mandate_update', status?: 'unread' | 'read' | 'actioned' | 'dismissed', priority?: 'low' | 'medium' | 'high' | 'urgent', limit?: 20, offset?: 0 }. " +
+        "inbox/unread: (no params). " +
+        "inbox/read_all: { category?: 'research' }. " +
+        "inbox/action: { approved: true/false, note?: 'looks good' }."
       ),
   }),
   displayPropsSchema: z.object({
@@ -1023,6 +1134,7 @@ export const manageTool: ToolConfig = defineTool({
       security: "security",
       mandates: "mandates", mandate: "mandates", automation: "mandates", automate: "mandates", dca: "mandates", auto: "mandates",
       agent_wallet: "agent_wallet", wallet: "agent_wallet", agent: "agent_wallet", budget: "agent_wallet",
+      inbox: "inbox", messages: "inbox", notifications: "inbox",
     };
     const domain = domainMap[input.domain?.toLowerCase().trim()] ?? input.domain?.toLowerCase().trim();
 
@@ -1041,6 +1153,11 @@ export const manageTool: ToolConfig = defineTool({
       set_limit: "set_limit", limit: "set_limit",
       balance: "balance", balances: "balance",
       fund: "fund",
+      unread: "unread",
+      read: "read", mark_read: "read",
+      read_all: "read_all", mark_all_read: "read_all",
+      dismiss: "dismiss",
+      action: "action", approve: "action", reject: "action",
     };
     const rawAction = input.action ?? "list";
     const action = actionMap[rawAction.toLowerCase().trim()] ?? rawAction.toLowerCase().trim();
@@ -1077,8 +1194,10 @@ export const manageTool: ToolConfig = defineTool({
           return await handleMandates(action, id, params, pushAndWait);
         case "agent_wallet":
           return await handleAgentWallet(action, id, params, pushAndWait);
+        case "inbox":
+          return await handleInbox(action, id, params, pushAndWait);
         default:
-          return { status: "error" as const, data: "", message: `Unknown domain "${domain}". Valid domains: recurring, goals, groups, categories, splits, security, mandates, agent_wallet.` };
+          return { status: "error" as const, data: "", message: `Unknown domain "${domain}". Valid domains: recurring, goals, groups, categories, splits, security, mandates, agent_wallet, inbox.` };
       }
     } catch (e) {
       return { status: "error" as const, data: "", message: String(e) };
