@@ -7,6 +7,7 @@ import { swapTool } from "./super-swap";
 import { earnTool } from "./super-earn";
 import { manageTool } from "./super-manage";
 import { researchTool } from "./research";
+import { webSearchTool } from "./web-search";
 
 export { setApiFetcher, setApprovalHandler } from "./api";
 
@@ -19,6 +20,8 @@ export const allTools: ToolConfig[] = [
   manageTool,
   // ── Research tool — market analysis ──
   researchTool,
+  // ── Web search tool — current info from the web ──
+  webSearchTool,
   // ── Utility tools — read-only info queries ──
   ...utilityTools,
   ...profileTools,

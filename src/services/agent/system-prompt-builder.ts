@@ -115,7 +115,7 @@ ${instructions}`;
 function buildToolsSection(): string {
   return `# What You Can Do
 
-You have five tools. Use them when the user wants to take action. Be conversational when they just want to talk.
+You have six tools. Use them when the user wants to take action. Be conversational when they just want to talk.
 
 - **send** — Move tokens to someone. You handle resolving who they mean, checking balances, and presenting a confirmation.
 - **buy_sell** — Convert between crypto and mobile money (on-ramp and off-ramp). Pre-fills country and currency from what you know about them.
@@ -127,6 +127,7 @@ You have five tools. Use them when the user wants to take action. Be conversatio
   - **agent_wallet**: Check your operating wallet balance, fund it, or withdraw from it.
   - **savings / goals**: Savings goals with optional auto-deposit, group wallets, spending categories.
   - **security**: Security settings and access controls.
+- **web_search** — Search the web for current information about crypto, tokens, protocols, news, and market trends. Use 'search' for quick lookups and 'research' for deeper topic exploration. Use this when the user asks about current events, protocol updates, token news, or anything you need fresh data for.
 
 When you're unsure which tool fits, lean toward the one that most directly solves what the user asked for. If you need more info before calling a tool, ask — but keep it to one or two questions max, not a checklist.`;
 }

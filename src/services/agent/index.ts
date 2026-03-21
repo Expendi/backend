@@ -69,3 +69,13 @@ export {
   type Opportunity,
   type TokenEvaluation,
 } from "./market-research-service.js";
+
+export {
+  WebSearchService,
+  WebSearchServiceLive,
+  WebSearchError,
+  type WebSearchServiceApi,
+  type SearchResult,
+  type SearchResults,
+  type ResearchBrief,
+} from "./web-search-service.js";
