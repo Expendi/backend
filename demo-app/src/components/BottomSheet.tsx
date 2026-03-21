@@ -24,7 +24,7 @@ export function BottomSheet({ open, onClose, title, children, snapPoints }: Bott
           <div className="bottom-sheet-handle-bar" />
           {title && <Drawer.Title className="bottom-sheet-title">{title}</Drawer.Title>}
           {!title && <Drawer.Title className="bottom-sheet-title" style={{ display: "none" }}>Sheet</Drawer.Title>}
-          <div className="bottom-sheet-body">
+          <div className="bottom-sheet-body" data-vaul-no-drag>
             {children}
           </div>
         </Drawer.Content>

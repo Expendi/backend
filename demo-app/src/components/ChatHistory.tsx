@@ -56,6 +56,7 @@ export function ChatHistory({
   const [editTitle, setEditTitle] = useState("");
   const editInputRef = useRef<HTMLInputElement>(null);
   const deleteTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const actionInProgressRef = useRef(false);
 
   // Clean up delete confirmation timer on unmount
   useEffect(() => {
@@ -83,6 +84,11 @@ export function ChatHistory({
 
   const handleDelete = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
+    e.preventDefault();
+    // Block parent onClick from firing via synchronous ref
+    actionInProgressRef.current = true;
+    requestAnimationFrame(() => { actionInProgressRef.current = false; });
+
     if (deletingId === id) {
       // Second click — confirm delete
       if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
@@ -91,13 +97,16 @@ export function ChatHistory({
     } else {
       if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
       setDeletingId(id);
-      // Reset after 3 seconds if not confirmed
-      deleteTimerRef.current = setTimeout(() => setDeletingId(null), 3000);
+      // Reset after 5 seconds if not confirmed
+      deleteTimerRef.current = setTimeout(() => setDeletingId(null), 5000);
     }
   };
 
   const startEditing = (e: React.MouseEvent, conv: ConversationListItem) => {
     e.stopPropagation();
+    e.preventDefault();
+    actionInProgressRef.current = true;
+    requestAnimationFrame(() => { actionInProgressRef.current = false; });
     setEditingId(conv.id);
     setEditTitle(conv.title || "");
     setDeletingId(null);
@@ -188,11 +197,13 @@ export function ChatHistory({
                 tabIndex={0}
                 className={`chat-history-item ${conv.id === activeConversationId ? "active" : ""}`}
                 onClick={() => {
+                  if (actionInProgressRef.current) return;
                   if (editingId !== conv.id && deletingId !== conv.id) onSelect(conv.id);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
+                    if (actionInProgressRef.current) return;
                     if (editingId !== conv.id && deletingId !== conv.id) onSelect(conv.id);
                   }
                 }}
