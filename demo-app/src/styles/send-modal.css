@@ -39,11 +39,14 @@
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   animation: sendCardIn 0.3s cubic-bezier(0.22, 1, 0.36, 1);
   position: relative;
-  max-height: 92vh;
-  overflow-y: auto;
+  max-height: 85vh;
+  max-height: 85dvh;
 }
 
 .send-overlay.closing .send-card {

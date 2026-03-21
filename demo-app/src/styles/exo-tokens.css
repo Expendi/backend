@@ -71,6 +71,13 @@ body {
   color: #000;
 }
 
+/* Prevent iOS Safari auto-zoom on input focus (triggers at < 16px) */
+@media (max-width: 767px) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
+
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg-secondary); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
