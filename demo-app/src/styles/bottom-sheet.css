@@ -117,6 +117,12 @@
   }
 }
 
+/* ─── Hide bottom tabs when vaul drawer is open (portals to body) ── */
+
+body:has([data-vaul-drawer]) .bottom-tabs {
+  display: none !important;
+}
+
 /* ─── Step Indicator ────────────────────────────────────────────── */
 
 .step-indicator {
