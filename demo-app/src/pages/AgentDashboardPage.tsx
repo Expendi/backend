@@ -5,8 +5,9 @@ import "../styles/agent-dashboard.css";
 /* ─── Types ──────────────────────────────────────────────────────── */
 
 interface AgentWalletBalance {
-  usdc: string;
-  eth: string;
+  walletId: string;
+  address: string;
+  balances: { ETH: string; USDC: string };
 }
 
 interface AgentProfile {
@@ -39,6 +40,23 @@ type TrustTier = "observe" | "notify" | "act_within_limits" | "full";
 type RiskTolerance = "conservative" | "moderate" | "aggressive";
 type KnowledgeLevel = "beginner" | "intermediate" | "advanced";
 
+interface MandateTrigger {
+  type: string;
+  frequency?: string;
+  token?: string;
+  condition?: string;
+  value?: number;
+}
+
+interface MandateAction {
+  type: string;
+  from?: string;
+  to?: string;
+  amount?: string;
+  message?: string;
+  goalId?: string;
+}
+
 interface Mandate {
   id: string;
   name: string;
@@ -46,6 +64,10 @@ interface Mandate {
   status: "active" | "paused" | "revoked" | "completed";
   executionCount: number;
   createdAt: string;
+  lastExecutedAt?: string;
+  description?: string;
+  trigger?: MandateTrigger;
+  action?: MandateAction;
 }
 
 interface ActivityItem {
@@ -85,6 +107,53 @@ const RISK_LEVELS: RiskTolerance[] = ["conservative", "moderate", "aggressive"];
 const KNOWLEDGE_LEVELS: KnowledgeLevel[] = ["beginner", "intermediate", "advanced"];
 
 /* ─── Helpers ────────────────────────────────────────────────────── */
+
+function formatBaseUnits(raw: string, decimals: number): string {
+  const n = BigInt(raw || "0");
+  const divisor = BigInt(10 ** decimals);
+  const whole = n / divisor;
+  const frac = n % divisor;
+  if (frac === 0n) return whole.toString();
+  const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
+  return `${whole}.${fracStr}`;
+}
+
+function toBaseUnits(humanAmount: string, decimals: number): string {
+  const parts = humanAmount.split(".");
+  const whole = parts[0] || "0";
+  const frac = (parts[1] || "").padEnd(decimals, "0").slice(0, decimals);
+  return (BigInt(whole) * BigInt(10 ** decimals) + BigInt(frac)).toString();
+}
+
+function summarizeTrigger(trigger?: MandateTrigger): string {
+  if (!trigger) return "Manual";
+  switch (trigger.type) {
+    case "schedule":
+      return `Every ${trigger.frequency ?? "?"}`;
+    case "price":
+      return `When ${trigger.token ?? "?"} ${trigger.condition ?? "?"} $${trigger.value ?? "?"}`;
+    default:
+      return trigger.type;
+  }
+}
+
+function summarizeAction(action?: MandateAction): string {
+  if (!action) return "No action";
+  switch (action.type) {
+    case "swap": {
+      const amt = action.amount ? formatBaseUnits(action.amount, 6) : "?";
+      return `Swap ${amt} ${action.from ?? "?"} to ${action.to ?? "?"}`;
+    }
+    case "notify":
+      return action.message ?? "Notify";
+    case "goal_deposit": {
+      const amt = action.amount ? formatBaseUnits(action.amount, 6) : "?";
+      return `Deposit ${amt} USDC to goal`;
+    }
+    default:
+      return action.type;
+  }
+}
 
 function formatTimeAgo(iso: string): string {
   const d = new Date(iso);
@@ -180,7 +249,9 @@ function AgentWalletCard() {
   const [budgetLimit, setBudgetLimit] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [fundAmount, setFundAmount] = useState("");
+  const [withdrawAmount, setWithdrawAmount] = useState("");
   const [showFund, setShowFund] = useState(false);
+  const [showWithdraw, setShowWithdraw] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -206,27 +277,44 @@ function AgentWalletCard() {
     if (!amt || amt <= 0) return;
     setActionLoading(true);
     try {
-      await request("/agent/wallet/fund", {
+      await request("/wallets/transfer", {
         method: "POST",
-        body: { amount: fundAmount },
+        body: {
+          from: "user",
+          to: "agent",
+          amount: toBaseUnits(fundAmount, 6),
+          token: "USDC",
+        },
       });
       setFundAmount("");
       setShowFund(false);
       await fetchData();
     } catch {
-      // Silently handle - the API will return errors
+      // Keep current state on failure
     } finally {
       setActionLoading(false);
     }
   };
 
   const handleWithdraw = async () => {
+    const amt = parseFloat(withdrawAmount);
+    if (!amt || amt <= 0) return;
     setActionLoading(true);
     try {
-      await request("/agent/wallet/withdraw", { method: "POST" });
+      await request("/wallets/transfer", {
+        method: "POST",
+        body: {
+          from: "agent",
+          to: "user",
+          amount: toBaseUnits(withdrawAmount, 6),
+          token: "USDC",
+        },
+      });
+      setWithdrawAmount("");
+      setShowWithdraw(false);
       await fetchData();
     } catch {
-      // Silently handle
+      // Keep current state on failure
     } finally {
       setActionLoading(false);
     }
@@ -255,11 +343,11 @@ function AgentWalletCard() {
       <div className="ad-wallet-balances">
         <div className="ad-wallet-row">
           <span className="ad-wallet-token">USDC</span>
-          <span className="ad-wallet-amount">{balance?.usdc ?? "0"}</span>
+          <span className="ad-wallet-amount">{balance?.balances?.USDC ? formatBaseUnits(balance.balances.USDC, 6) : "0"}</span>
         </div>
         <div className="ad-wallet-row">
           <span className="ad-wallet-token">ETH</span>
-          <span className="ad-wallet-amount">{balance?.eth ?? "0"}</span>
+          <span className="ad-wallet-amount">{balance?.balances?.ETH ? formatBaseUnits(balance.balances.ETH, 18) : "0"}</span>
         </div>
       </div>
       {budgetLimit && (
@@ -285,21 +373,42 @@ function AgentWalletCard() {
             disabled={actionLoading || !fundAmount || parseFloat(fundAmount) <= 0}
             style={{ padding: "10px 20px" }}
           >
-            {actionLoading ? "..." : "Confirm"}
+            {actionLoading ? "..." : "Confirm Fund"}
+          </button>
+        </div>
+      )}
+      {showWithdraw && (
+        <div className="ad-fund-row">
+          <input
+            className="ad-fund-input"
+            type="number"
+            inputMode="decimal"
+            placeholder="Amount (USDC)"
+            value={withdrawAmount}
+            onChange={(e) => setWithdrawAmount(e.target.value)}
+            disabled={actionLoading}
+          />
+          <button
+            className="btn-exo btn-secondary"
+            onClick={handleWithdraw}
+            disabled={actionLoading || !withdrawAmount || parseFloat(withdrawAmount) <= 0}
+            style={{ padding: "10px 20px" }}
+          >
+            {actionLoading ? "..." : "Confirm Withdraw"}
           </button>
         </div>
       )}
       <div className="ad-wallet-actions">
         <button
           className="btn-exo btn-primary"
-          onClick={() => setShowFund(!showFund)}
+          onClick={() => { setShowFund(!showFund); setShowWithdraw(false); }}
           disabled={actionLoading}
         >
           Fund
         </button>
         <button
           className="btn-exo btn-secondary"
-          onClick={handleWithdraw}
+          onClick={() => { setShowWithdraw(!showWithdraw); setShowFund(false); }}
           disabled={actionLoading}
         >
           Withdraw
@@ -330,7 +439,7 @@ function TrustTierCard() {
     try {
       await request("/agent/profile/trust-tier", {
         method: "PATCH",
-        body: { trustTier: newTier },
+        body: { tier: newTier },
       });
       setTier(newTier);
     } catch {
@@ -420,14 +529,16 @@ function AutomationsCard() {
   useEffect(() => { fetchMandates(); }, [fetchMandates]);
 
   const handleToggle = async (mandate: Mandate) => {
-    const newStatus = mandate.status === "active" ? "paused" : "active";
+    const isPausing = mandate.status === "active";
+    const endpoint = isPausing
+      ? `/agent/mandates/${mandate.id}/pause`
+      : `/agent/mandates/${mandate.id}/resume`;
     try {
-      await request(`/agent/mandates/${mandate.id}/status`, {
-        method: "PATCH",
-        body: { status: newStatus },
-      });
+      await request(endpoint, { method: "POST" });
       setMandates((prev) =>
-        prev.map((m) => (m.id === mandate.id ? { ...m, status: newStatus } : m))
+        prev.map((m) =>
+          m.id === mandate.id ? { ...m, status: isPausing ? "paused" : "active" } : m
+        )
       );
     } catch {
       // Keep current state on failure
@@ -436,10 +547,7 @@ function AutomationsCard() {
 
   const handleCancel = async (id: string) => {
     try {
-      await request(`/agent/mandates/${id}/status`, {
-        method: "PATCH",
-        body: { status: "revoked" },
-      });
+      await request(`/agent/mandates/${id}`, { method: "DELETE" });
       setMandates((prev) =>
         prev.map((m) => (m.id === id ? { ...m, status: "revoked" } : m))
       );
@@ -450,13 +558,54 @@ function AutomationsCard() {
     }
   };
 
+  const buildMandateDefaults = (type: string): { trigger: MandateTrigger; action: MandateAction } => {
+    switch (type) {
+      case "dca":
+        return {
+          trigger: { type: "schedule", frequency: "7d" },
+          action: { type: "swap", from: "USDC", to: "ETH", amount: "10000000" },
+        };
+      case "limit_order":
+        return {
+          trigger: { type: "price", token: "ETH", condition: "below", value: 2000 },
+          action: { type: "notify", message: "Price alert triggered" },
+        };
+      case "yield_harvest":
+        return {
+          trigger: { type: "schedule", frequency: "30d" },
+          action: { type: "goal_deposit", goalId: "", amount: "5000000" },
+        };
+      case "recurring_swap":
+        return {
+          trigger: { type: "schedule", frequency: "7d" },
+          action: { type: "swap", from: "USDC", to: "ETH", amount: "10000000" },
+        };
+      case "rebalance":
+        return {
+          trigger: { type: "schedule", frequency: "30d" },
+          action: { type: "swap", from: "USDC", to: "ETH", amount: "50000000" },
+        };
+      default:
+        return {
+          trigger: { type: "schedule", frequency: "7d" },
+          action: { type: "swap", from: "USDC", to: "ETH", amount: "10000000" },
+        };
+    }
+  };
+
   const handleCreate = async () => {
     if (!createName.trim()) return;
     setCreateLoading(true);
     try {
+      const defaults = buildMandateDefaults(createType);
       await request("/agent/mandates", {
         method: "POST",
-        body: { name: createName.trim(), type: createType },
+        body: {
+          name: createName.trim(),
+          type: createType,
+          trigger: defaults.trigger,
+          action: defaults.action,
+        },
       });
       setCreateName("");
       setShowCreate(false);
@@ -552,7 +701,11 @@ function AutomationsCard() {
                   <span className={`ad-badge ${m.status}`}>{m.status}</span>
                 </div>
                 <div className="ad-mandate-meta">
+                  {summarizeTrigger(m.trigger)} &rarr; {summarizeAction(m.action)}
+                </div>
+                <div className="ad-mandate-meta">
                   {m.executionCount} execution{m.executionCount !== 1 ? "s" : ""}
+                  {m.lastExecutedAt && <> &middot; Last run {formatTimeAgo(m.lastExecutedAt)}</>}
                 </div>
               </div>
               <div className="ad-mandate-actions">
@@ -627,12 +780,10 @@ function PreferencesCard() {
       await request("/agent/profile", {
         method: "PATCH",
         body: {
-          profile: {
-            interests: merged.interests,
-            goals: merged.goals,
-            riskTolerance: merged.riskTolerance,
-            knowledgeLevel: merged.knowledgeLevel,
-          },
+          interests: merged.interests,
+          goals: merged.goals,
+          riskTolerance: merged.riskTolerance,
+          knowledgeLevel: merged.knowledgeLevel,
         },
       });
       setProfile(merged);
@@ -809,7 +960,7 @@ function CustomInstructionsCard() {
       try {
         await request("/agent/profile", {
           method: "PATCH",
-          body: { profile: { customInstructions: value } },
+          body: { customInstructions: value },
         });
         setShowSaved(true);
         if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
