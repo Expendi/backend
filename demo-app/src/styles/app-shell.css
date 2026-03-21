@@ -1000,6 +1000,8 @@
     padding: 4px 8px;
     padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
     transition: background var(--transition), border-color var(--transition);
+    position: relative;
+    z-index: 50;
   }
 
   .bottom-tab {

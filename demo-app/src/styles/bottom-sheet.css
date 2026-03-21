@@ -78,6 +78,8 @@
   padding: 0 20px 16px;
   padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   overscroll-behavior: contain;
+  /* Override vaul's touch-action:none on [data-vaul-drawer] to allow scrolling */
+  touch-action: pan-y;
 }
 
 /* ─── Desktop (>=768px): Centered Card Modal ────────────────────── */

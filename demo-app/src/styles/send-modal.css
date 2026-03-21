@@ -43,6 +43,7 @@
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+  touch-action: pan-y;
   animation: sendCardIn 0.3s cubic-bezier(0.22, 1, 0.36, 1);
   position: relative;
   max-height: 85vh;
