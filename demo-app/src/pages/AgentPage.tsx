@@ -178,10 +178,10 @@ export function AgentPage() {
   const sendMessage = useCallback(
     (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || glove.busy) return;
+      if (!trimmed || glove.busy || !conversationId) return;
       glove.sendMessage(trimmed);
     },
-    [glove]
+    [glove, conversationId]
   );
 
   const prefillInput = useCallback((text: string) => {
@@ -383,7 +383,7 @@ export function AgentPage() {
             <textarea
               ref={inputRef}
               placeholder={glove.busy ? "Thinking..." : "Message exo..."}
-              disabled={glove.busy}
+              disabled={glove.busy || !conversationId}
               rows={1}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
@@ -400,7 +400,7 @@ export function AgentPage() {
             />
             <button
               className="chat-send-btn"
-              disabled={glove.busy}
+              disabled={glove.busy || !conversationId}
               onClick={() => {
                 const val = inputRef.current?.value.trim();
                 if (val) { sendMessage(val); if (inputRef.current) inputRef.current.value = ""; }
