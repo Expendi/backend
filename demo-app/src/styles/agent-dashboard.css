@@ -133,6 +133,13 @@
   margin-left: auto;
 }
 
+.ad-error {
+  font-size: 12px;
+  color: var(--exo-coral);
+  margin: 0;
+  padding: 4px 0;
+}
+
 .ad-wallet-actions {
   display: flex;
   gap: 8px;

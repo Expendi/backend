@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useApi } from "../hooks/useApi";
+import { useApprovalContext } from "../context/ApprovalContext";
 import "../styles/agent-dashboard.css";
 
 /* ─── Types ──────────────────────────────────────────────────────── */
@@ -393,9 +394,11 @@ function ActivityTypeIcon({ type }: { type: string }) {
 
 function AgentWalletCard() {
   const { request } = useApi();
+  const approval = useApprovalContext();
   const [balance, setBalance] = useState<AgentWalletBalance | null>(null);
   const [budgetLimit, setBudgetLimit] = useState<string>("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [fundAmount, setFundAmount] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [showFund, setShowFund] = useState(false);
@@ -420,25 +423,48 @@ function AgentWalletCard() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  const doTransfer = async (from: string, to: string, amount: string) => {
+    const body = {
+      from,
+      to,
+      amount: toBaseUnits(amount, 6),
+      token: "USDC",
+    };
+
+    try {
+      await request("/wallets/transfer", { method: "POST", body });
+      return true;
+    } catch (err: unknown) {
+      // Handle transaction approval required (PIN)
+      if (err && typeof err === "object" && "_tag" in err && (err as { _tag: string })._tag === "TransactionApprovalRequired") {
+        if (!approval) throw err;
+        const method = (err as { method?: string }).method ?? "pin";
+        const token = await approval.requestApproval(method);
+        if (!token) {
+          setError("Approval cancelled");
+          return false;
+        }
+        await request("/wallets/transfer", { method: "POST", body, approvalToken: token });
+        return true;
+      }
+      throw err;
+    }
+  };
+
   const handleFund = async () => {
     const amt = parseFloat(fundAmount);
     if (!amt || amt <= 0) return;
     setActionLoading(true);
+    setError(null);
     try {
-      await request("/wallets/transfer", {
-        method: "POST",
-        body: {
-          from: "user",
-          to: "agent",
-          amount: toBaseUnits(fundAmount, 6),
-          token: "USDC",
-        },
-      });
-      setFundAmount("");
-      setShowFund(false);
-      await fetchData();
-    } catch {
-      // Keep current state on failure
+      const ok = await doTransfer("user", "agent", fundAmount);
+      if (ok) {
+        setFundAmount("");
+        setShowFund(false);
+        await fetchData();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Transfer failed");
     } finally {
       setActionLoading(false);
     }
@@ -448,21 +474,16 @@ function AgentWalletCard() {
     const amt = parseFloat(withdrawAmount);
     if (!amt || amt <= 0) return;
     setActionLoading(true);
+    setError(null);
     try {
-      await request("/wallets/transfer", {
-        method: "POST",
-        body: {
-          from: "agent",
-          to: "user",
-          amount: toBaseUnits(withdrawAmount, 6),
-          token: "USDC",
-        },
-      });
-      setWithdrawAmount("");
-      setShowWithdraw(false);
-      await fetchData();
-    } catch {
-      // Keep current state on failure
+      const ok = await doTransfer("agent", "user", withdrawAmount);
+      if (ok) {
+        setWithdrawAmount("");
+        setShowWithdraw(false);
+        await fetchData();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Transfer failed");
     } finally {
       setActionLoading(false);
     }
@@ -546,6 +567,7 @@ function AgentWalletCard() {
           </button>
         </div>
       )}
+      {error && <p className="ad-error" role="alert">{error}</p>}
       <div className="ad-wallet-actions">
         <button
           className="btn-exo btn-primary"
