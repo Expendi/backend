@@ -299,14 +299,14 @@ export function createAgentRoutes(runtime: AppRuntime) {
               `Failed to read ETH balance for agent wallet ${agentWallet.id}`
             ),
         }).pipe(
-          Effect.map((balance) => balance.toString()),
+          Effect.map((balance) => (Number(balance) / (1e18)).toString()),
           Effect.catchAll(() => Effect.succeed("0"))
         );
 
         const usdcBalance = yield* executor
           .readContract("usdc", chainId, "balance", [address])
           .pipe(
-            Effect.map((balance) => String(balance)),
+            Effect.map((balance) => String(Number(balance) / 1e6)),
             Effect.catchAll(() => Effect.succeed("0"))
           );
 
