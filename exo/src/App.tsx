@@ -1,6 +1,8 @@
 import { usePrivy } from "@privy-io/react-auth";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { GloveProvider } from "glove-react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { queryClient } from "./lib/query-client";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ApprovalProvider } from "./context/ApprovalContext";
 import { DashboardProvider } from "./context/DashboardContext";
@@ -140,12 +142,14 @@ function AuthenticatedApp() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <GloveProvider client={gloveClient}>
-          <AuthenticatedApp />
-        </GloveProvider>
-      </AuthProvider>
-    </BrowserRouter>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <AuthProvider>
+          <GloveProvider client={gloveClient}>
+            <AuthenticatedApp />
+          </GloveProvider>
+        </AuthProvider>
+      </BrowserRouter>
+    </QueryClientProvider>
   );
 }

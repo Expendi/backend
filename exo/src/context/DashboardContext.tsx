@@ -1,14 +1,13 @@
 import {
   createContext,
   useContext,
-  useState,
-  useEffect,
   useCallback,
-  useRef,
   type ReactNode,
 } from "react";
-import { useApi } from "../hooks/useApi";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "./AuthContext";
+import { useWalletBalancesQuery, useTransactionsQuery } from "../hooks/queries";
+import { queryKeys } from "../lib/query-client";
 import type { ProfileWithWallets, Transaction } from "../lib/types";
 
 /* ─── Types ───────────────────────────────────────────────────────── */
@@ -53,89 +52,37 @@ export function useDashboard() {
 /* ─── Provider ────────────────────────────────────────────────────── */
 
 export function DashboardProvider({ children }: { children: ReactNode }) {
-  const { requestRaw, request } = useApi();
-  const { profile, refreshProfile } = useAuth();
+  const { profile } = useAuth();
+  const queryClient = useQueryClient();
 
-  const [wallets, setWallets] = useState<WalletBalance[]>([]);
-  const [walletBalances, setWalletBalances] = useState<WalletBalanceDetailed[]>([]);
-  const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const balancesQuery = useWalletBalancesQuery();
+  const transactionsQuery = useTransactionsQuery(20);
 
-  const profileIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const txIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const walletBalances = balancesQuery.data ?? [];
+  const recentTransactions = transactionsQuery.data ?? [];
 
-  const fetchWallets = useCallback(async () => {
-    try {
-      const result = await requestRaw<ProfileWithWallets>("/profile");
-      if (result.success && result.data.wallets) {
-        const w = result.data.wallets;
-        const balances: WalletBalance[] = [
-          { type: "user", address: w.user.address, balance: null },
-          { type: "server", address: w.server.address, balance: null },
-          { type: "agent", address: w.agent.address, balance: null },
-        ];
-        setWallets(balances);
-        setError(null);
-      } else if (!result.success) {
-        setError(result.error.message);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch wallets");
-    }
-  }, [requestRaw]);
+  const wallets: WalletBalance[] = profile?.wallets
+    ? [
+        { type: "user", address: profile.wallets.user.address, balance: null },
+        { type: "server", address: profile.wallets.server.address, balance: null },
+        { type: "agent", address: profile.wallets.agent.address, balance: null },
+      ]
+    : [];
 
-  const fetchBalances = useCallback(async () => {
-    try {
-      const data = await request<WalletBalanceDetailed[]>("/wallets/balances");
-      setWalletBalances(data);
-    } catch {
-      // Non-critical
-    }
-  }, [request]);
-
-  const fetchTransactions = useCallback(async () => {
-    try {
-      const result = await requestRaw<Transaction[]>("/transactions", {
-        query: { limit: 20 },
-      });
-      if (result.success) {
-        setRecentTransactions(result.data);
-      }
-    } catch {
-      // Non-critical
-    }
-  }, [requestRaw]);
+  const loading = balancesQuery.isLoading || transactionsQuery.isLoading;
+  const error = balancesQuery.error
+    ? balancesQuery.error instanceof Error
+      ? balancesQuery.error.message
+      : "Failed to fetch balances"
+    : null;
 
   const refresh = useCallback(async () => {
-    setLoading(true);
-    await Promise.all([fetchWallets(), fetchBalances(), fetchTransactions(), refreshProfile()]);
-    setLoading(false);
-  }, [fetchWallets, fetchBalances, fetchTransactions, refreshProfile]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function init() {
-      setLoading(true);
-      await Promise.all([fetchWallets(), fetchBalances(), fetchTransactions()]);
-      if (!cancelled) setLoading(false);
-    }
-
-    init();
-
-    profileIntervalRef.current = setInterval(() => {
-      fetchWallets();
-      fetchBalances();
-    }, 30000);
-    txIntervalRef.current = setInterval(fetchTransactions, 60000);
-
-    return () => {
-      cancelled = true;
-      if (profileIntervalRef.current) clearInterval(profileIntervalRef.current);
-      if (txIntervalRef.current) clearInterval(txIntervalRef.current);
-    };
-  }, [fetchWallets, fetchBalances, fetchTransactions]);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.walletBalances }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.transactions() }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.profile }),
+    ]);
+  }, [queryClient]);
 
   const value: DashboardContextValue = {
     profile,

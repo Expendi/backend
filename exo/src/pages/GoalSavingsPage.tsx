@@ -1,63 +1,107 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useApi } from "../hooks/useApi";
+import {
+  useGoalsQuery,
+  useCreateGoalMutation,
+  useUpdateGoalMutation,
+  useGoalDepositMutation,
+  useGoalActionMutation,
+} from "../hooks/queries";
 import { ActionPanel } from "../components/ActionPanel";
-import { ApiForm } from "../components/ApiForm";
 import { JsonViewer } from "../components/JsonViewer";
 import { StatusTag } from "../components/StatusTag";
 import { Spinner } from "../components/Spinner";
+import {
+  createGoalSchema,
+  updateGoalSchema,
+  goalDepositSchema,
+  type CreateGoalFormData,
+  type UpdateGoalFormData,
+  type GoalDepositFormData,
+} from "../lib/schemas";
 import type { GoalSaving } from "../lib/types";
 import { FREQUENCY_OPTIONS, WALLET_TYPES } from "../lib/constants";
 
 export function GoalSavingsPage() {
   const { request } = useApi();
-  const [goals, setGoals] = useState<GoalSaving[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { data: goals = [], isLoading, refetch } = useGoalsQuery();
+  const createGoalMutation = useCreateGoalMutation();
+  const updateGoalMutation = useUpdateGoalMutation();
+  const depositMutation = useGoalDepositMutation();
+  const actionMutation = useGoalActionMutation();
+
   const [selected, setSelected] = useState<GoalSaving | null>(null);
-
-  // Create
-  const [name, setName] = useState("");
-  const [desc, setDesc] = useState("");
-  const [targetAmount, setTargetAmount] = useState("");
-  const [tokenAddress, setTokenAddress] = useState("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913");
-  const [tokenSymbol, setTokenSymbol] = useState("USDC");
-  const [tokenDecimals, setTokenDecimals] = useState("6");
-  const [walletType, setWalletType] = useState("server");
-  const [vaultId, setVaultId] = useState("");
-  const [depositAmount, setDepositAmount] = useState("");
-  const [unlockOffset, setUnlockOffset] = useState("2592000");
-  const [frequency, setFrequency] = useState("7d");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-
-  // Actions
   const [goalId, setGoalId] = useState("");
 
-  // Manual deposit
-  const [manualAmount, setManualAmount] = useState("");
-  const [manualWalletType, setManualWalletType] = useState("server");
-  const [manualVaultId, setManualVaultId] = useState("");
+  // Create form
+  const createForm = useForm<CreateGoalFormData>({
+    resolver: zodResolver(createGoalSchema),
+    defaultValues: {
+      name: "",
+      description: "",
+      targetAmount: "",
+      tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      tokenSymbol: "USDC",
+      tokenDecimals: 6,
+      walletType: "server",
+      vaultId: "",
+      depositAmount: "",
+      unlockTimeOffsetSeconds: 2592000,
+      frequency: "7d",
+      startDate: "",
+      endDate: "",
+    },
+  });
 
-  // Update
-  const [updateName, setUpdateName] = useState("");
-  const [updateDesc, setUpdateDesc] = useState("");
-  const [updateDepositAmt, setUpdateDepositAmt] = useState("");
-  const [updateFreq, setUpdateFreq] = useState("");
+  // Update form
+  const updateForm = useForm<UpdateGoalFormData>({
+    resolver: zodResolver(updateGoalSchema),
+    defaultValues: { goalId: "", name: "", description: "", depositAmount: "", frequency: "" },
+  });
 
-  const fetchGoals = async () => {
-    setLoading(true);
-    try {
-      const data = await request<GoalSaving[]>("/goal-savings");
-      setGoals(data);
-    } catch {
-      // handled
-    } finally {
-      setLoading(false);
-    }
+  // Deposit form
+  const depositForm = useForm<GoalDepositFormData>({
+    resolver: zodResolver(goalDepositSchema),
+    defaultValues: { goalId: "", amount: "", walletType: "server", vaultId: "" },
+  });
+
+  const onCreateGoal = async (data: CreateGoalFormData) => {
+    const body: Record<string, unknown> = {
+      name: data.name,
+      targetAmount: data.targetAmount,
+      tokenAddress: data.tokenAddress,
+      tokenSymbol: data.tokenSymbol,
+      tokenDecimals: data.tokenDecimals,
+    };
+    if (data.description) body.description = data.description;
+    if (data.walletType) body.walletType = data.walletType;
+    if (data.vaultId) body.vaultId = data.vaultId;
+    if (data.depositAmount) body.depositAmount = data.depositAmount;
+    if (data.unlockTimeOffsetSeconds) body.unlockTimeOffsetSeconds = data.unlockTimeOffsetSeconds;
+    if (data.frequency) body.frequency = data.frequency;
+    if (data.startDate) body.startDate = new Date(data.startDate).toISOString();
+    if (data.endDate) body.endDate = new Date(data.endDate).toISOString();
+    await createGoalMutation.mutateAsync(body);
+    createForm.reset();
   };
 
-  useEffect(() => {
-    fetchGoals();
-  }, []);
+  const onUpdateGoal = async (data: UpdateGoalFormData) => {
+    const body: Record<string, unknown> = {};
+    if (data.name) body.name = data.name;
+    if (data.description) body.description = data.description;
+    if (data.depositAmount) body.depositAmount = data.depositAmount;
+    if (data.frequency) body.frequency = data.frequency;
+    await updateGoalMutation.mutateAsync({ id: data.goalId, ...body });
+  };
+
+  const onDeposit = async (data: GoalDepositFormData) => {
+    const body: Record<string, unknown> = { amount: data.amount };
+    if (data.walletType) body.walletType = data.walletType;
+    if (data.vaultId) body.vaultId = data.vaultId;
+    await depositMutation.mutateAsync({ goalId: data.goalId, ...body });
+  };
 
   return (
     <div>
@@ -67,13 +111,13 @@ export function GoalSavingsPage() {
       </div>
 
       <ActionPanel title="List Goals" method="GET" path="/api/goal-savings">
-        <button className="btn-exo btn-primary btn-sm" onClick={fetchGoals} disabled={loading}>
-          {loading ? <Spinner /> : "Refresh"}
+        <button className="btn-exo btn-primary btn-sm" onClick={() => refetch()} disabled={isLoading}>
+          {isLoading ? <Spinner /> : "Refresh"}
         </button>
         {goals.length > 0 && (
           <div className="data-list" style={{ marginTop: 12 }}>
             {goals.map((g) => (
-              <div key={g.id} className="data-list-item" onClick={() => { setSelected(g); setGoalId(g.id); }}>
+              <div key={g.id} className="data-list-item" onClick={() => { setSelected(g); setGoalId(g.id); updateForm.setValue("goalId", g.id); depositForm.setValue("goalId", g.id); }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <StatusTag status={g.status} />
                   <strong>{g.name}</strong>
@@ -104,57 +148,37 @@ export function GoalSavingsPage() {
       </ActionPanel>
 
       <ActionPanel title="Create Goal" method="POST" path="/api/goal-savings">
-        <ApiForm
-          onSubmit={async () => {
-            const body: Record<string, unknown> = {
-              name,
-              targetAmount,
-              tokenAddress,
-              tokenSymbol,
-              tokenDecimals: Number(tokenDecimals),
-            };
-            if (desc) body.description = desc;
-            if (walletType) body.walletType = walletType;
-            if (vaultId) body.vaultId = vaultId;
-            if (depositAmount) body.depositAmount = depositAmount;
-            if (unlockOffset) body.unlockTimeOffsetSeconds = Number(unlockOffset);
-            if (frequency) body.frequency = frequency;
-            if (startDate) body.startDate = new Date(startDate).toISOString();
-            if (endDate) body.endDate = new Date(endDate).toISOString();
-            const data = await request("/goal-savings", { method: "POST", body });
-            fetchGoals();
-            return data;
-          }}
-          submitLabel="Create Goal"
-        >
+        <form onSubmit={createForm.handleSubmit(onCreateGoal)}>
           <div className="form-row">
             <div className="form-group">
               <label>Name</label>
-              <input className="input-exo" value={name} onChange={(e) => setName(e.target.value)} placeholder="House Fund" />
+              <input className="input-exo" {...createForm.register("name")} placeholder="House Fund" />
+              {createForm.formState.errors.name && <span className="msg-error">{createForm.formState.errors.name.message}</span>}
             </div>
             <div className="form-group">
               <label>Description (optional)</label>
-              <input className="input-exo" value={desc} onChange={(e) => setDesc(e.target.value)} />
+              <input className="input-exo" {...createForm.register("description")} />
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
               <label>Target Amount (raw units)</label>
-              <input className="input-exo" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} placeholder="1000000000" />
+              <input className="input-exo" {...createForm.register("targetAmount")} placeholder="1000000000" />
+              {createForm.formState.errors.targetAmount && <span className="msg-error">{createForm.formState.errors.targetAmount.message}</span>}
             </div>
             <div className="form-group">
               <label>Token Symbol</label>
-              <input className="input-exo" value={tokenSymbol} onChange={(e) => setTokenSymbol(e.target.value)} placeholder="USDC" />
+              <input className="input-exo" {...createForm.register("tokenSymbol")} placeholder="USDC" />
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
               <label>Token Address</label>
-              <input className="input-exo" value={tokenAddress} onChange={(e) => setTokenAddress(e.target.value)} />
+              <input className="input-exo" {...createForm.register("tokenAddress")} />
             </div>
             <div className="form-group">
               <label>Token Decimals</label>
-              <input className="input-exo" type="number" value={tokenDecimals} onChange={(e) => setTokenDecimals(e.target.value)} />
+              <input className="input-exo" type="number" {...createForm.register("tokenDecimals")} />
             </div>
           </div>
 
@@ -165,24 +189,24 @@ export function GoalSavingsPage() {
           <div className="form-row">
             <div className="form-group">
               <label>Wallet Type</label>
-              <select className="input-exo" value={walletType} onChange={(e) => setWalletType(e.target.value)}>
+              <select className="input-exo" {...createForm.register("walletType")}>
                 <option value="">None</option>
                 {WALLET_TYPES.filter((t) => t !== "user").map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
             <div className="form-group">
               <label>Vault ID</label>
-              <input className="input-exo" value={vaultId} onChange={(e) => setVaultId(e.target.value)} placeholder="uuid" />
+              <input className="input-exo" {...createForm.register("vaultId")} placeholder="uuid" />
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
               <label>Deposit Amount (per cycle)</label>
-              <input className="input-exo" value={depositAmount} onChange={(e) => setDepositAmount(e.target.value)} placeholder="50000000" />
+              <input className="input-exo" {...createForm.register("depositAmount")} placeholder="50000000" />
             </div>
             <div className="form-group">
               <label>Frequency</label>
-              <select className="input-exo" value={frequency} onChange={(e) => setFrequency(e.target.value)}>
+              <select className="input-exo" {...createForm.register("frequency")}>
                 <option value="">Manual only</option>
                 {FREQUENCY_OPTIONS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
               </select>
@@ -191,118 +215,120 @@ export function GoalSavingsPage() {
           <div className="form-row">
             <div className="form-group">
               <label>Unlock Offset (seconds)</label>
-              <input className="input-exo" type="number" value={unlockOffset} onChange={(e) => setUnlockOffset(e.target.value)} />
+              <input className="input-exo" type="number" {...createForm.register("unlockTimeOffsetSeconds")} />
             </div>
             <div className="form-group">
               <label>Start Date (optional)</label>
-              <input className="input-exo" type="datetime-local" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+              <input className="input-exo" type="datetime-local" {...createForm.register("startDate")} />
             </div>
           </div>
           <div className="form-group">
             <label>End Date (optional)</label>
-            <input className="input-exo" type="datetime-local" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            <input className="input-exo" type="datetime-local" {...createForm.register("endDate")} />
           </div>
-        </ApiForm>
+          <div className="form-actions">
+            <button type="submit" className="btn-exo btn-primary" disabled={createGoalMutation.isPending}>
+              {createGoalMutation.isPending ? <Spinner /> : "Create Goal"}
+            </button>
+          </div>
+          {createGoalMutation.error && <div className="msg-error">{createGoalMutation.error instanceof Error ? createGoalMutation.error.message : "Failed"}</div>}
+        </form>
       </ActionPanel>
 
       <ActionPanel title="Get Goal" method="GET" path="/api/goal-savings/:id">
-        <ApiForm onSubmit={() => request(`/goal-savings/${goalId}`)} submitLabel="Get">
+        <form onSubmit={async (e) => { e.preventDefault(); const data = await request(`/goal-savings/${goalId}`); setSelected(data as GoalSaving); }}>
           <div className="form-group">
             <label>Goal ID</label>
             <input className="input-exo" value={goalId} onChange={(e) => setGoalId(e.target.value)} placeholder="uuid" />
           </div>
-        </ApiForm>
+          <div className="form-actions">
+            <button type="submit" className="btn-exo btn-primary">Get</button>
+          </div>
+        </form>
       </ActionPanel>
 
       <ActionPanel title="Update Goal" method="PATCH" path="/api/goal-savings/:id">
-        <ApiForm
-          onSubmit={async () => {
-            const body: Record<string, unknown> = {};
-            if (updateName) body.name = updateName;
-            if (updateDesc) body.description = updateDesc;
-            if (updateDepositAmt) body.depositAmount = updateDepositAmt;
-            if (updateFreq) body.frequency = updateFreq;
-            const data = await request(`/goal-savings/${goalId}`, { method: "PATCH", body });
-            fetchGoals();
-            return data;
-          }}
-          submitLabel="Update"
-        >
+        <form onSubmit={updateForm.handleSubmit(onUpdateGoal)}>
           <div className="form-group">
             <label>Goal ID</label>
-            <input className="input-exo" value={goalId} onChange={(e) => setGoalId(e.target.value)} placeholder="uuid" />
+            <input className="input-exo" {...updateForm.register("goalId")} placeholder="uuid" />
+            {updateForm.formState.errors.goalId && <span className="msg-error">{updateForm.formState.errors.goalId.message}</span>}
           </div>
           <div className="form-row">
             <div className="form-group">
               <label>Name</label>
-              <input className="input-exo" value={updateName} onChange={(e) => setUpdateName(e.target.value)} />
+              <input className="input-exo" {...updateForm.register("name")} />
             </div>
             <div className="form-group">
               <label>Description</label>
-              <input className="input-exo" value={updateDesc} onChange={(e) => setUpdateDesc(e.target.value)} />
+              <input className="input-exo" {...updateForm.register("description")} />
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
               <label>Deposit Amount</label>
-              <input className="input-exo" value={updateDepositAmt} onChange={(e) => setUpdateDepositAmt(e.target.value)} />
+              <input className="input-exo" {...updateForm.register("depositAmount")} />
             </div>
             <div className="form-group">
               <label>Frequency</label>
-              <select className="input-exo" value={updateFreq} onChange={(e) => setUpdateFreq(e.target.value)}>
+              <select className="input-exo" {...updateForm.register("frequency")}>
                 <option value="">No change</option>
                 {FREQUENCY_OPTIONS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
               </select>
             </div>
           </div>
-        </ApiForm>
+          <div className="form-actions">
+            <button type="submit" className="btn-exo btn-primary" disabled={updateGoalMutation.isPending}>
+              {updateGoalMutation.isPending ? <Spinner /> : "Update"}
+            </button>
+          </div>
+          {updateGoalMutation.error && <div className="msg-error">{updateGoalMutation.error instanceof Error ? updateGoalMutation.error.message : "Failed"}</div>}
+        </form>
       </ActionPanel>
 
       <ActionPanel title="Manual Deposit" method="POST" path="/api/goal-savings/:id/deposit">
-        <ApiForm
-          onSubmit={async () => {
-            const body: Record<string, unknown> = { amount: manualAmount };
-            if (manualWalletType) body.walletType = manualWalletType;
-            if (manualVaultId) body.vaultId = manualVaultId;
-            const data = await request(`/goal-savings/${goalId}/deposit`, { method: "POST", body });
-            fetchGoals();
-            return data;
-          }}
-          submitLabel="Deposit"
-        >
+        <form onSubmit={depositForm.handleSubmit(onDeposit)}>
           <div className="form-group">
             <label>Goal ID</label>
-            <input className="input-exo" value={goalId} onChange={(e) => setGoalId(e.target.value)} placeholder="uuid" />
+            <input className="input-exo" {...depositForm.register("goalId")} placeholder="uuid" />
+            {depositForm.formState.errors.goalId && <span className="msg-error">{depositForm.formState.errors.goalId.message}</span>}
           </div>
           <div className="form-row">
             <div className="form-group">
               <label>Amount</label>
-              <input className="input-exo" value={manualAmount} onChange={(e) => setManualAmount(e.target.value)} placeholder="100000000" />
+              <input className="input-exo" {...depositForm.register("amount")} placeholder="100000000" />
+              {depositForm.formState.errors.amount && <span className="msg-error">{depositForm.formState.errors.amount.message}</span>}
             </div>
             <div className="form-group">
               <label>Wallet Type</label>
-              <select className="input-exo" value={manualWalletType} onChange={(e) => setManualWalletType(e.target.value)}>
+              <select className="input-exo" {...depositForm.register("walletType")}>
                 {WALLET_TYPES.filter((t) => t !== "user").map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
           </div>
           <div className="form-group">
             <label>Vault ID (optional, falls back to goal's vault)</label>
-            <input className="input-exo" value={manualVaultId} onChange={(e) => setManualVaultId(e.target.value)} placeholder="uuid" />
+            <input className="input-exo" {...depositForm.register("vaultId")} placeholder="uuid" />
           </div>
-        </ApiForm>
+          <div className="form-actions">
+            <button type="submit" className="btn-exo btn-primary" disabled={depositMutation.isPending}>
+              {depositMutation.isPending ? <Spinner /> : "Deposit"}
+            </button>
+          </div>
+          {depositMutation.error && <div className="msg-error">{depositMutation.error instanceof Error ? depositMutation.error.message : "Failed"}</div>}
+        </form>
       </ActionPanel>
 
       <ActionPanel title="Deposit History" method="GET" path="/api/goal-savings/:id/deposits">
-        <ApiForm
-          onSubmit={() => request(`/goal-savings/${goalId}/deposits`, { query: { limit: "50" } })}
-          submitLabel="Get Deposits"
-        >
+        <form onSubmit={async (e) => { e.preventDefault(); await request(`/goal-savings/${goalId}/deposits`, { query: { limit: "50" } }); }}>
           <div className="form-group">
             <label>Goal ID</label>
             <input className="input-exo" value={goalId} onChange={(e) => setGoalId(e.target.value)} placeholder="uuid" />
           </div>
-        </ApiForm>
+          <div className="form-actions">
+            <button type="submit" className="btn-exo btn-primary">Get Deposits</button>
+          </div>
+        </form>
       </ActionPanel>
 
       <ActionPanel title="Pause / Resume / Cancel" method="POST" path="/api/goal-savings/:id/...">
@@ -311,10 +337,11 @@ export function GoalSavingsPage() {
           <input className="input-exo" value={goalId} onChange={(e) => setGoalId(e.target.value)} placeholder="uuid" />
         </div>
         <div className="form-actions">
-          <ApiForm onSubmit={async () => { const d = await request(`/goal-savings/${goalId}/pause`, { method: "POST" }); fetchGoals(); return d; }} submitLabel="Pause" submitVariant="secondary"><span /></ApiForm>
-          <ApiForm onSubmit={async () => { const d = await request(`/goal-savings/${goalId}/resume`, { method: "POST" }); fetchGoals(); return d; }} submitLabel="Resume"><span /></ApiForm>
-          <ApiForm onSubmit={async () => { const d = await request(`/goal-savings/${goalId}/cancel`, { method: "POST" }); fetchGoals(); return d; }} submitLabel="Cancel" submitVariant="danger"><span /></ApiForm>
+          <button className="btn-exo btn-secondary" disabled={actionMutation.isPending} onClick={() => actionMutation.mutate({ id: goalId, action: "pause" })}>Pause</button>
+          <button className="btn-exo btn-primary" disabled={actionMutation.isPending} onClick={() => actionMutation.mutate({ id: goalId, action: "resume" })}>Resume</button>
+          <button className="btn-exo btn-danger" disabled={actionMutation.isPending} onClick={() => actionMutation.mutate({ id: goalId, action: "cancel" })}>Cancel</button>
         </div>
+        {actionMutation.error && <div className="msg-error">{actionMutation.error instanceof Error ? actionMutation.error.message : "Failed"}</div>}
       </ActionPanel>
     </div>
   );

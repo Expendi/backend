@@ -1,13 +1,10 @@
 import {
   createContext,
   useContext,
-  useState,
-  useEffect,
   useCallback,
   type ReactNode,
 } from "react";
-import { useApi } from "../hooks/useApi";
-import { useAuth } from "./AuthContext";
+import { usePreferencesQuery, usePreferencesMutation } from "../hooks/queries";
 import type { UserPreferences } from "../lib/types";
 
 interface PreferencesContextValue {
@@ -27,46 +24,18 @@ export function usePreferences() {
 }
 
 export function PreferencesProvider({ children }: { children: ReactNode }) {
-  const { request } = useApi();
-  const { authenticated } = useAuth();
-  const [preferences, setPreferences] = useState<UserPreferences>({});
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!authenticated) {
-      setPreferences({});
-      setLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    request<UserPreferences>("/profile/preferences")
-      .then((data) => {
-        if (!cancelled) setPreferences(data);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [authenticated, request]);
+  const { data: preferences = {}, isLoading } = usePreferencesQuery();
+  const mutation = usePreferencesMutation();
 
   const updatePreferences = useCallback(
     async (patch: Partial<UserPreferences>) => {
-      const updated = await request<UserPreferences>("/profile/preferences", {
-        method: "PATCH",
-        body: patch,
-      });
-      setPreferences(updated);
+      await mutation.mutateAsync(patch);
     },
-    [request]
+    [mutation]
   );
 
   return (
-    <PreferencesContext.Provider value={{ preferences, loading, updatePreferences }}>
+    <PreferencesContext.Provider value={{ preferences, loading: isLoading, updatePreferences }}>
       {children}
     </PreferencesContext.Provider>
   );
