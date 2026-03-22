@@ -8,7 +8,7 @@ export const processDueGoalSavings = schedules.task({
   cron: "*/5 * * * *",
   run: async (payload) => {
     const dbUrl = process.env.DATABASE_URL;
-    logger.info("🔍 Fetching due goal savings deposits", {
+    logger.info("Fetching due goal savings deposits", {
       timestamp: payload.timestamp,
       dbHost: dbUrl ? new URL(dbUrl).host : "DATABASE_URL NOT SET",
     });
@@ -38,7 +38,7 @@ export const processDueGoalSavings = schedules.task({
     }
 
     logger.info(
-      `✅ Completed — ${deposits.length} goal savings deposit(s) processed`
+      `Completed — ${deposits.length} goal savings deposit(s) processed`
     );
     return { processedCount: deposits.length, timestamp: payload.timestamp };
   },
