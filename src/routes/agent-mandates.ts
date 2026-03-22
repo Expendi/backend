@@ -9,6 +9,41 @@ import type {
   MandateConstraints,
 } from "../db/schema/index.js";
 
+/**
+ * Known token decimals used to detect raw-unit amounts from the frontend.
+ * The frontend may send amounts already multiplied by 10^decimals (e.g. "5000000"
+ * for 5 USDC). This map helps normalise them back to human-readable form.
+ */
+const TOKEN_DECIMALS: Record<string, number> = {
+  usdc: 6, usdt: 6, dai: 18, eth: 18, weth: 18, cbeth: 18,
+};
+
+function normalizeActionAmount(action: MandateAction): MandateAction {
+  if (!action.amount) return action;
+  const amount = action.amount;
+  // If the amount contains a decimal point, it's already human-readable
+  if (amount.includes(".")) return action;
+
+  const num = Number(amount);
+  if (isNaN(num) || num === 0) return action;
+
+  // Determine decimals from the action's token context
+  let decimals = 6; // Default to USDC (most common)
+  if (action.type === "swap" && action.from) {
+    decimals = TOKEN_DECIMALS[action.from.toLowerCase()] ?? 18;
+  } else if (action.type === "transfer" && action.from) {
+    decimals = TOKEN_DECIMALS[action.from.toLowerCase()] ?? 6;
+  }
+  // offramp and goal_deposit typically use USDC (6 decimals)
+
+  const threshold = Math.pow(10, decimals);
+  if (num >= threshold) {
+    return { ...action, amount: String(num / threshold) };
+  }
+
+  return action;
+}
+
 export function createAgentMandateRoutes(runtime: AppRuntime) {
   const app = new Hono<{ Variables: AuthVariables }>();
 
@@ -47,13 +82,16 @@ export function createAgentMandateRoutes(runtime: AppRuntime) {
         });
 
         const service = yield* AgentMandateService;
+        // Normalise action amount: the frontend may send raw units
+        // (e.g. "5000000" for 5 USDC). We always store human-readable values.
+        const normalizedAction = normalizeActionAmount(body.action);
         return yield* service.createMandate({
           userId,
           type: body.type,
           name: body.name,
           description: body.description,
           trigger: body.trigger,
-          action: body.action,
+          action: normalizedAction,
           constraints: body.constraints,
           source: body.source,
           expiresAt: body.expiresAt ? new Date(body.expiresAt) : undefined,
@@ -113,7 +151,7 @@ export function createAgentMandateRoutes(runtime: AppRuntime) {
           name: body.name,
           description: body.description,
           trigger: body.trigger,
-          action: body.action,
+          action: body.action ? normalizeActionAmount(body.action) : undefined,
           constraints: body.constraints,
           expiresAt:
             body.expiresAt === null
