@@ -4,7 +4,7 @@ import { useDashboard } from "../context/DashboardContext";
 import { useApprovalContext } from "../context/ApprovalContext";
 import { Spinner } from "../components/Spinner";
 import { BottomSheet } from "../components/BottomSheet";
-import { TokenAmountInput, toBaseUnits, formatHumanAmount } from "../components/TokenAmountInput";
+import { TokenAmountInput } from "../components/TokenAmountInput";
 import type { YieldVault, YieldPosition, YieldPortfolio } from "../lib/types";
 import "../styles/pages.css";
 import "../styles/page-transition.css";
@@ -136,7 +136,7 @@ export function EarnPage() {
       const body: Record<string, unknown> = {
         walletType: "user",
         vaultId: selectedVault.id,
-        amount: toBaseUnits(depositAmount, decimals),
+        amount: depositAmount,
         unlockTime: Math.floor(Date.now() / 1000) + 86400,
       };
       if (depositLabel) body.label = depositLabel;

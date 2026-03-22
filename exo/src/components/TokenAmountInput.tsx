@@ -153,7 +153,7 @@ interface TokenAmountInputProps {
   amount: string;
   /** Called with human-readable amount */
   onAmountChange: (amount: string) => void;
-  /** Raw balance in base units (optional — shows balance line if provided) */
+  /** Human-readable balance (optional — shows balance line if provided) */
   balance?: string;
   /** Label above the input */
   label?: string;
@@ -206,17 +206,17 @@ export function TokenAmountInput({
 
   const handleMax = () => {
     if (!balance) return;
-    const human = fromBaseUnits(balance, decimals);
-    onAmountChange(human);
+    // Balance is already human-readable
+    onAmountChange(balance);
   };
 
-  const displayBalance = balance ? formatHumanAmount(balance, decimals) : null;
+  const displayBalance = balance && balance !== "0" ? balance : null;
 
-  // Check if amount exceeds balance
+  // Check if amount exceeds balance (both are human-readable)
   const exceedsBalance = (() => {
     if (!balance || !amount || amount === "0" || amount === "") return false;
     try {
-      return BigInt(toBaseUnits(amount, decimals)) > BigInt(balance);
+      return Number(amount) > Number(balance);
     } catch { return false; }
   })();
 

@@ -6,7 +6,6 @@ import { ConfirmDialog, KVRow, TokenAmount } from "./components";
 import {
   TOKEN_MAP,
   parseAmountString,
-  toBaseUnits,
   fromBaseUnits,
   formatNumber,
   fetchBalances,
@@ -263,8 +262,8 @@ export const earnTool: ToolConfig = defineTool({
         };
       }
 
-      const balanceBase = getTokenBalance(userWallet, tokenSymbol);
-      const balanceHuman = Number(fromBaseUnits(balanceBase, tokenDecimals));
+      // Backend returns human-readable balances
+      const balanceHuman = Number(getTokenBalance(userWallet, tokenSymbol));
 
       if (depositAmount > balanceHuman) {
         return {
@@ -290,16 +289,14 @@ export const earnTool: ToolConfig = defineTool({
         return { status: "success", data: "Deposit cancelled." };
       }
 
-      // Execute deposit
-      const baseUnits = toBaseUnits(depositAmount.toString(), tokenDecimals);
-      // Default unlock time: 30 days from now (in seconds)
+      // Execute deposit — amount is human-readable, backend handles raw conversion
       const unlockTime = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
       try {
         const result = await callApi<Record<string, unknown>>("/yield/positions", {
           method: "POST",
           body: {
             vaultId: input.vaultId,
-            amount: baseUnits,
+            amount: depositAmount.toString(),
             walletType: "user",
             unlockTime,
           },

@@ -312,8 +312,8 @@ export function GoalsPage() {
                             <span className="tag-exo" style={{ fontSize: 9 }}>{g.status}</span>
                           </div>
                           <div className="goal-card-amounts">
-                            <span className="goal-card-current">{fromBaseUnits(g.accumulatedAmount, g.tokenDecimals ?? 6)} {g.tokenSymbol}</span>
-                            <span className="goal-card-target">of {fromBaseUnits(g.targetAmount, g.tokenDecimals ?? 6)}</span>
+                            <span className="goal-card-current">{g.accumulatedAmount} {g.tokenSymbol}</span>
+                            <span className="goal-card-target">of {g.targetAmount}</span>
                           </div>
                         </div>
                       ))}

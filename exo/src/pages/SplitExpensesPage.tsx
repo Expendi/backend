@@ -5,7 +5,7 @@ import { useDashboard } from "../context/DashboardContext";
 import { Spinner } from "../components/Spinner";
 import { StatusTag } from "../components/StatusTag";
 import { BottomSheet } from "../components/BottomSheet";
-import { TokenAmountInput, TokenSelect, toBaseUnits, fromBaseUnits } from "../components/TokenAmountInput";
+import { TokenAmountInput, TokenSelect } from "../components/TokenAmountInput";
 import { TOKEN_ADDRESSES } from "../lib/constants";
 import type { SplitExpense, SplitExpenseWithShares, SplitShare } from "../lib/types";
 import "../styles/pages.css";
@@ -223,14 +223,14 @@ export function SplitExpensesPage() {
         method: "POST",
         body: {
           title: title.trim(),
-          totalAmount: toBaseUnits(totalAmount.trim(), decimals),
+          totalAmount: totalAmount.trim(),
           tokenAddress: tokenMeta?.address ?? "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
           tokenSymbol: tokenMeta?.symbol ?? tokenSymbol,
           tokenDecimals: decimals,
           chainId: 8453,
           shares: shareRows.map(r => ({
             userId: r.userId.trim(),
-            amount: toBaseUnits(r.amount.trim(), decimals),
+            amount: r.amount.trim(),
           })),
         },
       });
@@ -334,7 +334,7 @@ export function SplitExpensesPage() {
                             <StatusTag status={e.status} />
                           </div>
                           <div className="recurring-card-detail">
-                            {fromBaseUnits(e.totalAmount, e.tokenDecimals ?? 6)} {e.tokenSymbol}
+                            {e.totalAmount} {e.tokenSymbol}
                           </div>
                           <div className="recurring-card-meta">
                             {sharesSummary(e.shares)} | Created {formatDate(e.createdAt)}
@@ -357,7 +357,7 @@ export function SplitExpensesPage() {
                             <StatusTag status={e.status} />
                           </div>
                           <div className="recurring-card-detail">
-                            {fromBaseUnits(e.totalAmount, e.tokenDecimals ?? 6)} {e.tokenSymbol}
+                            {e.totalAmount} {e.tokenSymbol}
                           </div>
                           <div className="recurring-card-meta">
                             {formatDate(e.createdAt)}
@@ -381,7 +381,7 @@ export function SplitExpensesPage() {
                   <>
                     <div className="exo-review" style={{ marginBottom: 16 }}>
                       <div className="exo-review-row"><span className="exo-review-label">Status</span><span className="exo-review-value"><StatusTag status={selected.status} /></span></div>
-                      <div className="exo-review-row"><span className="exo-review-label">Total</span><span className="exo-review-value">{fromBaseUnits(selected.totalAmount, selected.tokenDecimals ?? 6)} {selected.tokenSymbol}</span></div>
+                      <div className="exo-review-row"><span className="exo-review-label">Total</span><span className="exo-review-value">{selected.totalAmount} {selected.tokenSymbol}</span></div>
                       <div className="exo-review-row"><span className="exo-review-label">Chain</span><span className="exo-review-value">Base ({selected.chainId})</span></div>
                       <div className="exo-review-row"><span className="exo-review-label">Created</span><span className="exo-review-value">{formatDate(selected.createdAt)}</span></div>
                     </div>
@@ -402,7 +402,7 @@ export function SplitExpensesPage() {
                               <span className="exo-list-item-sub">{share.status}{share.paidAt ? ` | ${formatDate(share.paidAt)}` : ""}</span>
                             </div>
                             <div className="exo-list-item-right">
-                              <span className="exo-list-item-value">{fromBaseUnits(share.amount, selected.tokenDecimals ?? 6)} {selected.tokenSymbol}</span>
+                              <span className="exo-list-item-value">{share.amount} {selected.tokenSymbol}</span>
                             </div>
                           </div>
                         ))}
@@ -458,7 +458,7 @@ export function SplitExpensesPage() {
                         <StatusTag status="pending" />
                       </div>
                       <div className="recurring-card-detail">
-                        You owe {fromBaseUnits(myShare.amount, expense.tokenDecimals ?? 6)} {expense.tokenSymbol}
+                        You owe {myShare.amount} {expense.tokenSymbol}
                       </div>
                       <div className="recurring-card-meta">
                         Total: {expense.totalAmount} {expense.tokenSymbol} | {formatDate(expense.createdAt)}

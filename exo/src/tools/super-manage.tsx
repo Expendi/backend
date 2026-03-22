@@ -6,7 +6,6 @@ import { ConfirmDialog, KVRow } from "./components";
 import {
   TOKEN_MAP,
   toBaseUnits,
-  fromBaseUnits,
   formatNumber,
   resolveRecipient,
   fetchBalances,
@@ -107,8 +106,8 @@ async function handleRecurring(
         const balances = await fetchBalances();
         const userWallet = getUserWallet(balances);
         if (userWallet) {
-          const balanceBase = getTokenBalance(userWallet, tokenSymbol);
-          const balanceHuman = Number(fromBaseUnits(balanceBase, tokenInfo.decimals));
+          // Backend returns human-readable balances
+          const balanceHuman = Number(getTokenBalance(userWallet, tokenSymbol));
           if (requestedAmount > balanceHuman) {
             return {
               status: "error",
