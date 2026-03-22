@@ -781,7 +781,8 @@ describe("GoalSavingsService", () => {
         }).pipe(Effect.provide(layer))
       );
 
-      expect(result).toEqual([]);
+      expect(result.deposits).toEqual([]);
+      expect(result.failures).toEqual([]);
     });
 
     it("should process due goal deposits successfully", async () => {
@@ -806,8 +807,8 @@ describe("GoalSavingsService", () => {
         }).pipe(Effect.provide(layer))
       );
 
-      expect(result).toHaveLength(1);
-      expect(result[0]!.id).toBe("dep-1");
+      expect(result.deposits).toHaveLength(1);
+      expect(result.deposits[0]!.id).toBe("dep-1");
     });
 
     it("should auto-pause goal after max consecutive failures", async () => {
@@ -833,7 +834,8 @@ describe("GoalSavingsService", () => {
       );
 
       // Deposit failed, so no deposits returned
-      expect(result).toEqual([]);
+      expect(result.deposits).toEqual([]);
+      expect(result.failures).toHaveLength(1);
       // update was called to increment failures and set status to paused
       expect(mockDb.update).toHaveBeenCalled();
     });

@@ -482,8 +482,8 @@ export function createInternalRoutes(runtime: AppRuntime) {
       runtime,
       Effect.gen(function* () {
         const service = yield* GoalSavingsService;
-        const deposits = yield* service.processDueDeposits();
-        return { processedCount: deposits.length, deposits };
+        const result = yield* service.processDueDeposits();
+        return { processedCount: result.deposits.length, deposits: result.deposits, failures: result.failures };
       }),
       c
     )

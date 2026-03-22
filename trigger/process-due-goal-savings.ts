@@ -8,21 +8,32 @@ export const processDueGoalSavings = schedules.task({
   cron: "*/5 * * * *",
   run: async (payload) => {
     const dbUrl = process.env.DATABASE_URL;
-    logger.info("🔍 Fetching due goal savings deposits", {
+    logger.info("Fetching due goal savings deposits", {
       timestamp: payload.timestamp,
       dbHost: dbUrl ? new URL(dbUrl).host : "DATABASE_URL NOT SET",
     });
 
-    const deposits = await runtime.runPromise(
+    const result = await runtime.runPromise(
       Effect.gen(function* () {
         const gsService = yield* GoalSavingsService;
         return yield* gsService.processDueDeposits();
       })
     );
 
-    if (deposits.length === 0) {
+    const { deposits, failures } = result;
+
+    if (failures.length > 0) {
+      for (const f of failures) {
+        logger.error(`Deposit FAILED for goal ${f.goalId}`, {
+          goalId: f.goalId,
+          error: f.error,
+        });
+      }
+    }
+
+    if (deposits.length === 0 && failures.length === 0) {
       logger.info("No due goal savings deposits found");
-      return { processedCount: 0, timestamp: payload.timestamp };
+      return { processedCount: 0, failedCount: 0, timestamp: payload.timestamp };
     }
 
     for (let i = 0; i < deposits.length; i++) {
@@ -38,8 +49,13 @@ export const processDueGoalSavings = schedules.task({
     }
 
     logger.info(
-      `✅ Completed — ${deposits.length} goal savings deposit(s) processed`
+      `Completed — ${deposits.length} succeeded, ${failures.length} failed`
     );
-    return { processedCount: deposits.length, timestamp: payload.timestamp };
+    return {
+      processedCount: deposits.length,
+      failedCount: failures.length,
+      failures,
+      timestamp: payload.timestamp,
+    };
   },
 });

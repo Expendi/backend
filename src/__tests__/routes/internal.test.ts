@@ -440,7 +440,7 @@ function makeTestRuntime(opts?: {
     withdraw: () => Effect.succeed({} as any),
     getAccruedYield: () => Effect.succeed({} as any),
     processDueDeposits: () =>
-      Effect.succeed(opts?.deposits ?? [makeFakeDeposit()]),
+      Effect.succeed({ deposits: opts?.deposits ?? [makeFakeDeposit()], failures: [] }),
   } as any);
 
   const testLayer = Layer.mergeAll(

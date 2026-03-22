@@ -120,7 +120,10 @@ export interface GoalSavingsServiceApi {
   ) => Effect.Effect<GoalAccruedYieldInfo, GoalSavingsError>;
 
   readonly processDueDeposits: () => Effect.Effect<
-    ReadonlyArray<GoalSavingsDeposit>,
+    {
+      deposits: ReadonlyArray<GoalSavingsDeposit>;
+      failures: ReadonlyArray<{ goalId: string; error: string }>;
+    },
     GoalSavingsError
   >;
 }
@@ -651,6 +654,7 @@ export const GoalSavingsServiceLive: Layer.Layer<
           );
 
           const deposits: GoalSavingsDeposit[] = [];
+          const failures: { goalId: string; error: string }[] = [];
 
           for (const goal of dueGoals) {
             const amount = goal.depositAmount;
@@ -669,9 +673,10 @@ export const GoalSavingsServiceLive: Layer.Layer<
                     ? error.message
                     : error
                 );
-                console.log(
+                console.error(
                   `[processDueDeposits] Deposit FAILED for goal ${goal.id}: ${errorMsg}`
                 );
+                failures.push({ goalId: goal.id, error: errorMsg });
                 return Effect.succeed({
                   success: false as const,
                   error: errorMsg,
@@ -742,7 +747,7 @@ export const GoalSavingsServiceLive: Layer.Layer<
             }
           }
 
-          return deposits;
+          return { deposits, failures };
         }),
     };
   })
