@@ -6,11 +6,15 @@ import type { Message, ToolCall, PromptRequest, Tool } from "glove-core/core";
 import type { AuthVariables } from "../middleware/auth.js";
 import type { AppRuntime } from "./effect-handler.js";
 import type { ConversationMessage } from "../db/schema/index.js";
+import { eq } from "drizzle-orm";
 import {
   AgentProfileService,
   AgentConversationService,
 } from "../services/agent/index.js";
 import { buildSystemPrompt } from "../services/agent/system-prompt-builder.js";
+import { DatabaseService } from "../db/client.js";
+import { userProfiles } from "../db/schema/index.js";
+import type { UserPreferences } from "../db/schema/user-profiles.js";
 import z4 from "zod4";
 
 interface SerializedTool {
@@ -164,10 +168,26 @@ export function createChatRoutes(runtime: AppRuntime) {
 
     if (userId) {
       try {
-        const agentProfile = await runtime.runPromise(
+        const { agentProfile, userPrefs } = await runtime.runPromise(
           Effect.gen(function* () {
             const profileService = yield* AgentProfileService;
-            return yield* profileService.getProfile(userId);
+            const ap = yield* profileService.getProfile(userId);
+
+            // Also fetch user account preferences (phone, country, etc.)
+            const { db } = yield* DatabaseService;
+            const rows = yield* Effect.tryPromise({
+              try: () =>
+                db.select({ preferences: userProfiles.preferences })
+                  .from(userProfiles)
+                  .where(eq(userProfiles.privyUserId, userId))
+                  .limit(1),
+              catch: () => new Error("Failed to fetch user preferences"),
+            });
+
+            return {
+              agentProfile: ap,
+              userPrefs: (rows[0]?.preferences ?? undefined) as UserPreferences | undefined,
+            };
           })
         );
 
@@ -181,6 +201,7 @@ export function createChatRoutes(runtime: AppRuntime) {
           profile: agentProfile.profile ?? undefined,
           trustTier: agentProfile.trustTier as "observe" | "notify" | "act_within_limits" | "full",
           agentBudget: agentProfile.agentBudget,
+          userPreferences: userPrefs,
         });
       } catch (err) {
         // Profile fetch failed — fall back to hardcoded safe default.

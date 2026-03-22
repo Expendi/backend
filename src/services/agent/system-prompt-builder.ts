@@ -1,4 +1,5 @@
 import type { AgentProfileData } from "../../db/schema/index.js";
+import type { UserPreferences } from "../../db/schema/user-profiles.js";
 
 interface SystemPromptContext {
   profile?: AgentProfileData;
@@ -7,6 +8,8 @@ interface SystemPromptContext {
   agentWalletBalance?: string;
   activeMandates?: Array<{ name: string; type: string; status: string }>;
   recentActivity?: Array<{ title: string; createdAt: string }>;
+  /** User account preferences (phone, country, mobile network, default wallet) */
+  userPreferences?: UserPreferences;
 }
 
 const TIER_LABELS: Record<SystemPromptContext["trustTier"], string> = {
@@ -127,7 +130,7 @@ You have six tools. Use them when the user wants to take action. Be conversation
   - **agent_wallet**: Check your operating wallet balance, fund it, or withdraw from it.
   - **savings / goals**: Savings goals with optional auto-deposit, group wallets, spending categories.
   - **security**: Security settings and access controls.
-- **web_search** — Search the web for current information about crypto, tokens, protocols, news, and market trends. Use 'search' for quick lookups and 'research' for deeper topic exploration. Use this when the user asks about current events, protocol updates, token news, or anything you need fresh data for.
+- **web_search** — Search the web for current information. Use 'search' for quick lookups and 'research' for deeper topic exploration. **Use this proactively and often** — whenever the user asks about prices, news, protocol updates, token launches, market conditions, regulatory changes, yields/APYs, or anything that changes over time. Don't hedge with "I don't have access to real-time data" — you DO have web search, so use it. If there's even a chance the answer requires current data, search first, then answer.
 
 When you're unsure which tool fits, lean toward the one that most directly solves what the user asked for. If you need more info before calling a tool, ask — but keep it to one or two questions max, not a checklist.`;
 }
@@ -145,7 +148,11 @@ function buildBehaviorSection(): string {
 
 **Show both currencies.** When you know their local currency, show amounts in both crypto and fiat. "That's 50 USDC (~45,000 KES)."
 
-**Handle money with care.** Double-check amounts and recipients before confirming. Money moves are irreversible — treat them that way.`;
+**Handle money with care.** Double-check amounts and recipients before confirming. Money moves are irreversible — treat them that way.
+
+**Amounts are human-readable.** All amounts in the system use human-readable values (e.g. "5" means 5 USDC, "0.1" means 0.1 ETH). Never multiply or divide by 10^6 or 10^18 — the backend handles raw unit conversion internally.
+
+**Use web search for live data.** When users ask about current prices, market conditions, news, protocol updates, token launches, APYs, or anything time-sensitive, use the web_search tool immediately. Don't say you can't access real-time information — you can and should search the web. Be the user's window into what's happening in crypto right now.`;
 }
 
 function buildConfirmationSection(): string {
@@ -227,6 +234,24 @@ As part of getting to know them, weave in questions that help you understand the
 Don't ask these all at once — spread them across the conversation naturally. Let their answers inform the risk profile you build for them.
 
 If they want to skip the getting-to-know-you and just start doing things — great, let them. You'll learn from their actions.`;
+}
+
+function buildUserPreferencesSection(prefs: UserPreferences): string {
+  const lines: string[] = [];
+
+  if (prefs.country) lines.push(`- Country: ${prefs.country}`);
+  if (prefs.currency) lines.push(`- Currency: ${prefs.currency}`);
+  if (prefs.phoneNumber) lines.push(`- Phone: ${prefs.phoneNumber}`);
+  if (prefs.mobileNetwork) lines.push(`- Mobile network: ${prefs.mobileNetwork}`);
+  if (prefs.defaultWallet) lines.push(`- Default wallet: ${prefs.defaultWallet}`);
+
+  if (lines.length === 0) return "";
+
+  return `# User Account Preferences
+
+These are the user's saved account settings. Use them to pre-fill forms and avoid asking for information you already have.
+
+${lines.join("\n")}`;
 }
 
 function buildTokenReferenceSection(): string {
@@ -336,6 +361,13 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
     const mandatesSection = buildMandatesSection(ctx.activeMandates);
     if (mandatesSection) {
       sections.push(mandatesSection);
+    }
+  }
+
+  if (ctx.userPreferences) {
+    const prefsSection = buildUserPreferencesSection(ctx.userPreferences);
+    if (prefsSection) {
+      sections.push(prefsSection);
     }
   }
 
