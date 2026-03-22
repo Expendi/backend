@@ -162,7 +162,7 @@ export function GoalsPage() {
     try {
       const body: Record<string, unknown> = {
         name,
-        targetAmount: toBaseUnits(targetAmount, 6),
+        targetAmount,
         tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
         tokenSymbol: "USDC",
         tokenDecimals: 6,
@@ -173,7 +173,7 @@ export function GoalsPage() {
         body.frequency = frequency;
         body.walletType = "server";
         body.unlockTimeOffsetSeconds = 2592000;
-        if (depositAmount) body.depositAmount = toBaseUnits(depositAmount, 6);
+        if (depositAmount) body.depositAmount = depositAmount;
       }
       await requestWithApproval("/goal-savings", { method: "POST", body });
       setCreateStep("success");
@@ -192,7 +192,7 @@ export function GoalsPage() {
     try {
       await requestWithApproval(`/goal-savings/${selected.id}/deposit`, {
         method: "POST",
-        body: { amount: toBaseUnits(manualAmount, 6), walletType: "server" },
+        body: { amount: manualAmount, walletType: "server" },
       });
       setDepositStep("success");
       fetchGoals();

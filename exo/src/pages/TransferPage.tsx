@@ -6,7 +6,7 @@ import { Spinner } from "../components/Spinner";
 import { SuccessCheck } from "../components/SuccessCheck";
 import { triggerConfetti } from "../components/Confetti";
 import { useToast } from "../components/Toast";
-import { TokenAmountInput, toBaseUnits, formatHumanAmount } from "../components/TokenAmountInput";
+import { TokenAmountInput, formatHumanAmount } from "../components/TokenAmountInput";
 import { TOKEN_ADDRESSES } from "../lib/constants";
 import type { Category } from "../lib/types";
 import "../styles/pages.css";
@@ -59,15 +59,13 @@ export function TransferPage() {
     setStep("sending");
     setError("");
     try {
-      const tokenMeta = TOKEN_ADDRESSES[token];
-      const decimals = tokenMeta?.decimals ?? 6;
-      const rawAmount = toBaseUnits(amount, decimals);
+      // Backend accepts human-readable amounts (e.g. "5" for 5 USDC)
       const result = await requestWithApproval<{ txHash?: string }>("/wallets/transfer", {
         method: "POST",
         body: {
           from,
           to,
-          amount: rawAmount,
+          amount,
           token: token.toLowerCase() || undefined,
           categoryId: categoryId || undefined,
         },
@@ -94,8 +92,9 @@ export function TransferPage() {
 
   // Get balance for the selected "from" wallet
   const fromBalance = walletBalances?.find(w => w.type === from);
+  // Backend returns human-readable balances
   const usdcBalance = fromBalance?.balances?.USDC
-    ? (Number(fromBalance.balances.USDC) / 1e6).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    ? Number(fromBalance.balances.USDC).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     : null;
 
   const selectedCategory = categoryId ? categories.find(c => c.id === categoryId) : null;

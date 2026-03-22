@@ -91,17 +91,16 @@ export const sendTool: ToolConfig = defineTool({
         };
       }
 
-      // 6. Get token balance in base units
-      const balanceBase = getTokenBalance(wallet, tokenSymbol);
-      const balanceHuman = fromBaseUnits(balanceBase, tokenInfo.decimals);
-      const balanceDisplay = Number(balanceHuman); // Only for display, not comparison
+      // 6. Get token balance — backend now returns human-readable values
+      const balanceHuman = getTokenBalance(wallet, tokenSymbol);
+      const balanceDisplay = Number(balanceHuman);
 
-      // 7. Handle "all" amount — use string-based amounts, BigInt for comparison
+      // 7. Handle "all" amount
       //    For native ETH, reserve ~0.0005 ETH for gas to avoid draining the wallet
-      const ETH_GAS_RESERVE = "500000000000000"; // 0.0005 ETH in wei
+      const ETH_GAS_RESERVE = 0.0005; // 0.0005 ETH
       let sendAmountStr: string; // human-readable decimal string
       if (parsed.amount === "all") {
-        if (BigInt(balanceBase) <= 0n) {
+        if (balanceDisplay <= 0) {
           return {
             status: "error" as const,
             data: "",
@@ -109,15 +108,15 @@ export const sendTool: ToolConfig = defineTool({
           };
         }
         if (tokenSymbol === "ETH") {
-          const reserved = BigInt(balanceBase) - BigInt(ETH_GAS_RESERVE);
-          if (reserved <= 0n) {
+          const reserved = balanceDisplay - ETH_GAS_RESERVE;
+          if (reserved <= 0) {
             return {
               status: "error" as const,
               data: "",
               message: `Your ETH balance (${formatNumber(balanceDisplay)} ETH) is too low to send — you need to keep some for gas fees.`,
             };
           }
-          sendAmountStr = fromBaseUnits(reserved.toString(), tokenInfo.decimals);
+          sendAmountStr = String(reserved);
         } else {
           sendAmountStr = balanceHuman;
         }
@@ -133,8 +132,8 @@ export const sendTool: ToolConfig = defineTool({
         sendAmountStr = parsed.amount;
       }
 
-      // 8. Validate sufficient balance using BigInt
-      if (exceedsBalance(sendAmountStr, balanceBase, tokenInfo.decimals)) {
+      // 8. Validate sufficient balance
+      if (exceedsBalance(sendAmountStr, balanceHuman)) {
         const sendDisplay = Number(sendAmountStr);
         return {
           status: "error" as const,
