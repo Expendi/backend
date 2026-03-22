@@ -190,7 +190,7 @@ export function getUserWallet(balances: WalletBalance[]): WalletBalance | undefi
 
 /**
  * Get balance for a specific token from a wallet balance record.
- * Returns the balance in base units.
+ * Returns the balance in human-readable units (e.g. "1.5" for 1.5 ETH).
  */
 export function getTokenBalance(wallet: WalletBalance, tokenSymbol: string): string {
   const upper = tokenSymbol.toUpperCase();

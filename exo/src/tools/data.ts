@@ -1,7 +1,7 @@
 import type { ToolConfig } from "glove-react";
 import { z } from "zod";
 import { apiToolResult, callApi } from "./api";
-import { type WalletBalance, TOKEN_MAP, fromBaseUnits } from "./helpers";
+import { type WalletBalance } from "./helpers";
 
 /**
  * Token metadata for known tokens on Base (chain 8453).
@@ -12,18 +12,6 @@ const TOKEN_INFO: Record<string, { address: string; decimals: number; symbol: st
   ETH: { address: "0x0000000000000000000000000000000000000000", decimals: 18, symbol: "ETH" },
 };
 
-/**
- * Convert a wallet's raw base-unit balances to human-readable amounts.
- */
-function humanizeBalances(wallet: WalletBalance) {
-  const humanBalances: Record<string, string> = {};
-  for (const [symbol, raw] of Object.entries(wallet.balances)) {
-    const decimals = TOKEN_MAP[symbol]?.decimals ?? 18;
-    humanBalances[symbol] = fromBaseUnits(raw, decimals);
-  }
-  return { ...wallet, balances: humanBalances };
-}
-
 const getWalletBalancesTool: ToolConfig = {
   name: "get_wallet_balances",
   description:
@@ -31,9 +19,9 @@ const getWalletBalancesTool: ToolConfig = {
   inputSchema: z.object({}),
   async do() {
     try {
+      // Backend already returns human-readable balances (e.g. "1.5" ETH, "100" USDC)
       const wallets = await callApi<WalletBalance[]>("/wallets/balances");
-      const humanized = wallets.map(humanizeBalances);
-      return { status: "success" as const, data: JSON.stringify(humanized), renderData: humanized };
+      return { status: "success" as const, data: JSON.stringify(wallets), renderData: wallets };
     } catch (e) {
       return { status: "error" as const, data: "", message: String(e) };
     }
