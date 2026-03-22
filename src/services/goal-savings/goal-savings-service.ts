@@ -188,14 +188,6 @@ export const GoalSavingsServiceLive: Layer.Layer<
         const offsetSeconds =
           overrides?.unlockTimeOffsetSeconds ?? goal.unlockTimeOffsetSeconds ?? 0;
 
-        if (!walletId || !vaultId) {
-          return yield* Effect.fail(
-            new GoalSavingsError({
-              message: `Goal ${goal.id} missing walletId or vaultId for deposit`,
-            })
-          );
-        }
-
         // Create a pending deposit record FIRST so every attempt is tracked
         const [pendingDeposit] = yield* Effect.tryPromise({
           try: () =>
@@ -217,6 +209,24 @@ export const GoalSavingsServiceLive: Layer.Layer<
         });
 
         const depositId = pendingDeposit!.id;
+
+        if (!walletId || !vaultId) {
+          const errorMsg = `Goal ${goal.id} missing walletId or vaultId for deposit`;
+          yield* Effect.tryPromise({
+            try: () =>
+              db
+                .update(goalSavingsDeposits)
+                .set({ status: "failed", error: errorMsg })
+                .where(eq(goalSavingsDeposits.id, depositId)),
+            catch: () =>
+              new GoalSavingsError({
+                message: `Failed to mark deposit as failed`,
+              }),
+          });
+          return yield* Effect.fail(
+            new GoalSavingsError({ message: errorMsg })
+          );
+        }
 
         const unlockTime = Math.floor(Date.now() / 1000) + offsetSeconds;
 
@@ -704,11 +714,33 @@ export const GoalSavingsServiceLive: Layer.Layer<
               continue;
             }
 
+            // Resolve walletId from user profile if the goal doesn't have one
+            let resolvedWalletId = goal.walletId;
+            if (!resolvedWalletId) {
+              const profileResult = yield* onboarding
+                .getProfile(goal.userId)
+                .pipe(
+                  Effect.map((p) => ({ ok: true as const, profile: p })),
+                  Effect.catchAll(() =>
+                    Effect.succeed({ ok: false as const } as const)
+                  )
+                );
+              if (profileResult.ok) {
+                const wType = (goal.walletType ?? "server") as "server" | "agent";
+                resolvedWalletId =
+                  wType === "server"
+                    ? profileResult.profile.serverWalletId
+                    : profileResult.profile.agentWalletId;
+              }
+            }
+
             console.log(
-              `[processDueDeposits] Attempting deposit for goal ${goal.id}: amount=${amount}, wallet=${goal.walletId}, vault=${goal.vaultId}`
+              `[processDueDeposits] Attempting deposit for goal ${goal.id}: amount=${amount}, wallet=${resolvedWalletId ?? goal.walletId}, vault=${goal.vaultId}`
             );
 
-            const result = yield* depositOne(goal, amount, "automated").pipe(
+            const result = yield* depositOne(goal, amount, "automated", {
+              walletId: resolvedWalletId ?? undefined,
+            }).pipe(
               Effect.map((d) => ({ success: true as const, deposit: d })),
               Effect.catchAll((error) => {
                 const errorMsg = String(
