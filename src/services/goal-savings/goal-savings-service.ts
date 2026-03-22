@@ -653,25 +653,30 @@ export const GoalSavingsServiceLive: Layer.Layer<
           const deposits: GoalSavingsDeposit[] = [];
 
           for (const goal of dueGoals) {
-            const result = yield* Effect.gen(function* () {
-              const amount = goal.depositAmount;
-              if (!amount) {
-                return yield* Effect.fail(
-                  new GoalSavingsError({
-                    message: `Goal ${goal.id} has no depositAmount configured`,
-                  })
-                );
-              }
+            const amount = goal.depositAmount;
+            if (!amount) {
+              console.log(
+                `[processDueDeposits] Skipping goal ${goal.id}: no depositAmount configured`
+              );
+              continue;
+            }
 
-              return yield* depositOne(goal, amount, "automated");
-            }).pipe(
+            const result = yield* depositOne(goal, amount, "automated").pipe(
               Effect.map((d) => ({ success: true as const, deposit: d })),
-              Effect.catchAll((error) =>
-                Effect.succeed({
+              Effect.catchAll((error) => {
+                const errorMsg = String(
+                  error instanceof GoalSavingsError
+                    ? error.message
+                    : error
+                );
+                console.log(
+                  `[processDueDeposits] Deposit FAILED for goal ${goal.id}: ${errorMsg}`
+                );
+                return Effect.succeed({
                   success: false as const,
-                  error: String(error),
-                })
-              )
+                  error: errorMsg,
+                });
+              })
             );
 
             // Update goal state after attempt
@@ -698,6 +703,25 @@ export const GoalSavingsServiceLive: Layer.Layer<
 
               deposits.push(result.deposit);
             } else {
+              // Record the failed deposit so it's visible in the UI
+              yield* Effect.tryPromise({
+                try: () =>
+                  db
+                    .insert(goalSavingsDeposits)
+                    .values({
+                      goalId: goal.id,
+                      yieldPositionId: null,
+                      amount,
+                      depositType: "automated",
+                      status: "failed",
+                      error: result.error,
+                    }),
+                catch: () =>
+                  new GoalSavingsError({
+                    message: `Failed to record failed deposit`,
+                  }),
+              });
+
               // Increment failures
               const newFailures = goal.consecutiveFailures + 1;
               const newStatus =
