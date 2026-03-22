@@ -57,7 +57,7 @@ export function RecurringPaymentsPage() {
   const [paymentMode, setPaymentMode] = useState<PaymentMode>("token_transfer");
   const [amount, setAmount] = useState("");
   const [frequency, setFrequency] = useState("30d");
-  const [executeImm, setExecuteImm] = useState(false);
+  const [executeImm, setExecuteImm] = useState(true);
   const [createStep, setCreateStep] = useState<CreateStep>("form");
   const [createError, setCreateError] = useState("");
 
