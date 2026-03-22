@@ -611,12 +611,14 @@ describe("GoalSavingsService", () => {
   describe("deposit", () => {
     it("should create yield position and record deposit", async () => {
       const goal = makeFakeGoal();
-      const deposit = makeFakeDeposit();
+      const pendingDeposit = makeFakeDeposit({ status: "pending" });
+      const confirmedDeposit = makeFakeDeposit({ status: "confirmed" });
 
       const { layer } = makeTestLayersMultiCall({
         selectResults: [[goal]],
-        insertResults: [[deposit]],
-        updateResults: [[makeFakeGoal({ accumulatedAmount: "100000", totalDeposits: 1 })]],
+        insertResults: [[pendingDeposit]],
+        // First update: confirm deposit; Second update: goal accumulation
+        updateResults: [[confirmedDeposit], [makeFakeGoal({ accumulatedAmount: "100000", totalDeposits: 1 })]],
       });
 
       const result = await Effect.runPromise(
@@ -667,7 +669,8 @@ describe("GoalSavingsService", () => {
 
     it("should update accumulatedAmount after deposit", async () => {
       const goal = makeFakeGoal({ accumulatedAmount: "50000" });
-      const deposit = makeFakeDeposit({ amount: "100000" });
+      const pendingDeposit = makeFakeDeposit({ amount: "100000", status: "pending" });
+      const confirmedDeposit = makeFakeDeposit({ amount: "100000", status: "confirmed" });
       const updatedGoal = makeFakeGoal({
         accumulatedAmount: "150000",
         totalDeposits: 1,
@@ -675,8 +678,9 @@ describe("GoalSavingsService", () => {
 
       const { layer, mockDb } = makeTestLayersMultiCall({
         selectResults: [[goal]],
-        insertResults: [[deposit]],
-        updateResults: [[updatedGoal]],
+        insertResults: [[pendingDeposit]],
+        // First update: confirm deposit; Second update: goal accumulation
+        updateResults: [[confirmedDeposit], [updatedGoal]],
       });
 
       await Effect.runPromise(
@@ -791,12 +795,14 @@ describe("GoalSavingsService", () => {
         depositAmount: "100000",
         nextDepositAt: new Date(Date.now() - 60000),
       });
-      const deposit = makeFakeDeposit();
+      const pendingDeposit = makeFakeDeposit({ status: "pending" });
+      const confirmedDeposit = makeFakeDeposit({ status: "confirmed" });
 
       const { layer } = makeTestLayersMultiCall({
         selectResults: [[dueGoal]],
-        insertResults: [[deposit]],
-        updateResults: [[makeFakeGoal()], [makeFakeGoal()]],
+        insertResults: [[pendingDeposit]],
+        // Updates: 1) confirm deposit, 2) goal accumulation, 3) advance nextDepositAt
+        updateResults: [[confirmedDeposit], [makeFakeGoal()], [makeFakeGoal()]],
       });
 
       const result = await Effect.runPromise(
@@ -822,6 +828,8 @@ describe("GoalSavingsService", () => {
 
       const { layer, mockDb } = makeTestLayersMultiCall({
         selectResults: [[dueGoal]],
+        // No insert/update needed for deposit since walletId check fails
+        // before any DB operations in depositOne
         updateResults: [[makeFakeGoal({ status: "paused" })]],
       });
 
@@ -832,7 +840,7 @@ describe("GoalSavingsService", () => {
         }).pipe(Effect.provide(layer))
       );
 
-      // Deposit failed, so no deposits returned
+      // Deposit failed (no confirmed deposits returned)
       expect(result).toEqual([]);
       // update was called to increment failures and set status to paused
       expect(mockDb.update).toHaveBeenCalled();
