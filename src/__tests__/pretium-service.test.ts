@@ -416,7 +416,7 @@ describe("PretiumService", () => {
 
       const body = JSON.parse(init?.body as string);
       expect(body.shortcode).toBe("256771234567");
-      expect(body.mobile_network).toBe("mtn");
+      expect(body.mobile_network).toBe("MTN");
       expect(body.amount).toBe(200000);
     });
   });
