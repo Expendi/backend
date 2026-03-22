@@ -124,8 +124,9 @@ async function handleRecurring(
         // Non-fatal — proceed without balance info
       }
 
-      const baseUnits = toBaseUnits(String(params.amount), tokenInfo.decimals);
       const resolved = await resolveRecipient(String(params.recipient));
+      // Amount stays human-readable — the backend handles raw unit conversion
+      const humanAmount = String(params.amount);
 
       const summary = `Send ${params.amount} ${tokenSymbol} to ${resolved.label} ${params.frequency}${balanceWarning}`;
       const details: Record<string, string> = {
@@ -146,6 +147,7 @@ async function handleRecurring(
         : `${params.amount} ${tokenSymbol} to ${resolved.label} (${params.frequency})`;
 
       // Use the new-format API shape (type: "transfer")
+      // Amount is human-readable (e.g. "0.17" for 0.17 USDC) — the backend converts to raw units at execution time
       const isNativeEth = tokenSymbol === "ETH";
       const data = await callApi("/recurring-payments", {
         method: "POST",
@@ -153,7 +155,7 @@ async function handleRecurring(
           type: isNativeEth ? "raw_transfer" : "transfer",
           name,
           to: resolved.address,
-          amount: baseUnits,
+          amount: humanAmount,
           token: isNativeEth ? undefined : tokenSymbol.toLowerCase(),
           wallet: "user",
           frequency: String(params.frequency),
