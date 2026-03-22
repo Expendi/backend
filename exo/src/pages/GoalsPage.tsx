@@ -4,7 +4,7 @@ import { useApprovalContext } from "../context/ApprovalContext";
 import { useDashboard } from "../context/DashboardContext";
 import { Spinner } from "../components/Spinner";
 import { BottomSheet } from "../components/BottomSheet";
-import { TokenAmountInput, toBaseUnits, fromBaseUnits } from "../components/TokenAmountInput";
+import { TokenAmountInput } from "../components/TokenAmountInput";
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from "recharts";
@@ -287,8 +287,8 @@ export function GoalsPage() {
                           <div className="exo-progress-fill" style={{ width: `${pct}%` }} />
                         </div>
                         <div className="goal-card-amounts">
-                          <span className="goal-card-current">{fromBaseUnits(g.accumulatedAmount, g.tokenDecimals ?? 6)} {g.tokenSymbol}</span>
-                          <span className="goal-card-target">of {fromBaseUnits(g.targetAmount, g.tokenDecimals ?? 6)}</span>
+                          <span className="goal-card-current">{g.accumulatedAmount} {g.tokenSymbol}</span>
+                          <span className="goal-card-target">of {g.targetAmount}</span>
                         </div>
                         {g.frequency && (
                           <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginTop: 6 }}>
@@ -339,10 +339,10 @@ export function GoalsPage() {
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
                     <span style={{ fontFamily: "var(--font-mono)", fontSize: 14, fontWeight: 700 }}>
-                      {fromBaseUnits(selected.accumulatedAmount, selected.tokenDecimals ?? 6)} {selected.tokenSymbol}
+                      {selected.accumulatedAmount} {selected.tokenSymbol}
                     </span>
                     <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-muted)" }}>
-                      {pctComplete(selected.accumulatedAmount, selected.targetAmount).toFixed(0)}% of {fromBaseUnits(selected.targetAmount, selected.tokenDecimals ?? 6)}
+                      {pctComplete(selected.accumulatedAmount, selected.targetAmount).toFixed(0)}% of {selected.targetAmount}
                     </span>
                   </div>
                 </div>
@@ -438,7 +438,7 @@ export function GoalsPage() {
                           </defs>
                           <XAxis dataKey="date" tick={{ fontSize: 10 }} />
                           <YAxis tick={{ fontSize: 10 }} domain={[0, Math.max(cumulative, target)]} />
-                          <Tooltip formatter={(v) => `${Number(v).toLocaleString()} raw`} />
+                          <Tooltip formatter={(v) => `${Number(v).toLocaleString()} ${selected.tokenSymbol}`} />
                           <Area type="monotone" dataKey="saved" stroke="#8b5cf6" fill="url(#savingsGrad)" strokeWidth={2} />
                           <Area type="monotone" dataKey="target" stroke="#6b7280" strokeDasharray="5 5" fill="none" strokeWidth={1} />
                         </AreaChart>
