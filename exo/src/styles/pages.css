@@ -375,6 +375,7 @@
 }
 
 .exo-status-dot.active { background: var(--exo-lime); }
+.exo-status-dot.confirmed { background: var(--exo-lime); }
 .exo-status-dot.pending { background: var(--exo-peach); }
 .exo-status-dot.processing { background: var(--exo-peach); animation: pulse-dot 1.5s ease-in-out infinite; }
 .exo-status-dot.completed { background: var(--exo-sky); }

@@ -70,6 +70,7 @@ export const goalSavingsDeposits = pgTable("goal_savings_deposits", {
     .notNull()
     .references(() => goalSavings.id),
   yieldPositionId: text("yield_position_id")
+    .notNull()
     .references(() => yieldPositions.id),
   amount: text("amount").notNull(),
   depositType: text("deposit_type").notNull(), // "automated" | "manual"

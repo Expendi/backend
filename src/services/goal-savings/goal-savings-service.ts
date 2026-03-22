@@ -703,25 +703,6 @@ export const GoalSavingsServiceLive: Layer.Layer<
 
               deposits.push(result.deposit);
             } else {
-              // Record the failed deposit so it's visible in the UI
-              yield* Effect.tryPromise({
-                try: () =>
-                  db
-                    .insert(goalSavingsDeposits)
-                    .values({
-                      goalId: goal.id,
-                      yieldPositionId: null,
-                      amount,
-                      depositType: "automated",
-                      status: "failed",
-                      error: result.error,
-                    }),
-                catch: () =>
-                  new GoalSavingsError({
-                    message: `Failed to record failed deposit`,
-                  }),
-              });
-
               // Increment failures
               const newFailures = goal.consecutiveFailures + 1;
               const newStatus =

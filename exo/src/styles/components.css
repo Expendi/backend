@@ -124,7 +124,8 @@ textarea.input-exo {
   color: var(--text-secondary);
 }
 .tag-exo.active,
-.tag-exo.status-active {
+.tag-exo.status-active,
+.tag-exo.status-confirmed {
   border-color: var(--exo-lime);
   color: var(--exo-lime);
   background: color-mix(in srgb, var(--exo-lime) 8%, transparent);
