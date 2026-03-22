@@ -353,6 +353,19 @@ const normalizeNetworkForValidation = (
     return "MTN";
   }
 
+  if (country === "CD") {
+    if (lower.includes("vodacom")) return "Vodacom";
+    if (lower.includes("airtel")) return "Airtel";
+    if (lower.includes("orange")) return "Orange";
+    return "Vodacom";
+  }
+
+  if (country === "MW") {
+    if (lower.includes("airtel")) return "Airtel";
+    if (lower.includes("tnm")) return "TNM";
+    return "Airtel";
+  }
+
   return network;
 };
 
@@ -423,8 +436,19 @@ const buildDisburseRequestBody = (
   // Uganda, DR Congo, Malawi, Ethiopia -- standard mobile money
   return {
     ...baseBody,
-    mobile_network: request.mobileNetwork,
+    mobile_network: normalizeNetworkForValidation(request.mobileNetwork, request.country),
   };
+};
+
+const normalizeOnrampNetwork = (
+  network: string,
+  country: OnrampSupportedCountry
+): string => {
+  if (country === "KE")
+    return normalizeNetworkForValidation(network, "KE");
+  if (country === "GH")
+    return normalizeGhanaNetwork(network);
+  return normalizeNetworkForValidation(network, country as SupportedCountry);
 };
 
 const buildOnrampRequestBody = (
@@ -433,7 +457,7 @@ const buildOnrampRequestBody = (
   shortcode: request.phoneNumber,
   // this exists as a big int and needs to be converted back to an int for Pretium
   amount: parseInt(request.amount.toString()),
-  mobile_network: request.mobileNetwork,
+  mobile_network: normalizeOnrampNetwork(request.mobileNetwork, request.country),
   chain: request.chain || "BASE",
   fee: request.fee || 0,
   asset: request.asset,
