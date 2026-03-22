@@ -400,6 +400,11 @@ export const YieldServiceLive: Layer.Layer<
               )
             );
 
+          // params.amount is human-readable (e.g. "5" for 5 USDC)
+          // Convert to raw units using the vault's underlying token decimals
+          const tokenDecimals = vault.underlyingDecimals ?? 6;
+          const rawAmount = Math.floor(Number(params.amount) * Math.pow(10, tokenDecimals));
+
           yield* txService
             .submitContractTransaction({
               walletId: params.walletId,
@@ -407,7 +412,7 @@ export const YieldServiceLive: Layer.Layer<
               contractName: tokenContractName,
               chainId,
               method: "approve",
-              args: [timelockConnector.address, BigInt(params.amount)],
+              args: [timelockConnector.address, rawAmount],
               userId: params.userId,
             })
             .pipe(
@@ -430,8 +435,8 @@ export const YieldServiceLive: Layer.Layer<
               method: "lock",
               args: [
                 vault.vaultAddress,
-                BigInt(params.amount),
-                BigInt(params.unlockTime),
+                rawAmount,
+                Number(params.unlockTime),
                 params.label ?? "",
               ],
               userId: params.userId,

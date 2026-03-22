@@ -163,21 +163,12 @@ const KNOWLEDGE_LEVELS: KnowledgeLevel[] = ["beginner", "intermediate", "advance
 
 /* ─── Helpers ────────────────────────────────────────────────────── */
 
-function formatBaseUnits(raw: string, decimals: number): string {
-  const n = BigInt(raw || "0");
-  const divisor = BigInt(10 ** decimals);
-  const whole = n / divisor;
-  const frac = n % divisor;
-  if (frac === 0n) return whole.toString();
-  const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
-  return `${whole}.${fracStr}`;
-}
-
-function toBaseUnits(humanAmount: string, decimals: number): string {
-  const parts = humanAmount.split(".");
-  const whole = parts[0] || "0";
-  const frac = (parts[1] || "").padEnd(decimals, "0").slice(0, decimals);
-  return (BigInt(whole) * BigInt(10 ** decimals) + BigInt(frac)).toString();
+// Backend now returns human-readable balances — no raw→human conversion needed
+function formatBalance(value: string): string {
+  const num = Number(value || "0");
+  if (num === 0) return "0";
+  if (num < 0.0001 && num > 0) return "<0.0001";
+  return num.toLocaleString(undefined, { maximumFractionDigits: 6 });
 }
 
 function friendlyFrequency(freq?: string): string {
@@ -209,7 +200,7 @@ function summarizeMandate(trigger?: MandateTrigger, action?: MandateAction): str
   if (!trigger && !action) return "Manual automation";
 
   if (action?.type === "swap" && trigger?.type === "schedule") {
-    const amt = action.amount ? formatBaseUnits(action.amount, 6) : "?";
+    const amt = action.amount ? action.amount : "?";
     return `Buy ${amt} ${action.from ?? "USDC"} of ${action.to ?? "?"} ${friendlyFrequency(trigger.frequency)}`;
   }
 
@@ -219,12 +210,12 @@ function summarizeMandate(trigger?: MandateTrigger, action?: MandateAction): str
   }
 
   if (action?.type === "offramp" && trigger?.type === "balance") {
-    const threshold = trigger.value !== undefined ? formatBaseUnits(String(trigger.value), 0) : "?";
+    const threshold = trigger.value !== undefined ? String(trigger.value) : "?";
     return `Auto cash-out when ${trigger.token ?? "USDC"} > ${threshold}`;
   }
 
   if (action?.type === "goal_deposit" && trigger?.type === "schedule") {
-    const amt = action.amount ? formatBaseUnits(action.amount, 6) : "?";
+    const amt = action.amount ? action.amount : "?";
     return `Save ${amt} USDC ${friendlyFrequencyAdverb(trigger.frequency)}`;
   }
 
@@ -255,13 +246,13 @@ function summarizeAction(action?: MandateAction): string {
   if (!action) return "No action";
   switch (action.type) {
     case "swap": {
-      const amt = action.amount ? formatBaseUnits(action.amount, 6) : "?";
+      const amt = action.amount ? action.amount : "?";
       return `Buy ${amt} ${action.from ?? "USDC"} of ${action.to ?? "?"}`;
     }
     case "notify":
       return action.message ?? "Send notification";
     case "goal_deposit": {
-      const amt = action.amount ? formatBaseUnits(action.amount, 6) : "?";
+      const amt = action.amount ? action.amount : "?";
       return `Deposit ${amt} USDC to goal`;
     }
     case "offramp":
@@ -490,11 +481,11 @@ function AgentWalletCard() {
         <div className="ad-wallet-balances">
           <div className="ad-wallet-row">
             <span className="ad-wallet-token">USDC</span>
-            <span className="ad-wallet-amount">{balance?.balances?.USDC ? formatBaseUnits(balance.balances.USDC, 6) : "0"}</span>
+            <span className="ad-wallet-amount">{balance?.balances?.USDC ? formatBalance(balance.balances.USDC) : "0"}</span>
           </div>
           <div className="ad-wallet-row">
             <span className="ad-wallet-token">ETH</span>
-            <span className="ad-wallet-amount">{balance?.balances?.ETH ? formatBaseUnits(balance.balances.ETH, 18) : "0"}</span>
+            <span className="ad-wallet-amount">{balance?.balances?.ETH ? formatBalance(balance.balances.ETH) : "0"}</span>
           </div>
         </div>
         {budgetLimit && budgetLimit !== "0" && (
@@ -739,8 +730,9 @@ function AgentWalletModal({
   const transferSourceType = isFund ? transferWallet : "agent";
   const transferDestType = isFund ? "agent" : transferWallet;
   const transferSourceBalance = getWalletBalance(transferSourceType, transferToken);
-  const transferSourceBalanceHuman = formatBaseUnits(transferSourceBalance, TOKEN_DECIMALS_MAP[transferToken]);
-  const transferMaxAmount = formatBaseUnits(transferSourceBalance, TOKEN_DECIMALS_MAP[transferToken]);
+  // Backend returns human-readable balances
+  const transferSourceBalanceHuman = formatBalance(transferSourceBalance);
+  const transferMaxAmount = transferSourceBalance;
 
   // Agent wallet ID for onramp/offramp
   const agentWalletId = agentBalance?.walletId ?? "";
@@ -749,10 +741,9 @@ function AgentWalletModal({
   // Transfer validation
   const transferValidationError = (() => {
     if (!transferAmount || Number(transferAmount) <= 0) return "Enter an amount";
-    const amountBase = BigInt(toBaseUnits(transferAmount, TOKEN_DECIMALS_MAP[transferToken]));
-    const balBase = BigInt(transferSourceBalance);
-    if (amountBase > balBase) return "Insufficient balance";
-    if (amountBase === 0n) return "Amount must be greater than zero";
+    // Balances are now human-readable — compare as numbers
+    if (Number(transferAmount) > Number(transferSourceBalance)) return "Insufficient balance";
+    if (Number(transferAmount) === 0) return "Amount must be greater than zero";
     return null;
   })();
 
@@ -779,7 +770,7 @@ function AgentWalletModal({
       const body: Record<string, string> = {
         from: transferSourceType,
         to: transferDestType,
-        amount: toBaseUnits(transferAmount, TOKEN_DECIMALS_MAP[transferToken]),
+        amount: transferAmount,
       };
       if (transferToken === "USDC") body.token = "usdc";
       const result = await requestWithApproval<{ txHash?: string }>("/wallets/transfer", { method: "POST", body });
@@ -1216,7 +1207,7 @@ function AgentWalletModal({
                 />
                 <div className="awm-balance-row">
                   <span className="awm-balance-label">USDC amount to withdraw</span>
-                  <span className="awm-balance-value">{agentBalance?.balances?.USDC ? formatBaseUnits(agentBalance.balances.USDC, 6) : "0"} available</span>
+                  <span className="awm-balance-value">{agentBalance?.balances?.USDC ? formatBalance(agentBalance.balances.USDC) : "0"} available</span>
                 </div>
                 {sellConversion && (
                   <div className="awm-conversion">~ {Number(sellConversion).toLocaleString()} {sellCountryObj.currency}</div>
@@ -1433,7 +1424,7 @@ function buildDcaPayload(form: DcaFormState): { name: string; type: string; trig
     name,
     type: "dca",
     trigger: { type: "schedule", frequency: form.frequency },
-    action: { type: "swap", from: "USDC", to: form.token, amount: toBaseUnits(form.amount, 6) },
+    action: { type: "swap", from: "USDC", to: form.token, amount: form.amount },
   };
 }
 
@@ -1466,7 +1457,7 @@ function buildSavePayload(form: AutoSaveFormState): { name: string; type: string
     name,
     type: "auto_save",
     trigger: { type: "schedule", frequency: form.frequency },
-    action: { type: "goal_deposit", goalId: form.goalName, amount: toBaseUnits(form.amount, 6) },
+    action: { type: "goal_deposit", goalId: form.goalName, amount: form.amount },
   };
 }
 
@@ -1489,15 +1480,15 @@ function buildCustomPayload(form: CustomFormState): { name: string; type: string
   if (form.actionType === "swap") {
     action.from = form.actionFrom;
     action.to = form.actionTo;
-    action.amount = toBaseUnits(form.actionAmount || "0", 6);
+    action.amount = form.actionAmount || "0";
   } else if (form.actionType === "notify") {
     action.message = form.actionMessage;
   } else if (form.actionType === "goal_deposit") {
     action.goalId = form.actionGoalId;
-    action.amount = toBaseUnits(form.actionAmount || "0", 6);
+    action.amount = form.actionAmount || "0";
   } else if (form.actionType === "transfer") {
     action.to = form.actionTo;
-    action.amount = toBaseUnits(form.actionAmount || "0", 6);
+    action.amount = form.actionAmount || "0";
   }
 
   return {
@@ -2961,8 +2952,8 @@ function WalletSummary() {
     );
   }
 
-  const usdc = balance?.balances?.USDC ? formatBaseUnits(balance.balances.USDC, 6) : "0";
-  const eth = balance?.balances?.ETH ? formatBaseUnits(balance.balances.ETH, 18) : "0";
+  const usdc = balance?.balances?.USDC ? formatBalance(balance.balances.USDC) : "0";
+  const eth = balance?.balances?.ETH ? formatBalance(balance.balances.ETH) : "0";
 
   return (
     <div className="ad-card ad-wallet-summary">

@@ -12,8 +12,8 @@ import "../styles/pages.css";
 
 /* ─── Helpers ─────────────────────────────────────────────────────── */
 
-function formatBalance(raw: string, decimals: number): string {
-  const num = Number(raw) / 10 ** decimals;
+function formatBalance(value: string): string {
+  const num = Number(value);
   if (num === 0) return "0";
   if (num < 0.0001) return "<0.0001";
   return num.toLocaleString(undefined, { maximumFractionDigits: 4 });
@@ -56,8 +56,8 @@ function CarouselCard({
     }
   };
 
-  const ethBal = formatBalance(wallet.balances.ETH ?? "0", 18);
-  const usdcBal = formatBalance(wallet.balances.USDC ?? "0", 6);
+  const ethBal = formatBalance(wallet.balances.ETH ?? "0");
+  const usdcBal = formatBalance(wallet.balances.USDC ?? "0");
 
   return (
     <div
@@ -133,12 +133,13 @@ export function WalletHomePage() {
 
   // Active wallet balance
   const activeWallet = walletBalances[activeWalletIdx] ?? null;
+  // Backend now returns human-readable balances (e.g. "5" for 5 USDC, not "5000000")
   const displayUsdc = activeWallet
-    ? Number(activeWallet.balances.USDC ?? "0") / 1e6
-    : walletBalances.reduce((s, w) => s + Number(w.balances.USDC ?? "0") / 1e6, 0);
+    ? Number(activeWallet.balances.USDC ?? "0")
+    : walletBalances.reduce((s, w) => s + Number(w.balances.USDC ?? "0"), 0);
   const displayEth = activeWallet
-    ? Number(activeWallet.balances.ETH ?? "0") / 1e18
-    : walletBalances.reduce((s, w) => s + Number(w.balances.ETH ?? "0") / 1e18, 0);
+    ? Number(activeWallet.balances.ETH ?? "0")
+    : walletBalances.reduce((s, w) => s + Number(w.balances.ETH ?? "0"), 0);
 
   const recentTxs = recentTransactions.slice(0, 5);
 

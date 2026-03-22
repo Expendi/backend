@@ -55,31 +55,28 @@ const WALLET_TYPE_LABELS: Record<WalletType, string> = {
 
 /* ─── Helpers ────────────────────────────────────────────────────── */
 
-function formatBalanceFromRaw(raw: string, decimals: number): string {
-  const num = Number(raw) / 10 ** decimals;
+// Backend now returns human-readable balances (e.g. "5" not "5000000")
+function formatBalanceDisplay(value: string): string {
+  const num = Number(value);
   if (num === 0) return "0";
   if (num < 0.0001) return "<0.0001";
   return num.toLocaleString(undefined, { maximumFractionDigits: 6 });
 }
 
-function formatBalanceHuman(raw: string, decimals: number): string {
-  const num = Number(raw) / 10 ** decimals;
+function formatBalanceHuman(value: string): string {
+  const num = Number(value);
   if (num === 0) return "0";
-  if (decimals === 6) {
-    return num.toFixed(6).replace(/\.?0+$/, "");
-  }
-  return num.toFixed(8).replace(/\.?0+$/, "");
+  return num.toFixed(6).replace(/\.?0+$/, "");
 }
 
+/** Convert human-readable to raw units for direct contract calls (e.g. ERC-20 transfer args). */
 function parseAmountToBaseUnits(amount: string, decimals: number): string {
   if (!amount || isNaN(Number(amount))) return "0";
   const parts = amount.split(".");
   const whole = parts[0] || "0";
   const frac = (parts[1] || "").padEnd(decimals, "0").slice(0, decimals);
   const combined = whole + frac;
-  // Remove leading zeros but keep at least "0"
-  const trimmed = combined.replace(/^0+/, "") || "0";
-  return trimmed;
+  return combined.replace(/^0+/, "") || "0";
 }
 
 function isValidEthAddress(addr: string): boolean {
@@ -251,11 +248,10 @@ export function SendModal({ open, onClose, walletBalances }: SendModalProps) {
   );
 
   const sourceWalletType = ownWalletMode ? fromWallet : "user";
+  // Backend returns human-readable balances
   const rawBalance = getBalance(sourceWalletType, token);
-  const displayBalance = formatBalanceFromRaw(rawBalance, TOKEN_DECIMALS[token]);
-
-  // Compute MAX amount as human-readable
-  const maxAmount = formatBalanceHuman(rawBalance, TOKEN_DECIMALS[token]);
+  const displayBalance = formatBalanceDisplay(rawBalance);
+  const maxAmount = formatBalanceHuman(rawBalance);
 
   // Determine the actual recipient address
   const getRecipientAddress = (): string | null => {
@@ -272,15 +268,15 @@ export function SendModal({ open, onClose, walletBalances }: SendModalProps) {
       return "Enter an amount";
     }
 
-    const amountBaseUnits = parseAmountToBaseUnits(amount, TOKEN_DECIMALS[token]);
-    const balanceBaseUnits = BigInt(rawBalance);
-    const amountBigInt = BigInt(amountBaseUnits);
+    // Balances are now human-readable — compare as numbers
+    const amountNum = Number(amount);
+    const balanceNum = Number(rawBalance);
 
-    if (amountBigInt > balanceBaseUnits) {
+    if (amountNum > balanceNum) {
       return "Insufficient balance";
     }
 
-    if (amountBigInt === 0n) {
+    if (amountNum === 0) {
       return "Amount must be greater than zero";
     }
 
@@ -352,12 +348,11 @@ export function SendModal({ open, onClose, walletBalances }: SendModalProps) {
 
     try {
       if (ownWalletMode) {
-        // Inter-wallet transfer
-        // Backend expects contract registry name (e.g. "usdc"), not address
+        // Inter-wallet transfer — backend accepts human-readable amounts
         const body: Record<string, string> = {
           from: fromWallet,
           to: toWallet,
-          amount: parseAmountToBaseUnits(amount, TOKEN_DECIMALS[token]),
+          amount,
         };
         if (token === "USDC") {
           body.token = "usdc";

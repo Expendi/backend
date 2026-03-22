@@ -181,6 +181,29 @@ function computeNextExecution(startDate: Date, frequency: string): Date {
   return new Date(start + (cyclesPassed + 1) * intervalMs);
 }
 
+/** Known token decimals for converting human-readable amounts to raw units. */
+const TOKEN_DECIMALS: Record<string, number> = {
+  usdc: 6,
+  usdt: 6,
+  dai: 18,
+  eth: 18,
+  weth: 18,
+  cbeth: 18,
+  cbbtc: 8,
+  aero: 18,
+};
+
+/** Convert a human-readable amount to raw units for on-chain use. */
+function toRawAmount(amount: string, tokenName?: string | null): number {
+  const decimals = TOKEN_DECIMALS[(tokenName ?? "usdc").toLowerCase()] ?? 18;
+  return Math.floor(Number(amount) * Math.pow(10, decimals));
+}
+
+/** Convert a human-readable ETH amount to raw wei. */
+function toWei(amount: string): number {
+  return Math.floor(Number(amount) * 1e18);
+}
+
 // ── Live implementation ──────────────────────────────────────────────
 
 export const RecurringPaymentServiceLive: Layer.Layer<
@@ -209,29 +232,33 @@ export const RecurringPaymentServiceLive: Layer.Layer<
         const paymentResult = yield* Effect.gen(function* () {
           if (schedule.paymentType === "erc20_transfer") {
             // ERC-20 token transfer via contract
+            // schedule.amount is human-readable (e.g. "5" for 5 USDC)
+            const rawAmt = toRawAmount(schedule.amount, schedule.tokenContractName);
             const result = yield* txService.submitContractTransaction({
               walletId: schedule.walletId,
               walletType: schedule.walletType,
               contractName: schedule.tokenContractName!,
               chainId: schedule.chainId,
               method: "transfer",
-              args: [schedule.recipientAddress, BigInt(schedule.amount)],
+              args: [schedule.recipientAddress, rawAmt],
               userId: schedule.userId,
             });
             return result;
           } else if (schedule.paymentType === "raw_transfer") {
-            // Raw ETH transfer
+            // Raw ETH transfer — amount is human-readable ETH (e.g. "0.1")
+            const rawWei = toWei(schedule.amount);
             const result = yield* txService.submitRawTransaction({
               walletId: schedule.walletId,
               walletType: schedule.walletType,
               chainId: schedule.chainId,
               to: schedule.recipientAddress as `0x${string}`,
-              value: BigInt(schedule.amount),
+              value: rawWei,
               userId: schedule.userId,
             });
             return result;
           } else if (schedule.paymentType === "contract_call") {
-            // contract_call
+            // contract_call — amount is human-readable ETH value
+            const rawWei = toWei(schedule.amount);
             const result = yield* txService.submitContractTransaction({
               walletId: schedule.walletId,
               walletType: schedule.walletType,
@@ -239,7 +266,7 @@ export const RecurringPaymentServiceLive: Layer.Layer<
               chainId: schedule.chainId,
               method: schedule.contractMethod!,
               args: schedule.contractArgs ?? [],
-              value: BigInt(schedule.amount),
+              value: rawWei,
               userId: schedule.userId,
             });
             return result;

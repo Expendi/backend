@@ -116,17 +116,16 @@ export function safeNumberToString(n: number, maxDecimals: number = 18): string 
 }
 
 /**
- * Compare a human-readable amount against a base-unit balance using BigInt.
- * Returns true if the amount (in human units) exceeds the balance (in base units).
+ * Compare a human-readable amount against a human-readable balance.
+ * Returns true if the amount exceeds the balance.
+ * (Backend now returns human-readable balances.)
  */
 export function exceedsBalance(
   amountHuman: string,
-  balanceBase: string,
-  decimals: number,
+  balanceHuman: string,
+  _decimals?: number,
 ): boolean {
-  const amountBase = BigInt(toBaseUnits(amountHuman, decimals));
-  const balance = BigInt(balanceBase);
-  return amountBase > balance;
+  return Number(amountHuman) > Number(balanceHuman);
 }
 
 /**

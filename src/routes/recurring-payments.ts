@@ -53,7 +53,7 @@ interface TransferBody {
   wallet?: "user" | "server" | "agent";
   walletId?: string;
   to: string;              // recipient address
-  amount: string;          // token amount in base units
+  amount: string;          // human-readable token amount (e.g. "5" for 5 USDC)
   token?: string;          // defaults to "usdc"
   chainId?: number;
   frequency: string;
@@ -71,7 +71,7 @@ interface RawTransferBody {
   wallet?: "user" | "server" | "agent";
   walletId?: string;
   to: string;
-  amount: string;          // value in wei
+  amount: string;          // human-readable ETH amount (e.g. "0.1" for 0.1 ETH)
   chainId?: number;
   frequency: string;
   startDate?: string;
@@ -91,7 +91,7 @@ interface ContractCallBody {
   contract: string;        // contract name in registry
   method: string;
   args?: unknown[];
-  amount?: string;         // value in wei (defaults to "0")
+  amount?: string;         // human-readable ETH value (defaults to "0")
   token?: string;
   chainId?: number;
   frequency: string;

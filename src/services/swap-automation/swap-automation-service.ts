@@ -18,6 +18,22 @@ import { ConfigService } from "../../config.js";
 import { erc20Abi, type Hash } from "viem";
 import { createBasePublicClient } from "../chain/public-client.js";
 
+// ── Token decimals by address (lowercase) for human-readable → raw conversion ─
+
+const TOKEN_DECIMALS_BY_ADDRESS: Record<string, number> = {
+  "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913": 6,   // USDC on Base
+  "0x2d1adb45bb1d7d2556c6558adb76cfd4f9f4ed16": 6,   // USDT on Base
+  "0x50c5725949a6f0c72e6c4a641f24049a917db0cb": 18,  // DAI on Base
+  "0x4200000000000000000000000000000000000006": 18,    // WETH on Base
+  "0x0000000000000000000000000000000000000000": 18,    // ETH (native)
+};
+
+/** Convert human-readable amount to raw units string for a token address. */
+function toRawAmountStr(amount: string, tokenAddress: string): string {
+  const decimals = TOKEN_DECIMALS_BY_ADDRESS[tokenAddress.toLowerCase()] ?? 18;
+  return String(Math.floor(Number(amount) * Math.pow(10, decimals)));
+}
+
 // ── Error type ───────────────────────────────────────────────────────
 
 export class SwapAutomationError extends Data.TaggedError(
@@ -177,7 +193,7 @@ export const SwapAutomationServiceLive: Layer.Layer<
     const checkBalance = (
       walletAddress: `0x${string}`,
       tokenIn: string,
-      requiredAmount: bigint
+      requiredAmount: number
     ) =>
       Effect.tryPromise({
         try: async () => {
@@ -187,7 +203,7 @@ export const SwapAutomationServiceLive: Layer.Layer<
             const balance = await publicClient.getBalance({
               address: walletAddress,
             });
-            return balance >= requiredAmount;
+            return Number(balance) >= requiredAmount;
           }
           // ERC-20 balance check
           const balance = await publicClient.readContract({
@@ -196,7 +212,7 @@ export const SwapAutomationServiceLive: Layer.Layer<
             functionName: "balanceOf",
             args: [walletAddress],
           });
-          return balance >= requiredAmount;
+          return Number(balance) >= requiredAmount;
         },
         catch: (error) =>
           new SwapAutomationError({
@@ -314,10 +330,13 @@ export const SwapAutomationServiceLive: Layer.Layer<
           automation.walletType as "server" | "agent"
         );
 
+        // Convert human-readable amount to raw units for on-chain operations
+        const rawAmount = toRawAmountStr(automation.amount, automation.tokenIn);
+
         // Check balance (add gas buffer for ETH swaps)
         const isEthSwap = automation.tokenIn.toLowerCase() === ETH_ADDRESS.toLowerCase();
-        const gasBuffer = isEthSwap ? BigInt("50000000000000000") : BigInt(0); // 0.05 ETH buffer for gas
-        const requiredAmount = BigInt(automation.amount) + gasBuffer;
+        const gasBuffer = isEthSwap ? 50000000000000000 : 0; // 0.05 ETH buffer for gas
+        const requiredAmount = Number(rawAmount) + gasBuffer;
 
         const hasSufficientBalance = yield* checkBalance(
           walletAddress,
@@ -400,7 +419,7 @@ export const SwapAutomationServiceLive: Layer.Layer<
                   chainId: automation.chainId,
                   to: approvalResult.approval.to as `0x${string}`,
                   data: approvalResult.approval.data as `0x${string}`,
-                  value: BigInt(approvalResult.approval.value || "0"),
+                  value: Number(approvalResult.approval.value || "0"),
                   userId: automation.userId,
                 })
                 .pipe(
@@ -418,12 +437,12 @@ export const SwapAutomationServiceLive: Layer.Layer<
             }
           }
 
-          // 3. Get quote (after approval is confirmed)
+          // 3. Get quote (after approval is confirmed) — use raw amount
           const quote = yield* uniswap.getQuote({
             swapper: walletAddress,
             tokenIn: automation.tokenIn,
             tokenOut: automation.tokenOut,
-            amount: automation.amount,
+            amount: rawAmount,
             type: "EXACT_INPUT",
             slippageTolerance: automation.slippageTolerance,
             chainId: automation.chainId,
@@ -456,7 +475,7 @@ export const SwapAutomationServiceLive: Layer.Layer<
               chainId: automation.chainId,
               to: swapTx.to as `0x${string}`,
               data: swapTx.data as `0x${string}`,
-              value: BigInt(swapTx.value || "0"),
+              value: Number(swapTx.value || "0"),
               userId: automation.userId,
             })
             .pipe(

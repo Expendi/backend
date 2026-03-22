@@ -151,15 +151,14 @@ export const swapTool: ToolConfig = defineTool({
       };
     }
 
-    // 4. Get token balance — use BigInt for comparison, Number only for display
-    const balanceBase = getTokenBalance(userWallet, fromSymbol);
-    const balanceHumanStr = fromBaseUnits(balanceBase, fromTokenInfo.decimals);
+    // 4. Get token balance — backend returns human-readable values
+    const balanceHumanStr = getTokenBalance(userWallet, fromSymbol);
     const balanceDisplay = Number(balanceHumanStr);
 
-    // 5. Determine actual swap amount (string-based)
+    // 5. Determine actual swap amount
     let amountStr: string;
     if (isAll) {
-      if (BigInt(balanceBase) <= 0n) {
+      if (balanceDisplay <= 0) {
         return {
           status: "error",
           data: "",
@@ -171,7 +170,7 @@ export const swapTool: ToolConfig = defineTool({
       amountStr = parsed.amount;
     }
 
-    if (exceedsBalance(amountStr, balanceBase, fromTokenInfo.decimals)) {
+    if (exceedsBalance(amountStr, balanceHumanStr)) {
       const amountDisplay = Number(amountStr);
       return {
         status: "error",

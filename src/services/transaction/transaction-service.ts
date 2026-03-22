@@ -32,7 +32,7 @@ export interface SubmitContractTxParams {
   readonly chainId: number;
   readonly method: string;
   readonly args: readonly unknown[];
-  readonly value?: bigint;
+  readonly value?: number | bigint;
   readonly categoryId?: string;
   readonly userId?: string;
 }
@@ -43,7 +43,7 @@ export interface SubmitRawTxParams {
   readonly chainId: number;
   readonly to: `0x${string}`;
   readonly data?: `0x${string}`;
-  readonly value?: bigint;
+  readonly value?: number | bigint;
   readonly categoryId?: string;
   readonly userId?: string;
   readonly sponsor?: boolean;
