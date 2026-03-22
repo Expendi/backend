@@ -34,6 +34,31 @@ function toRawAmountStr(amount: string, tokenAddress: string): string {
   return String(Math.floor(Number(amount) * Math.pow(10, decimals)));
 }
 
+/**
+ * Ensure an amount string is human-readable (e.g. "5" for 5 USDC, not "5000000").
+ * The frontend may send amounts already multiplied by 10^decimals — this function
+ * detects that and converts back to human-readable form.
+ *
+ * Heuristic: if the amount has no decimal point and its numeric value is >= 10^decimals,
+ * it's very likely a raw amount. We divide by 10^decimals to normalise it.
+ */
+function normalizeToHumanReadable(amount: string, tokenAddress: string): string {
+  const decimals = TOKEN_DECIMALS_BY_ADDRESS[tokenAddress.toLowerCase()] ?? 18;
+  const num = Number(amount);
+  if (isNaN(num) || num === 0) return amount;
+
+  // If the amount already contains a decimal point, assume it's human-readable
+  if (amount.includes(".")) return amount;
+
+  // If the value is >= 10^decimals and has no decimal point, it's likely raw
+  const threshold = Math.pow(10, decimals);
+  if (num >= threshold) {
+    return String(num / threshold);
+  }
+
+  return amount;
+}
+
 // ── Error type ───────────────────────────────────────────────────────
 
 export class SwapAutomationError extends Data.TaggedError(
@@ -593,13 +618,16 @@ export const SwapAutomationServiceLive: Layer.Layer<
           }
 
           const chainId = params.chainId ?? BASE_CHAIN_ID;
+          // Normalise amount: the frontend may send raw units (e.g. "5000000"
+          // for 5 USDC). We always store human-readable values.
+          const humanAmount = normalizeToHumanReadable(params.amount, params.tokenIn);
           const values: NewSwapAutomation = {
             userId: params.userId,
             walletId: params.walletId,
             walletType: params.walletType,
             tokenIn: params.tokenIn,
             tokenOut: params.tokenOut,
-            amount: params.amount,
+            amount: humanAmount,
             slippageTolerance: params.slippageTolerance ?? 0.5,
             chainId,
             indicatorType: params.indicatorType,
@@ -666,7 +694,15 @@ export const SwapAutomationServiceLive: Layer.Layer<
             };
             if (params.thresholdValue !== undefined)
               updates.thresholdValue = params.thresholdValue;
-            if (params.amount !== undefined) updates.amount = params.amount;
+            if (params.amount !== undefined) {
+              // Normalise amount: fetch the existing automation to know the token
+              const [existing] = await db
+                .select({ tokenIn: swapAutomations.tokenIn })
+                .from(swapAutomations)
+                .where(eq(swapAutomations.id, id));
+              const tokenIn = existing?.tokenIn ?? "";
+              updates.amount = normalizeToHumanReadable(params.amount, tokenIn);
+            }
             if (params.slippageTolerance !== undefined)
               updates.slippageTolerance = params.slippageTolerance;
             if (params.maxExecutions !== undefined)

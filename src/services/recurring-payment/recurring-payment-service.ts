@@ -199,6 +199,28 @@ function toRawAmount(amount: string, tokenName?: string | null): number {
   return Math.floor(Number(amount) * Math.pow(10, decimals));
 }
 
+/**
+ * Ensure an amount string is human-readable (e.g. "5" for 5 USDC, not "5000000").
+ * The frontend may send amounts already multiplied by 10^decimals — this function
+ * detects that and converts back to human-readable form.
+ */
+function normalizeToHumanReadable(amount: string, tokenName?: string | null): string {
+  const decimals = TOKEN_DECIMALS[(tokenName ?? "usdc").toLowerCase()] ?? 18;
+  const num = Number(amount);
+  if (isNaN(num) || num === 0) return amount;
+
+  // If the amount already contains a decimal point, assume it's human-readable
+  if (amount.includes(".")) return amount;
+
+  // If the value is >= 10^decimals and has no decimal point, it's likely raw
+  const threshold = Math.pow(10, decimals);
+  if (num >= threshold) {
+    return String(num / threshold);
+  }
+
+  return amount;
+}
+
 /** Convert a human-readable ETH amount to raw wei. */
 function toWei(amount: string): number {
   return Math.floor(Number(amount) * 1e18);
@@ -640,6 +662,12 @@ export const RecurringPaymentServiceLive: Layer.Layer<
               ? new Date()
               : startDate;
 
+            // Normalise amount: the frontend may send raw units (e.g. "5000000"
+            // for 5 USDC). We always store human-readable values.
+            const humanAmount = params.paymentType === "raw_transfer"
+              ? normalizeToHumanReadable(params.amount, "eth")
+              : normalizeToHumanReadable(params.amount, params.tokenContractName);
+
             const values: NewRecurringPayment = {
               userId: params.userId,
               name: params.name ?? null,
@@ -647,7 +675,7 @@ export const RecurringPaymentServiceLive: Layer.Layer<
               walletType: params.walletType,
               recipientAddress: params.recipientAddress,
               paymentType: params.paymentType,
-              amount: params.amount,
+              amount: humanAmount,
               tokenContractName: params.tokenContractName ?? null,
               contractName: params.contractName ?? null,
               contractMethod: params.contractMethod ?? null,
@@ -740,7 +768,17 @@ export const RecurringPaymentServiceLive: Layer.Layer<
             };
             if (params.name !== undefined) updates.name = params.name;
             if (params.categoryId !== undefined) updates.categoryId = params.categoryId;
-            if (params.amount !== undefined) updates.amount = params.amount;
+            if (params.amount !== undefined) {
+              // Fetch current schedule to determine token for normalisation
+              const [existing] = await db
+                .select({ paymentType: recurringPayments.paymentType, tokenContractName: recurringPayments.tokenContractName })
+                .from(recurringPayments)
+                .where(eq(recurringPayments.id, id));
+              const tokenName = existing?.paymentType === "raw_transfer"
+                ? "eth"
+                : existing?.tokenContractName;
+              updates.amount = normalizeToHumanReadable(params.amount, tokenName);
+            }
             if (params.recipientAddress !== undefined)
               updates.recipientAddress = params.recipientAddress;
             if (params.frequency !== undefined) {
