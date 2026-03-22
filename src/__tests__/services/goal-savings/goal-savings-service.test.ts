@@ -824,13 +824,15 @@ describe("GoalSavingsService", () => {
         consecutiveFailures: 2,
         maxRetries: 3,
         walletId: null, // will cause depositOne to fail (missing walletId)
+        vaultId: null,  // also null to ensure failure even after profile resolution attempt
       });
 
+      const pendingDeposit = makeFakeDeposit({ status: "pending" });
       const { layer, mockDb } = makeTestLayersMultiCall({
         selectResults: [[dueGoal]],
-        // No insert/update needed for deposit since walletId check fails
-        // before any DB operations in depositOne
-        updateResults: [[makeFakeGoal({ status: "paused" })]],
+        // Insert: pending deposit; Updates: 1) mark failed, 2) increment failures & pause
+        insertResults: [[pendingDeposit]],
+        updateResults: [[makeFakeDeposit({ status: "failed" })], [makeFakeGoal({ status: "paused" })]],
       });
 
       const result = await Effect.runPromise(
