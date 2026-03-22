@@ -17,14 +17,38 @@ export const agentResearchCycle = schedules.task({
     factor: 2,
   },
   run: async (payload) => {
-    logger.info("Starting agent-research-cycle", { timestamp: payload.timestamp });
+    logger.info("🔍 Starting agent research cycle", {
+      timestamp: payload.timestamp,
+    });
+
     const results = await runtime.runPromise(
       Effect.gen(function* () {
         const profileService = yield* AgentProfileService;
         const autonomy = yield* AgentAutonomyService;
 
-        // Get all users who have agent profiles with act_within_limits or full tier
         const profiles = yield* profileService.listActiveProfiles();
+        logger.info(`Found ${profiles.length} agent profile(s)`, {
+          tiers: profiles.map((p) => ({
+            userId: p.userId,
+            trustTier: p.trustTier,
+          })),
+        });
+
+        const eligibleProfiles = profiles.filter(
+          (p) =>
+            p.trustTier === "act_within_limits" || p.trustTier === "full"
+        );
+
+        if (eligibleProfiles.length === 0) {
+          logger.info(
+            "No profiles with sufficient trust tier (act_within_limits or full)"
+          );
+          return [];
+        }
+
+        logger.info(
+          `${eligibleProfiles.length} profile(s) eligible for research`
+        );
 
         const cycleResults: Array<{
           userId: string;
@@ -32,44 +56,69 @@ export const agentResearchCycle = schedules.task({
           suggestions: number;
         }> = [];
 
-        for (const profile of profiles) {
-          // Only run research for users with sufficient trust tier
-          if (
-            profile.trustTier === "act_within_limits" ||
-            profile.trustTier === "full"
-          ) {
-            const result = yield* autonomy
-              .runResearchCycle(profile.userId)
-              .pipe(
-                Effect.catchAll(() =>
-                  Effect.succeed({
+        for (let i = 0; i < eligibleProfiles.length; i++) {
+          const profile = eligibleProfiles[i]!;
+          logger.info(
+            `[${i + 1}/${eligibleProfiles.length}] Running research for user`,
+            {
+              userId: profile.userId,
+              trustTier: profile.trustTier,
+            }
+          );
+
+          const result = yield* autonomy
+            .runResearchCycle(profile.userId)
+            .pipe(
+              Effect.catchAll((error) => {
+                logger.error(
+                  `[${i + 1}/${eligibleProfiles.length}] Research failed for user`,
+                  {
                     userId: profile.userId,
-                    opportunitiesFound: 0,
-                    suggestionsCreated: 0,
-                  })
-                )
-              );
-            cycleResults.push({
+                    error: String(error),
+                  }
+                );
+                return Effect.succeed({
+                  userId: profile.userId,
+                  opportunitiesFound: 0,
+                  suggestionsCreated: 0,
+                });
+              })
+            );
+
+          logger.info(
+            `[${i + 1}/${eligibleProfiles.length}] Research completed`,
+            {
               userId: result.userId,
-              opportunities: result.opportunitiesFound,
-              suggestions: result.suggestionsCreated,
-            });
-          }
+              opportunitiesFound: result.opportunitiesFound,
+              suggestionsCreated: result.suggestionsCreated,
+            }
+          );
+
+          cycleResults.push({
+            userId: result.userId,
+            opportunities: result.opportunitiesFound,
+            suggestions: result.suggestionsCreated,
+          });
         }
 
         return cycleResults;
       })
     );
 
-    logger.info("Completed agent-research-cycle", {
-      usersProcessed: results.length,
-      totalOpportunities: results.reduce((s, r) => s + r.opportunities, 0),
-      totalSuggestions: results.reduce((s, r) => s + r.suggestions, 0),
-    });
+    const totalOpportunities = results.reduce(
+      (s, r) => s + r.opportunities,
+      0
+    );
+    const totalSuggestions = results.reduce((s, r) => s + r.suggestions, 0);
+
+    logger.info(
+      `✅ Completed — ${results.length} user(s) processed, ${totalOpportunities} opportunities found, ${totalSuggestions} suggestions created`
+    );
+
     return {
       usersProcessed: results.length,
-      totalOpportunities: results.reduce((s, r) => s + r.opportunities, 0),
-      totalSuggestions: results.reduce((s, r) => s + r.suggestions, 0),
+      totalOpportunities,
+      totalSuggestions,
       timestamp: payload.timestamp,
     };
   },
