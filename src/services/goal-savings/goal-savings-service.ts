@@ -669,7 +669,7 @@ export const GoalSavingsServiceLive: Layer.Layer<
                     ? error.message
                     : error
                 );
-                console.error(
+                console.log(
                   `[processDueDeposits] Deposit FAILED for goal ${goal.id}: ${errorMsg}`
                 );
                 return Effect.succeed({
