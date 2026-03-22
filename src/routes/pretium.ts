@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { Effect } from "effect";
 import { eq, and, desc } from "drizzle-orm";
-import { parseUnits } from "viem";
 import { type AppRuntime, runEffect } from "./effect-handler.js";
 import { PretiumService, SETTLEMENT_ADDRESS } from "../services/pretium/pretium-service.js";
 import { ExchangeRateService } from "../services/pretium/exchange-rate-service.js";
@@ -321,9 +320,10 @@ export function createPretiumRoutes(runtime: AppRuntime) {
           );
         }
         
-        console.log("Amount ::", parseInt(parseUnits(String(body.usdcAmount), 6).toString()))
-
         // Transfer USDC to Pretium settlement address via the usdc connector
+        // body.usdcAmount is human-readable (e.g. 5 for 5 USDC)
+        // Multiply by 1e6 to get raw USDC units for the contract
+        const rawUsdcAmount = Math.floor(body.usdcAmount * 1e6);
         const transferTx = yield* txService.submitContractTransaction({
           walletId: body.walletId,
           walletType: walletRecord.type as "user" | "server" | "agent",
@@ -332,7 +332,7 @@ export function createPretiumRoutes(runtime: AppRuntime) {
           method: "send",
           args: [
             SETTLEMENT_ADDRESS,
-            parseInt(parseUnits(String(body.usdcAmount), 6).toString()),
+            rawUsdcAmount,
           ],
           userId,
         });
@@ -368,8 +368,6 @@ export function createPretiumRoutes(runtime: AppRuntime) {
           bankName: body.bankName,
         });
         
-        console.log("Disburse result:", disburseResult)
-
         // Store transaction in DB
         const paymentType = (body.paymentType ||
           (country === "NG" ? "BANK_TRANSFER" : "MOBILE")) as

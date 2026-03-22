@@ -1,6 +1,6 @@
 import { Effect, Context, Layer, Data } from "effect";
 import { eq, and } from "drizzle-orm";
-import { encodeFunctionData } from "viem";
+import { encodeFunctionData, formatUnits } from "viem";
 import { createBasePublicClient } from "../chain/public-client.js";
 import { DatabaseService } from "../../db/client.js";
 import {
@@ -125,6 +125,24 @@ export class GroupAccountService extends Context.Tag("GroupAccountService")<
   GroupAccountServiceApi
 >() {}
 
+// ── Token decimals by address (lowercase) ───────────────────────────
+
+const TOKEN_DECIMALS_BY_ADDRESS: Record<string, number> = {
+  "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913": 6,   // USDC on Base
+  "0x2d1adb45bb1d7d2556c6558adb76cfd4f9f4ed16": 6,   // USDT on Base
+  "0x50c5725949a6f0c72e6c4a641f24049a917db0cb": 18,  // DAI on Base
+  "0x4200000000000000000000000000000000000006": 18,    // WETH on Base
+};
+
+/** Convert human-readable amount to raw units for a token address (defaults to 18 decimals).
+ *  Returns a string to avoid BigInt serialization issues; callers convert to BigInt at the ABI boundary. */
+function toRawTokenAmount(amount: string, tokenAddress?: string): string {
+  const decimals = tokenAddress
+    ? (TOKEN_DECIMALS_BY_ADDRESS[tokenAddress.toLowerCase()] ?? 18)
+    : 18; // ETH default
+  return String(Math.floor(Number(amount) * Math.pow(10, decimals)));
+}
+
 // ── ERC-20 ABI fragments ────────────────────────────────────────────
 
 const ERC20_ABI = [
@@ -248,7 +266,7 @@ export const GroupAccountServiceLive: Layer.Layer<
       serverWalletId: string,
       chainId: number,
       data: `0x${string}`,
-      value?: bigint,
+      value?: number,
       userId?: string
     ) =>
       txService.submitRawTransaction({
@@ -266,7 +284,7 @@ export const GroupAccountServiceLive: Layer.Layer<
       tokenAddress: `0x${string}`,
       ownerAddress: `0x${string}`,
       spenderAddress: `0x${string}`,
-      amount: bigint,
+      amount: number,
       serverWalletId: string,
       chainId: number,
       userId?: string
@@ -289,7 +307,7 @@ export const GroupAccountServiceLive: Layer.Layer<
             }),
         });
 
-        if ((currentAllowance as bigint) >= amount) return;
+        if (Number(currentAllowance) >= amount) return;
 
         // Approve max uint256 to avoid repeated approvals
         const approveData = encodeFunctionData({
@@ -667,7 +685,8 @@ export const GroupAccountServiceLive: Layer.Layer<
           const group = yield* verifyAdmin(groupId, adminUserId);
           const serverWallet = yield* getServerWallet(adminUserId);
           const toAddress = yield* resolveMemberIdentifier(params.to);
-          const amount = BigInt(params.amount);
+          // params.amount is human-readable; convert to raw units
+          const rawAmount = toRawTokenAmount(params.amount, params.token);
 
           let data: `0x${string}`;
           if (params.token) {
@@ -678,15 +697,16 @@ export const GroupAccountServiceLive: Layer.Layer<
               args: [
                 params.token as `0x${string}`,
                 toAddress,
-                amount,
+                BigInt(rawAmount),
               ],
             });
           } else {
-            // pay(to, amount)
+            // pay(to, amount) — ETH
+            const rawEthAmount = String(Math.floor(Number(params.amount) * 1e18));
             data = encodeFunctionData({
               abi: GROUP_ACCOUNT_ABI,
               functionName: "pay",
-              args: [toAddress, amount],
+              args: [toAddress, BigInt(rawEthAmount)],
             });
           }
 
@@ -755,10 +775,11 @@ export const GroupAccountServiceLive: Layer.Layer<
           }
 
           const serverWallet = yield* getServerWallet(userId);
-          const amount = BigInt(params.amount);
+          // params.amount is human-readable; convert to raw units
+          const rawAmount = toRawTokenAmount(params.amount, params.token);
 
           let data: `0x${string}`;
-          let value: bigint | undefined;
+          let value: number | undefined;
 
           if (params.token) {
             // Approve the group contract to spend the token on behalf of the server wallet
@@ -766,7 +787,7 @@ export const GroupAccountServiceLive: Layer.Layer<
               params.token as `0x${string}`,
               serverWallet.address as `0x${string}`,
               group.groupAddress as `0x${string}`,
-              amount,
+              Number(rawAmount),
               serverWallet.id,
               group.chainId,
               userId
@@ -776,16 +797,17 @@ export const GroupAccountServiceLive: Layer.Layer<
             data = encodeFunctionData({
               abi: GROUP_ACCOUNT_ABI,
               functionName: "depositToken",
-              args: [params.token as `0x${string}`, amount],
+              args: [params.token as `0x${string}`, BigInt(rawAmount)],
             });
           } else {
-            // deposit() with ETH value
+            // deposit() with ETH value — convert human-readable to wei
+            const rawEthAmount = Math.floor(Number(params.amount) * 1e18);
             data = encodeFunctionData({
               abi: GROUP_ACCOUNT_ABI,
               functionName: "deposit",
               args: [],
             });
-            value = amount;
+            value = rawEthAmount;
           }
 
           const tx = yield* sendGroupTx(
@@ -948,7 +970,7 @@ export const GroupAccountServiceLive: Layer.Layer<
               }),
           });
 
-          // Read ERC-20 balances
+          // Read ERC-20 balances — return human-readable amounts
           const tokenBalances: Record<string, string> = {};
           if (tokens && tokens.length > 0) {
             for (const tokenAddress of tokens) {
@@ -966,12 +988,13 @@ export const GroupAccountServiceLive: Layer.Layer<
                     cause: error,
                   }),
               });
-              tokenBalances[tokenAddress] = String(balance);
+              const decimals = TOKEN_DECIMALS_BY_ADDRESS[tokenAddress.toLowerCase()] ?? 18;
+              tokenBalances[tokenAddress] = formatUnits(balance as bigint, decimals);
             }
           }
 
           return {
-            eth: String(ethBalance),
+            eth: formatUnits(ethBalance, 18),
             tokens: tokenBalances,
           };
         }),

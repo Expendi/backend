@@ -242,13 +242,13 @@ export const GoalSavingsServiceLive: Layer.Layer<
             }),
         });
 
-        // Update goal accumulation
+        // Update goal accumulation (human-readable amounts)
         const newAccumulated = (
-          BigInt(goal.accumulatedAmount) + BigInt(amount)
+          Number(goal.accumulatedAmount) + Number(amount)
         ).toString();
         const newTotalDeposits = goal.totalDeposits + 1;
         const isCompleted =
-          BigInt(newAccumulated) >= BigInt(goal.targetAmount);
+          Number(newAccumulated) >= Number(goal.targetAmount);
 
         yield* Effect.tryPromise({
           try: () =>
@@ -573,9 +573,9 @@ export const GoalSavingsServiceLive: Layer.Layer<
 
           // Get accrued yield for each position
           const positionResults: AccruedYieldInfo[] = [];
-          let totalPrincipal = 0n;
-          let totalAssets = 0n;
-          let totalYield = 0n;
+          let totalPrincipal = 0;
+          let totalAssets = 0;
+          let totalYield = 0;
 
           for (const deposit of deposits) {
             if (!deposit.yieldPositionId) continue;
@@ -593,9 +593,9 @@ export const GoalSavingsServiceLive: Layer.Layer<
               );
 
             positionResults.push(info);
-            totalPrincipal += BigInt(info.principalAmount);
-            totalAssets += BigInt(info.currentAssets);
-            totalYield += BigInt(info.accruedYield);
+            totalPrincipal += Number(info.principalAmount);
+            totalAssets += Number(info.currentAssets);
+            totalYield += Number(info.accruedYield);
           }
 
           return {

@@ -8,7 +8,7 @@ export class WalletError extends Data.TaggedError("WalletError")<{
 
 export interface SendTransactionParams {
   readonly to: string;
-  readonly value?: bigint;
+  readonly value?: number | bigint;
   readonly data?: string;
   readonly chainId: number;
   readonly sponsor?: boolean;

@@ -19,7 +19,7 @@ export interface ContractExecutionRequest {
   readonly chainId: number;
   readonly method: string;
   readonly args: readonly unknown[];
-  readonly value?: bigint;
+  readonly value?: number | bigint;
 }
 
 // ── Multi-chain connector definition ──────────────────────────────────

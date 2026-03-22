@@ -402,10 +402,12 @@ export const SplitExpenseServiceLive: Layer.Layer<
             .address as `0x${string}`;
 
           // 4. Execute ERC-20 transfer via raw transaction
+          // share.amount is human-readable; convert to raw units using expense token decimals
+          const rawShareAmount = String(Math.floor(Number(share.amount) * Math.pow(10, expense.tokenDecimals)));
           const transferData = encodeFunctionData({
             abi: ERC20_TRANSFER_ABI,
             functionName: "transfer",
-            args: [recipientAddress, BigInt(share.amount)],
+            args: [recipientAddress, BigInt(rawShareAmount)],
           });
 
           const tx = yield* txService.submitRawTransaction({

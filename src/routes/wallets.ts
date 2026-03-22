@@ -81,7 +81,7 @@ export function createWalletRoutes(runtime: AppRuntime) {
             Effect.gen(function* () {
               const address = wallet.address as Address;
 
-              const ethBalance = yield* Effect.tryPromise({
+              const ethBalanceRaw = yield* Effect.tryPromise({
                 try: () => publicClient.getBalance({ address }),
                 catch: () =>
                   new Error(
@@ -92,7 +92,7 @@ export function createWalletRoutes(runtime: AppRuntime) {
                 Effect.catchAll(() => Effect.succeed("0"))
               );
 
-              const usdcBalance = yield* executor
+              const usdcBalanceRaw = yield* executor
                 .readContract("usdc", chainId, "balance", [address])
                 .pipe(
                   Effect.map((balance) => String(balance)),
@@ -104,8 +104,8 @@ export function createWalletRoutes(runtime: AppRuntime) {
                 type: wallet.type,
                 address: wallet.address,
                 balances: {
-                  ETH: ethBalance,
-                  USDC: usdcBalance,
+                  ETH: formatUnits(BigInt(ethBalanceRaw), 18),
+                  USDC: formatUnits(BigInt(usdcBalanceRaw), 6),
                 },
               };
             }),
@@ -398,6 +398,21 @@ export function createWalletRoutes(runtime: AppRuntime) {
         const chainId = body.chainId ?? config.defaultChainId;
         const token = body.token ?? "usdc";
 
+        // Resolve token decimals for human-readable → raw conversion
+        const TOKEN_DECIMALS: Record<string, number> = {
+          usdc: 6,
+          usdt: 6,
+          dai: 18,
+          eth: 18,
+          weth: 18,
+          cbeth: 18,
+          cbbtc: 8,
+          aero: 18,
+        };
+        const tokenDecimals = TOKEN_DECIMALS[token.toLowerCase()] ?? 18;
+        // Convert human-readable amount (e.g. "5") to raw units (e.g. 5000000 for USDC)
+        const rawAmount = Math.floor(Number(body.amount) * Math.pow(10, tokenDecimals));
+
         // ── Category spending limit enforcement ──
         if (body.categoryId) {
           const [limit] = yield* Effect.tryPromise({
@@ -442,18 +457,13 @@ export function createWalletRoutes(runtime: AppRuntime) {
             });
 
             const total = spendingResult?.total ?? "0";
-            const currentSpent = BigInt(total);
-            const monthlyLimit = BigInt(limit.monthlyLimit);
-            const txAmount = BigInt(body.amount);
+            const currentSpent = Number(total);
+            const monthlyLimit = Number(limit.monthlyLimit) * Math.pow(10, limit.tokenDecimals);
 
-            if (currentSpent + txAmount > monthlyLimit) {
+            if (currentSpent + rawAmount > monthlyLimit) {
               const decimals = limit.tokenDecimals;
-              const spentFormatted = (
-                Number(currentSpent) / Math.pow(10, decimals)
-              ).toFixed(2);
-              const limitFormatted = (
-                Number(monthlyLimit) / Math.pow(10, decimals)
-              ).toFixed(2);
+              const spentFormatted = (currentSpent / Math.pow(10, decimals)).toFixed(2);
+              const limitFormatted = (Number(limit.monthlyLimit)).toFixed(2);
               return yield* Effect.fail(
                 new Error(
                   `Category spending limit exceeded: ${spentFormatted}/${limitFormatted} ${limit.tokenSymbol} this month`
@@ -470,7 +480,7 @@ export function createWalletRoutes(runtime: AppRuntime) {
           contractName: token,
           chainId,
           method: "transfer",
-          args: [toWallet.address, BigInt(body.amount)],
+          args: [toWallet.address, rawAmount],
           categoryId: body.categoryId,
           userId,
         });
