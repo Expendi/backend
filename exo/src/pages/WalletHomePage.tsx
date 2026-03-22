@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApi } from "../hooks/useApi";
 import { useDashboard } from "../context/DashboardContext";
@@ -6,9 +6,29 @@ import type { WalletBalanceDetailed } from "../context/DashboardContext";
 import { SendModal } from "../components/SendModal";
 import { AnimatedBalance } from "../components/AnimatedBalance";
 import { useAppMode } from "../context/AppModeContext";
-import type { YieldPortfolio, GoalSaving, RecurringPayment } from "../lib/types";
+import type { YieldPortfolio, GoalSaving, RecurringPayment, Transaction } from "../lib/types";
 import "../styles/wallet-home.css";
 import "../styles/pages.css";
+
+/* ─── Deposit Type ───────────────────────────────────────────────── */
+
+interface Deposit {
+  walletId: string;
+  walletType: string;
+  walletAddress: string;
+  from: string;
+  tokenAddress: string;
+  tokenSymbol: string;
+  amount: string;
+  formattedAmount: string;
+  blockNumber: string;
+  transactionHash: string;
+  timestamp?: string;
+}
+
+type RecentItem =
+  | { kind: "tx"; data: Transaction; sortTime: number }
+  | { kind: "deposit"; data: Deposit; sortTime: number };
 
 /* ─── Helpers ─────────────────────────────────────────────────────── */
 
@@ -98,6 +118,41 @@ function CarouselCard({
 
 /* ─── Page ────────────────────────────────────────────────────────── */
 
+/** Extract transfer details from a transaction */
+function getTransferInfo(tx: Transaction): { token: string; amount: string; to: string } | null {
+  if (tx.method !== "transfer" || !tx.payload) return null;
+  const args = tx.payload.args as unknown[];
+  if (!Array.isArray(args) || args.length < 2) return null;
+
+  const to = String(args[0]);
+  const rawAmount = Number(args[1]);
+
+  const contract = (tx.contractId ?? "").toLowerCase();
+  const TOKEN_DECIMALS: Record<string, { symbol: string; decimals: number }> = {
+    usdc: { symbol: "USDC", decimals: 6 },
+    usdt: { symbol: "USDT", decimals: 6 },
+    dai: { symbol: "DAI", decimals: 18 },
+    eth: { symbol: "ETH", decimals: 18 },
+    weth: { symbol: "WETH", decimals: 18 },
+    cbeth: { symbol: "cbETH", decimals: 18 },
+    cbbtc: { symbol: "cbBTC", decimals: 8 },
+    aero: { symbol: "AERO", decimals: 18 },
+  };
+
+  const tokenInfo = TOKEN_DECIMALS[contract] ?? { symbol: contract.toUpperCase() || "TOKEN", decimals: 18 };
+  const formatted = rawAmount / Math.pow(10, tokenInfo.decimals);
+
+  return {
+    token: tokenInfo.symbol,
+    amount: formatted % 1 === 0 ? String(formatted) : formatted.toFixed(formatted < 1 ? 6 : 2),
+    to,
+  };
+}
+
+function truncateAddr(s: string): string {
+  return s ? `${s.slice(0, 6)}...${s.slice(-4)}` : "—";
+}
+
 export function WalletHomePage() {
   const { walletBalances, recentTransactions, loading, refresh } = useDashboard();
   const { request } = useApi();
@@ -111,6 +166,14 @@ export function WalletHomePage() {
   const [yieldPortfolio, setYieldPortfolio] = useState<YieldPortfolio | null>(null);
   const [activeGoals, setActiveGoals] = useState<GoalSaving[]>([]);
   const [nextRecurring, setNextRecurring] = useState<RecurringPayment | null>(null);
+  const [deposits, setDeposits] = useState<Deposit[]>([]);
+
+  const fetchDeposits = useCallback(async () => {
+    try {
+      const data = await request<Deposit[]>("/wallets/deposits");
+      setDeposits(data);
+    } catch { /* silent */ }
+  }, [request]);
 
   useEffect(() => {
     request<YieldPortfolio>("/yield/portfolio").then(setYieldPortfolio).catch(() => {});
@@ -129,7 +192,8 @@ export function WalletHomePage() {
         }
       })
       .catch(() => {});
-  }, [request]);
+    fetchDeposits();
+  }, [request, fetchDeposits]);
 
   // Active wallet balance
   const activeWallet = walletBalances[activeWalletIdx] ?? null;
@@ -141,7 +205,22 @@ export function WalletHomePage() {
     ? Number(activeWallet.balances.ETH ?? "0")
     : walletBalances.reduce((s, w) => s + Number(w.balances.ETH ?? "0"), 0);
 
-  const recentTxs = recentTransactions.slice(0, 5);
+  // Merge transactions and deposits into a unified recent list
+  const recentItems = useMemo<RecentItem[]>(() => {
+    const items: RecentItem[] = [];
+    for (const tx of recentTransactions) {
+      items.push({ kind: "tx", data: tx, sortTime: new Date(tx.createdAt).getTime() });
+    }
+    for (const dep of deposits) {
+      items.push({
+        kind: "deposit",
+        data: dep,
+        sortTime: dep.timestamp ? new Date(dep.timestamp).getTime() : Number(dep.blockNumber),
+      });
+    }
+    items.sort((a, b) => b.sortTime - a.sortTime);
+    return items.slice(0, 5);
+  }, [recentTransactions, deposits]);
 
   function formatTime(iso: string): string {
     const d = new Date(iso);
@@ -356,7 +435,7 @@ export function WalletHomePage() {
       </div>
 
       {/* Recent Activity */}
-      {recentTxs.length > 0 && (
+      {recentItems.length > 0 && (
         <div className="wh-section">
           <div className="wh-section-header">
             <span className="wh-section-title">Recent</span>
@@ -375,15 +454,44 @@ export function WalletHomePage() {
             </button>
           </div>
           <div className="wh-wallet-card" style={{ padding: "4px 16px" }}>
-            {recentTxs.map((tx) => (
-              <div key={tx.id} className="wh-recent-tx">
-                <div className="wh-recent-tx-left">
-                  <span className="wh-recent-tx-method">{tx.method}</span>
-                  <span className="wh-recent-tx-time">{formatTime(tx.createdAt)}</span>
+            {recentItems.map((item) => {
+              if (item.kind === "deposit") {
+                const dep = item.data;
+                return (
+                  <div key={`dep-${dep.transactionHash}`} className="wh-recent-tx" onClick={() => navigate("/activity")} style={{ cursor: "pointer" }}>
+                    <div className="wh-recent-tx-left">
+                      <span className="wh-recent-tx-method">Deposit</span>
+                      <span className="wh-recent-tx-time">from {truncateAddr(dep.from)}</span>
+                    </div>
+                    <span style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: "var(--exo-lime, #a3e635)",
+                    }}>
+                      +{dep.formattedAmount} {dep.tokenSymbol}
+                    </span>
+                  </div>
+                );
+              }
+              const tx = item.data;
+              const transfer = getTransferInfo(tx);
+              return (
+                <div key={tx.id} className="wh-recent-tx" onClick={() => navigate("/activity")} style={{ cursor: "pointer" }}>
+                  <div className="wh-recent-tx-left">
+                    <span className="wh-recent-tx-method">
+                      {transfer ? "Transfer" : tx.method.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/\b\w/g, (c) => c.toUpperCase())}
+                    </span>
+                    <span className="wh-recent-tx-time">
+                      {transfer
+                        ? `${transfer.amount} ${transfer.token} · ${formatTime(tx.createdAt)}`
+                        : formatTime(tx.createdAt)}
+                    </span>
+                  </div>
+                  <span className={`activity-badge ${tx.status}`}>{tx.status === "submitted" ? "success" : tx.status}</span>
                 </div>
-                <span className={`activity-badge ${tx.status}`}>{tx.status}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
