@@ -1,5 +1,5 @@
 import { Effect, Context, Layer, Data } from "effect";
-import { eq, and, lte, isNotNull } from "drizzle-orm";
+import { eq, and, lte, isNotNull, desc } from "drizzle-orm";
 import { DatabaseService } from "../../db/client.js";
 import {
   goalSavings,
@@ -196,10 +196,32 @@ export const GoalSavingsServiceLive: Layer.Layer<
           );
         }
 
+        // Create a pending deposit record FIRST so every attempt is tracked
+        const [pendingDeposit] = yield* Effect.tryPromise({
+          try: () =>
+            db
+              .insert(goalSavingsDeposits)
+              .values({
+                goalId: goal.id,
+                yieldPositionId: null,
+                amount,
+                depositType,
+                status: "pending",
+              })
+              .returning(),
+          catch: (error) =>
+            new GoalSavingsError({
+              message: `Failed to create pending deposit record: ${error}`,
+              cause: error,
+            }),
+        });
+
+        const depositId = pendingDeposit!.id;
+
         const unlockTime = Math.floor(Date.now() / 1000) + offsetSeconds;
 
-        // Create yield position
-        const position = yield* yieldService
+        // Create yield position — if this fails the deposit is marked "failed"
+        const positionResult = yield* yieldService
           .createPosition({
             userId: goal.userId,
             walletId,
@@ -211,33 +233,51 @@ export const GoalSavingsServiceLive: Layer.Layer<
             chainId,
           })
           .pipe(
-            Effect.mapError(
-              (e) =>
-                new GoalSavingsError({
-                  message: `Failed to create yield position: ${e.message}`,
-                  cause: e,
-                })
+            Effect.map((p) => ({ ok: true as const, position: p })),
+            Effect.catchAll((e) =>
+              Effect.succeed({
+                ok: false as const,
+                error: `Failed to create yield position: ${e.message}`,
+              })
             )
           );
 
-        // Insert deposit record
-        const depositValues: NewGoalSavingsDeposit = {
-          goalId: goal.id,
-          yieldPositionId: position.id,
-          amount,
-          depositType,
-          status: "confirmed",
-        };
+        if (!positionResult.ok) {
+          // Mark the deposit as failed so it's visible in the app
+          yield* Effect.tryPromise({
+            try: () =>
+              db
+                .update(goalSavingsDeposits)
+                .set({
+                  status: "failed",
+                  error: positionResult.error,
+                })
+                .where(eq(goalSavingsDeposits.id, depositId)),
+            catch: () =>
+              new GoalSavingsError({
+                message: `Failed to mark deposit as failed`,
+              }),
+          });
 
-        const [deposit] = yield* Effect.tryPromise({
+          return yield* Effect.fail(
+            new GoalSavingsError({ message: positionResult.error })
+          );
+        }
+
+        // Yield position created — update the deposit to confirmed
+        const [confirmedDeposit] = yield* Effect.tryPromise({
           try: () =>
             db
-              .insert(goalSavingsDeposits)
-              .values(depositValues)
+              .update(goalSavingsDeposits)
+              .set({
+                yieldPositionId: positionResult.position.id,
+                status: "confirmed",
+              })
+              .where(eq(goalSavingsDeposits.id, depositId))
               .returning(),
           catch: (error) =>
             new GoalSavingsError({
-              message: `Failed to record deposit: ${error}`,
+              message: `Failed to confirm deposit record: ${error}`,
               cause: error,
             }),
         });
@@ -268,7 +308,7 @@ export const GoalSavingsServiceLive: Layer.Layer<
             }),
         });
 
-        return deposit!;
+        return confirmedDeposit!;
       });
 
     return {
@@ -534,7 +574,7 @@ export const GoalSavingsServiceLive: Layer.Layer<
               .select()
               .from(goalSavingsDeposits)
               .where(eq(goalSavingsDeposits.goalId, goalId))
-              .orderBy(goalSavingsDeposits.depositedAt)
+              .orderBy(desc(goalSavingsDeposits.depositedAt))
               .limit(limit);
             return results;
           },
@@ -651,6 +691,8 @@ export const GoalSavingsServiceLive: Layer.Layer<
           );
 
           const deposits: GoalSavingsDeposit[] = [];
+          let failedCount = 0;
+          let skippedCount = 0;
 
           for (const goal of dueGoals) {
             const amount = goal.depositAmount;
@@ -658,8 +700,13 @@ export const GoalSavingsServiceLive: Layer.Layer<
               console.log(
                 `[processDueDeposits] Skipping goal ${goal.id}: no depositAmount configured`
               );
+              skippedCount++;
               continue;
             }
+
+            console.log(
+              `[processDueDeposits] Attempting deposit for goal ${goal.id}: amount=${amount}, wallet=${goal.walletId}, vault=${goal.vaultId}`
+            );
 
             const result = yield* depositOne(goal, amount, "automated").pipe(
               Effect.map((d) => ({ success: true as const, deposit: d })),
@@ -684,6 +731,9 @@ export const GoalSavingsServiceLive: Layer.Layer<
             const nextDepositAt = new Date(Date.now() + intervalMs);
 
             if (result.success) {
+              console.log(
+                `[processDueDeposits] Deposit SUCCEEDED for goal ${goal.id}: depositId=${result.deposit.id}`
+              );
               // Reset failures, advance next deposit
               yield* Effect.tryPromise({
                 try: () =>
@@ -703,6 +753,7 @@ export const GoalSavingsServiceLive: Layer.Layer<
 
               deposits.push(result.deposit);
             } else {
+              failedCount++;
               // Increment failures
               const newFailures = goal.consecutiveFailures + 1;
               const newStatus =
@@ -741,6 +792,10 @@ export const GoalSavingsServiceLive: Layer.Layer<
               });
             }
           }
+
+          console.log(
+            `[processDueDeposits] Summary: due=${dueGoals.length}, succeeded=${deposits.length}, failed=${failedCount}, skipped=${skippedCount}`
+          );
 
           return deposits;
         }),

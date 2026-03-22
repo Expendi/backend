@@ -20,11 +20,6 @@ export const processDueGoalSavings = schedules.task({
       })
     );
 
-    if (deposits.length === 0) {
-      logger.info("No due goal savings deposits found");
-      return { processedCount: 0, timestamp: payload.timestamp };
-    }
-
     for (let i = 0; i < deposits.length; i++) {
       const deposit = deposits[i]!;
       logger.info(`[${i + 1}/${deposits.length}] Goal deposit processed`, {
@@ -38,7 +33,7 @@ export const processDueGoalSavings = schedules.task({
     }
 
     logger.info(
-      `Completed — ${deposits.length} goal savings deposit(s) processed`
+      `Completed — ${deposits.length} goal savings deposit(s) confirmed. Check service logs for detailed due/failed/skipped counts.`
     );
     return { processedCount: deposits.length, timestamp: payload.timestamp };
   },
