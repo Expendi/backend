@@ -141,6 +141,8 @@ function makeTestRuntime(opts?: {
             }
           ),
 
+    withdraw: () => Effect.succeed({} as any),
+
     processDueDeposits: () =>
       Effect.succeed(opts?.processDueResult ?? []),
   });

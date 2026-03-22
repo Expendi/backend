@@ -725,15 +725,11 @@ describe("GoalSavingsService", () => {
         makeFakeDeposit({ id: "dep-2", yieldPositionId: "pos-2" }),
       ];
 
-      const { layer } = makeTestLayers({
-        selectResult: deposits,
-        getAccruedYieldResult: {
-          positionId: "pos-1",
-          principalAmount: "100000",
-          currentAssets: "105000",
-          accruedYield: "5000",
-          estimatedApy: "5.0",
-        },
+      const { layer } = makeTestLayersMultiCall({
+        selectResults: [
+          [makeFakeGoal()],  // first select: fetch goal
+          deposits,          // second select: fetch deposits
+        ],
       });
 
       const result = await Effect.runPromise(
@@ -752,7 +748,12 @@ describe("GoalSavingsService", () => {
     });
 
     it("should return zeros when no deposits", async () => {
-      const { layer } = makeTestLayers({ selectResult: [] });
+      const { layer } = makeTestLayersMultiCall({
+        selectResults: [
+          [makeFakeGoal()],  // first select: fetch goal
+          [],                // second select: no deposits
+        ],
+      });
 
       const result = await Effect.runPromise(
         Effect.gen(function* () {

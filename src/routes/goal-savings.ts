@@ -255,6 +255,27 @@ export function createGoalSavingsRoutes(runtime: AppRuntime) {
     )
   );
 
+  // POST /:id/deposits/:depositId/withdraw — Withdraw a single deposit
+  app.post("/:id/deposits/:depositId/withdraw", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const userId = c.get("userId");
+        const id = c.req.param("id");
+        const depositId = c.req.param("depositId");
+        const service = yield* GoalSavingsService;
+
+        const goal = yield* service.getGoal(id);
+        if (!goal || goal.userId !== userId) {
+          return yield* Effect.fail(new Error("Goal not found"));
+        }
+
+        return yield* service.withdraw(id, depositId);
+      }),
+      c
+    )
+  );
+
   // GET /:id/accrued-yield — Aggregated accrued yield for all goal deposits
   app.get("/:id/accrued-yield", (c) =>
     runEffect(

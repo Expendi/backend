@@ -110,7 +110,7 @@ export const goalSavingsStatusEnum = pgEnum("goal_savings_status", [
 
 export const goalSavingsDepositStatusEnum = pgEnum(
   "goal_savings_deposit_status",
-  ["pending", "confirmed", "failed"]
+  ["pending", "confirmed", "failed", "withdrawn"]
 );
 
 export const trustTierEnum = pgEnum("trust_tier", [

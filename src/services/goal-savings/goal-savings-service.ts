@@ -1,4 +1,5 @@
 import { Effect, Context, Layer, Data } from "effect";
+import { parseUnits, formatUnits } from "viem";
 import { eq, and, lte, isNotNull } from "drizzle-orm";
 import { DatabaseService } from "../../db/client.js";
 import {
@@ -118,6 +119,11 @@ export interface GoalSavingsServiceApi {
   readonly getAccruedYield: (
     goalId: string
   ) => Effect.Effect<GoalAccruedYieldInfo, GoalSavingsError>;
+
+  readonly withdraw: (
+    goalId: string,
+    depositId: string
+  ) => Effect.Effect<GoalSavingsDeposit, GoalSavingsError>;
 
   readonly processDueDeposits: () => Effect.Effect<
     ReadonlyArray<GoalSavingsDeposit>,
@@ -242,13 +248,14 @@ export const GoalSavingsServiceLive: Layer.Layer<
             }),
         });
 
-        // Update goal accumulation (human-readable amounts)
-        const newAccumulated = (
-          Number(goal.accumulatedAmount) + Number(amount)
-        ).toString();
+        // Update goal accumulation using fixed-point arithmetic
+        const decimals = goal.tokenDecimals;
+        const accRaw = parseUnits(goal.accumulatedAmount, decimals);
+        const amtRaw = parseUnits(amount, decimals);
+        const newAccumulated = formatUnits(accRaw + amtRaw, decimals);
         const newTotalDeposits = goal.totalDeposits + 1;
-        const isCompleted =
-          Number(newAccumulated) >= Number(goal.targetAmount);
+        const targetRaw = parseUnits(goal.targetAmount, decimals);
+        const isCompleted = accRaw + amtRaw >= targetRaw;
 
         yield* Effect.tryPromise({
           try: () =>
@@ -547,6 +554,26 @@ export const GoalSavingsServiceLive: Layer.Layer<
 
       getAccruedYield: (goalId: string) =>
         Effect.gen(function* () {
+          // Fetch the goal to get token decimals
+          const [goal] = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .select()
+                .from(goalSavings)
+                .where(eq(goalSavings.id, goalId)),
+            catch: (error) =>
+              new GoalSavingsError({
+                message: `Failed to fetch goal: ${error}`,
+                cause: error,
+              }),
+          });
+
+          if (!goal) {
+            return yield* Effect.fail(
+              new GoalSavingsError({ message: "Goal not found" })
+            );
+          }
+
           // Fetch all confirmed deposits for this goal
           const deposits = yield* Effect.tryPromise({
             try: () =>
@@ -573,9 +600,10 @@ export const GoalSavingsServiceLive: Layer.Layer<
 
           // Get accrued yield for each position
           const positionResults: AccruedYieldInfo[] = [];
-          let totalPrincipal = 0;
-          let totalAssets = 0;
-          let totalYield = 0;
+          const decimals = goal.tokenDecimals;
+          let totalPrincipal = 0n;
+          let totalAssets = 0n;
+          let totalYield = 0n;
 
           for (const deposit of deposits) {
             if (!deposit.yieldPositionId) continue;
@@ -593,18 +621,121 @@ export const GoalSavingsServiceLive: Layer.Layer<
               );
 
             positionResults.push(info);
-            totalPrincipal += Number(info.principalAmount);
-            totalAssets += Number(info.currentAssets);
-            totalYield += Number(info.accruedYield);
+            totalPrincipal += parseUnits(info.principalAmount, decimals);
+            totalAssets += parseUnits(info.currentAssets, decimals);
+            totalYield += parseUnits(info.accruedYield, decimals);
           }
 
           return {
             goalId,
-            totalPrincipalAmount: String(totalPrincipal),
-            totalCurrentAssets: String(totalAssets),
-            totalAccruedYield: String(totalYield),
+            totalPrincipalAmount: formatUnits(totalPrincipal, decimals),
+            totalCurrentAssets: formatUnits(totalAssets, decimals),
+            totalAccruedYield: formatUnits(totalYield, decimals),
             positions: positionResults,
           } satisfies GoalAccruedYieldInfo;
+        }),
+
+      withdraw: (goalId: string, depositId: string) =>
+        Effect.gen(function* () {
+          // Fetch the deposit
+          const [deposit] = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .select()
+                .from(goalSavingsDeposits)
+                .where(
+                  and(
+                    eq(goalSavingsDeposits.id, depositId),
+                    eq(goalSavingsDeposits.goalId, goalId)
+                  )
+                ),
+            catch: (error) =>
+              new GoalSavingsError({
+                message: `Failed to fetch deposit: ${error}`,
+                cause: error,
+              }),
+          });
+
+          if (!deposit) {
+            return yield* Effect.fail(
+              new GoalSavingsError({ message: "Deposit not found" })
+            );
+          }
+
+          if (deposit.status === "withdrawn") {
+            return yield* Effect.fail(
+              new GoalSavingsError({ message: "Deposit already withdrawn" })
+            );
+          }
+
+          // Withdraw the underlying yield position
+          yield* yieldService
+            .withdrawPosition(deposit.yieldPositionId)
+            .pipe(
+              Effect.mapError(
+                (e) =>
+                  new GoalSavingsError({
+                    message: `Failed to withdraw yield position: ${e.message}`,
+                    cause: e,
+                  })
+              )
+            );
+
+          // Update deposit status
+          const [updated] = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .update(goalSavingsDeposits)
+                .set({ status: "withdrawn" })
+                .where(eq(goalSavingsDeposits.id, depositId))
+                .returning(),
+            catch: (error) =>
+              new GoalSavingsError({
+                message: `Failed to update deposit status: ${error}`,
+                cause: error,
+              }),
+          });
+
+          // Decrease accumulated amount on the goal
+          const goal = yield* Effect.tryPromise({
+            try: async () => {
+              const [g] = await db
+                .select()
+                .from(goalSavings)
+                .where(eq(goalSavings.id, goalId));
+              return g;
+            },
+            catch: (error) =>
+              new GoalSavingsError({
+                message: `Failed to fetch goal: ${error}`,
+                cause: error,
+              }),
+          });
+
+          if (goal) {
+            const decimals = goal.tokenDecimals;
+            const accRaw = parseUnits(goal.accumulatedAmount, decimals);
+            const withdrawnRaw = parseUnits(deposit.amount, decimals);
+            const newAcc = accRaw > withdrawnRaw ? accRaw - withdrawnRaw : 0n;
+
+            yield* Effect.tryPromise({
+              try: () =>
+                db
+                  .update(goalSavings)
+                  .set({
+                    accumulatedAmount: formatUnits(newAcc, decimals),
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(goalSavings.id, goalId)),
+              catch: (error) =>
+                new GoalSavingsError({
+                  message: `Failed to update goal after withdrawal: ${error}`,
+                  cause: error,
+                }),
+            });
+          }
+
+          return updated!;
         }),
 
       processDueDeposits: () =>
