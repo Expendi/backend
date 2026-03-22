@@ -1,5 +1,5 @@
 import { Effect, Context, Layer, Data } from "effect";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import type { Hash } from "viem";
 import { DatabaseService } from "../../db/client.js";
 import {
@@ -175,7 +175,7 @@ export const LedgerServiceLive: Layer.Layer<
               .select()
               .from(transactions)
               .where(eq(transactions.walletId, walletId))
-              .orderBy(transactions.createdAt);
+              .orderBy(desc(transactions.createdAt));
             return results;
           },
           catch: (error) =>
@@ -192,7 +192,7 @@ export const LedgerServiceLive: Layer.Layer<
               .select()
               .from(transactions)
               .where(eq(transactions.userId, userId))
-              .orderBy(transactions.createdAt);
+              .orderBy(desc(transactions.createdAt));
             return results;
           },
           catch: (error) =>
@@ -208,7 +208,7 @@ export const LedgerServiceLive: Layer.Layer<
             const results = await db
               .select()
               .from(transactions)
-              .orderBy(transactions.createdAt)
+              .orderBy(desc(transactions.createdAt))
               .limit(limit)
               .offset(offset);
             return results;
