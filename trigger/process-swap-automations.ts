@@ -1,4 +1,4 @@
-import { schedules } from "@trigger.dev/sdk";
+import { schedules, logger } from "@trigger.dev/sdk";
 import { Effect } from "effect";
 import { runtime } from "../src/runtime.js";
 import { SwapAutomationService } from "../src/services/swap-automation/swap-automation-service.js";
@@ -16,12 +16,14 @@ export const processSwapAutomations = schedules.task({
     factor: 2,
   },
   run: async (payload) => {
+    logger.info("Starting process-swap-automations", { timestamp: payload.timestamp });
     const executions = await runtime.runPromise(
       Effect.gen(function* () {
         const service = yield* SwapAutomationService;
         return yield* service.processDueAutomations();
       })
     );
+    logger.info("Completed process-swap-automations", { processedCount: executions.length });
     return {
       processedCount: executions.length,
       timestamp: payload.timestamp,

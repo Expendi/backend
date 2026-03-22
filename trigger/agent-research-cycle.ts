@@ -1,4 +1,4 @@
-import { schedules } from "@trigger.dev/sdk";
+import { schedules, logger } from "@trigger.dev/sdk";
 import { Effect } from "effect";
 import { runtime } from "../src/runtime.js";
 import { AgentAutonomyService } from "../src/services/agent/agent-autonomy-service.js";
@@ -17,6 +17,7 @@ export const agentResearchCycle = schedules.task({
     factor: 2,
   },
   run: async (payload) => {
+    logger.info("Starting agent-research-cycle", { timestamp: payload.timestamp });
     const results = await runtime.runPromise(
       Effect.gen(function* () {
         const profileService = yield* AgentProfileService;
@@ -60,6 +61,11 @@ export const agentResearchCycle = schedules.task({
       })
     );
 
+    logger.info("Completed agent-research-cycle", {
+      usersProcessed: results.length,
+      totalOpportunities: results.reduce((s, r) => s + r.opportunities, 0),
+      totalSuggestions: results.reduce((s, r) => s + r.suggestions, 0),
+    });
     return {
       usersProcessed: results.length,
       totalOpportunities: results.reduce((s, r) => s + r.opportunities, 0),
