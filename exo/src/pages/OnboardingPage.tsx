@@ -1,7 +1,9 @@
 import { useEffect, useState, useRef } from "react";
-import { useApi } from "../hooks/useApi";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "../context/AuthContext";
-import type { OnboardResult } from "../lib/types";
+import { useOnboardMutation, useUsernameMutation } from "../hooks/queries";
+import { usernameSchema, type UsernameFormData } from "../lib/schemas";
 
 /**
  * OnboardingPage — Two-step onboarding flow:
@@ -13,76 +15,49 @@ import type { OnboardResult } from "../lib/types";
  * It's optional — users can skip and set it later in Settings.
  */
 export function OnboardingPage() {
-  const { request } = useApi();
   const { refreshProfile } = useAuth();
-  const [error, setError] = useState<string | null>(null);
+  const onboardMutation = useOnboardMutation();
+  const usernameMutation = useUsernameMutation();
   const [status, setStatus] = useState<
     "provisioning" | "choose_username" | "saving_username" | "error"
   >("provisioning");
-  const [username, setUsername] = useState("");
-  const [usernameError, setUsernameError] = useState<string | null>(null);
   const hasStarted = useRef(false);
 
+  const {
+    register,
+    handleSubmit,
+    setError,
+    formState: { errors },
+    watch,
+  } = useForm<UsernameFormData>({
+    resolver: zodResolver(usernameSchema),
+    defaultValues: { username: "" },
+  });
+
+  const usernameValue = watch("username");
+
   const runOnboarding = async () => {
-    setError(null);
     setStatus("provisioning");
-
     try {
-      await request<OnboardResult>("/onboard", {
-        method: "POST",
-        body: { chainId: 8453 },
-      });
-
+      await onboardMutation.mutateAsync(8453);
       setStatus("choose_username");
     } catch (err) {
       setStatus("error");
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Something went wrong setting up your wallet."
-      );
     }
   };
 
-  const handleSetUsername = async () => {
-    const trimmed = username.trim().toLowerCase();
-
-    // Basic validation
-    if (!trimmed) {
-      setUsernameError("Please enter a username");
-      return;
-    }
-    if (trimmed.length < 3) {
-      setUsernameError("Must be at least 3 characters");
-      return;
-    }
-    if (trimmed.length > 20) {
-      setUsernameError("Must be 20 characters or less");
-      return;
-    }
-    if (!/^[a-z0-9_]+$/.test(trimmed)) {
-      setUsernameError("Only lowercase letters, numbers, and underscores");
-      return;
-    }
-
-    setUsernameError(null);
+  const onUsernameSubmit = async (data: UsernameFormData) => {
     setStatus("saving_username");
-
     try {
-      await request("/profile/username", {
-        method: "PUT",
-        body: { username: trimmed },
-      });
+      await usernameMutation.mutateAsync(data.username);
       await refreshProfile();
     } catch (err) {
       setStatus("choose_username");
-      const msg =
-        err instanceof Error ? err.message : "Could not set username";
-      // Check for "taken" style errors from backend
+      const msg = err instanceof Error ? err.message : "Could not set username";
       if (msg.toLowerCase().includes("taken") || msg.toLowerCase().includes("exists")) {
-        setUsernameError("That username is already taken");
+        setError("username", { message: "That username is already taken" });
       } else {
-        setUsernameError(msg);
+        setError("username", { message: msg });
       }
     }
   };
@@ -126,7 +101,11 @@ export function OnboardingPage() {
 
         {/* Step 2: Choose username */}
         {(status === "choose_username" || status === "saving_username") && (
-          <div className="exo-onboarding-username" style={{ animation: "onboardFadeIn 0.4s ease both" }}>
+          <form
+            className="exo-onboarding-username"
+            style={{ animation: "onboardFadeIn 0.4s ease both" }}
+            onSubmit={handleSubmit(onUsernameSubmit)}
+          >
             <p className="exo-onboarding-subtitle">
               Pick a username so friends can send you tokens
             </p>
@@ -135,16 +114,13 @@ export function OnboardingPage() {
               <span className="exo-onboarding-at">@</span>
               <input
                 type="text"
-                className={`exo-onboarding-input ${usernameError ? "error" : ""}`}
+                className={`exo-onboarding-input ${errors.username ? "error" : ""}`}
                 placeholder="username"
-                value={username}
-                onChange={(e) => {
-                  setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""));
-                  setUsernameError(null);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !status.includes("saving")) handleSetUsername();
-                }}
+                {...register("username", {
+                  onChange: (e) => {
+                    e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "");
+                  },
+                })}
                 disabled={status === "saving_username"}
                 autoFocus
                 maxLength={20}
@@ -154,21 +130,22 @@ export function OnboardingPage() {
               />
             </div>
 
-            {usernameError && (
+            {errors.username && (
               <p className="exo-onboarding-input-error" role="alert">
-                {usernameError}
+                {errors.username.message}
               </p>
             )}
 
             <div className="exo-onboarding-actions">
               <button
+                type="submit"
                 className="btn-exo btn-primary exo-onboarding-continue"
-                onClick={handleSetUsername}
-                disabled={status === "saving_username" || !username.trim()}
+                disabled={status === "saving_username" || !usernameValue?.trim()}
               >
                 {status === "saving_username" ? "Setting up..." : "Continue"}
               </button>
               <button
+                type="button"
                 className="exo-onboarding-skip"
                 onClick={handleSkip}
                 disabled={status === "saving_username"}
@@ -176,14 +153,16 @@ export function OnboardingPage() {
                 Skip for now
               </button>
             </div>
-          </div>
+          </form>
         )}
 
         {/* Error state */}
         {status === "error" && (
           <div className="exo-onboarding-error" role="alert">
             <p className="exo-onboarding-error-msg">
-              {error || "Unable to create your wallet."}
+              {onboardMutation.error instanceof Error
+                ? onboardMutation.error.message
+                : "Unable to create your wallet."}
             </p>
             <button
               className="btn-exo btn-secondary exo-onboarding-retry"

@@ -1,29 +1,30 @@
-import { useState, useEffect, useCallback } from "react";
-import { useApi } from "../hooks/useApi";
+import { useState, useCallback } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import {
+  useCategoriesQuery,
+  useCategoryLimitsQuery,
+  useSpendingQuery,
+  useDailySpendingQuery,
+  useCreateCategoryMutation,
+  useUpdateCategoryMutation,
+  useDeleteCategoryMutation,
+  useBatchCreateCategoriesMutation,
+} from "../hooks/queries";
 import { Spinner } from "../components/Spinner";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
-import type { Category, CategoryLimit } from "../lib/types";
+import {
+  createCategorySchema,
+  editCategorySchema,
+  type CreateCategoryFormData,
+  type EditCategoryFormData,
+} from "../lib/schemas";
+import type { Category } from "../lib/types";
 import "../styles/pages.css";
 
 type Tab = "categories" | "spending";
-
-interface SpendingRow {
-  categoryId: string;
-  categoryName: string;
-  txCount: number;
-  totalSpent: string;
-  limit: { monthlyLimit: string; tokenSymbol: string; tokenDecimals: number } | null;
-}
-
-interface DailySpendingRow {
-  date: string;
-  categoryId: string;
-  categoryName: string;
-  totalAmount: string;
-  txCount: number;
-}
 
 const CHART_COLORS = [
   "#8b5cf6", "#6366f1", "#3b82f6", "#06b6d4", "#10b981",
@@ -43,10 +44,6 @@ const PRESET_CATEGORIES: { name: string; description: string }[] = [
   { name: "Other", description: "Uncategorized transactions" },
 ];
 
-const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-const USDC_SYMBOL = "USDC";
-const USDC_DECIMALS = 6;
-
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
@@ -59,236 +56,108 @@ function formatTokenAmount(raw: string, decimals: number): string {
 }
 
 export function CategoriesPage() {
-  const { request } = useApi();
+  const { data: categories = [], isLoading } = useCategoriesQuery();
+  const { data: limits = [] } = useCategoryLimitsQuery();
+  const { data: spending = [], isLoading: spendingLoading } = useSpendingQuery();
+  const { data: dailySpending = [] } = useDailySpendingQuery(30);
+
+  const createMutation = useCreateCategoryMutation();
+  const updateMutation = useUpdateCategoryMutation();
+  const deleteMutation = useDeleteCategoryMutation();
+  const batchMutation = useBatchCreateCategoriesMutation();
 
   const [tab, setTab] = useState<Tab>("categories");
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [limits, setLimits] = useState<CategoryLimit[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  // Category create form
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [createName, setCreateName] = useState("");
-  const [createDesc, setCreateDesc] = useState("");
-  const [createLimit, setCreateLimit] = useState("");
-  const [createWallet, setCreateWallet] = useState<"user" | "server" | "agent">("user");
-  const [createLoading, setCreateLoading] = useState(false);
-  const [createError, setCreateError] = useState("");
-
-  // Category detail modal
   const [selected, setSelected] = useState<Category | null>(null);
   const [editMode, setEditMode] = useState(false);
-  const [editName, setEditName] = useState("");
-  const [editDesc, setEditDesc] = useState("");
-  const [editLimit, setEditLimit] = useState("");
-  const [editLoading, setEditLoading] = useState(false);
-  const [editError, setEditError] = useState("");
-  const [deleteLoading, setDeleteLoading] = useState(false);
-  const [deleteError, setDeleteError] = useState("");
 
-
-  // Quick setup (batch creation)
+  // Quick setup
   const [quickSetupSelected, setQuickSetupSelected] = useState<Set<number>>(
     () => new Set(PRESET_CATEGORIES.map((_, i) => i))
   );
-  const [batchLoading, setBatchLoading] = useState(false);
-  const [batchError, setBatchError] = useState("");
 
-  // Spending analytics
-  const [spending, setSpending] = useState<SpendingRow[]>([]);
-  const [dailySpending, setDailySpending] = useState<DailySpendingRow[]>([]);
-  const [spendingLoading, setSpendingLoading] = useState(false);
+  // Create form
+  const createForm = useForm<CreateCategoryFormData>({
+    resolver: zodResolver(createCategorySchema),
+    defaultValues: { name: "", description: "", monthlyLimit: "", wallet: "user" },
+  });
 
-  const fetchCategories = useCallback(async () => {
-    setLoading(true);
-    try {
-      const raw = await request<(Omit<Category, "isGlobal"> & { userId: string | null })[]>("/categories");
-      setCategories(raw.map(c => ({ ...c, isGlobal: c.userId === null })));
-    } catch { /* handled by useApi */ }
-    setLoading(false);
-  }, [request]);
+  // Edit form
+  const editForm = useForm<EditCategoryFormData>({
+    resolver: zodResolver(editCategorySchema),
+    defaultValues: { name: "", description: "", monthlyLimit: "" },
+  });
 
-  const fetchLimits = useCallback(async () => {
-    try {
-      const data = await request<CategoryLimit[]>("/categories/limits");
-      setLimits(data);
-    } catch { /* handled by useApi */ }
-  }, [request]);
-
-  const fetchSpending = useCallback(async () => {
-    setSpendingLoading(true);
-    try {
-      const [spendingData, dailyData] = await Promise.all([
-        request<SpendingRow[]>("/categories/spending"),
-        request<DailySpendingRow[]>("/categories/spending/daily", { query: { days: "30" } }),
-      ]);
-      setSpending(spendingData);
-      setDailySpending(dailyData);
-    } catch { /* handled by useApi */ }
-    setSpendingLoading(false);
-  }, [request]);
-
-  useEffect(() => {
-    fetchCategories();
-    fetchLimits();
-    fetchSpending();
-  }, [fetchCategories, fetchLimits, fetchSpending]);
-
-  const handleCreateCategory = async () => {
-    if (!createName.trim()) return;
-    setCreateLoading(true);
-    setCreateError("");
-    try {
-      const body: Record<string, string> = { name: createName.trim() };
-      if (createDesc.trim()) body.description = createDesc.trim();
-      const created = await request<{ id: string }>("/categories", { method: "POST", body });
-
-      // If a monthly limit was specified, create it for this category
-      if (createLimit.trim() && parseFloat(createLimit) > 0) {
-        const rawLimit = Math.round(parseFloat(createLimit) * Math.pow(10, USDC_DECIMALS)).toString();
-        await request(`/categories/${created.id}/limit`, {
-          method: "PUT",
-          body: {
-            monthlyLimit: rawLimit,
-            tokenAddress: USDC_ADDRESS,
-            tokenSymbol: USDC_SYMBOL,
-            tokenDecimals: USDC_DECIMALS,
-          },
-        });
-      }
-
-      setCreateName("");
-      setCreateDesc("");
-      setCreateLimit("");
-      setCreateWallet("user");
-      setShowCreateForm(false);
-      fetchCategories();
-      fetchLimits();
-    } catch (err) {
-      setCreateError(err instanceof Error ? err.message : "Failed to create category");
-    }
-    setCreateLoading(false);
+  const onCreateCategory = async (data: CreateCategoryFormData) => {
+    await createMutation.mutateAsync({
+      name: data.name,
+      description: data.description,
+      monthlyLimit: data.monthlyLimit,
+    });
+    createForm.reset();
+    setShowCreateForm(false);
   };
 
-  const handleUpdateCategory = async () => {
+  const onUpdateCategory = async (data: EditCategoryFormData) => {
     if (!selected) return;
-    setEditLoading(true);
-    setEditError("");
-    try {
-      const body: Record<string, string> = {};
-      if (editName.trim() && editName.trim() !== selected.name) body.name = editName.trim();
-      if (editDesc.trim() !== (selected.description ?? "")) body.description = editDesc.trim();
-      if (Object.keys(body).length > 0) {
-        await request(`/categories/${selected.id}`, { method: "PUT", body });
-      }
-
-      // Update limit if changed
-      const existingLimit = limits.find(l => l.categoryId === selected.id);
-      const existingLimitHuman = existingLimit
-        ? (Number(existingLimit.monthlyLimit) / Math.pow(10, existingLimit.tokenDecimals)).toString()
-        : "";
-      if (editLimit.trim() !== existingLimitHuman) {
-        if (editLimit.trim() && parseFloat(editLimit) > 0) {
-          const rawLimit = Math.round(parseFloat(editLimit) * Math.pow(10, USDC_DECIMALS)).toString();
-          await request(`/categories/${selected.id}/limit`, {
-            method: "PUT",
-            body: {
-              monthlyLimit: rawLimit,
-              tokenAddress: USDC_ADDRESS,
-              tokenSymbol: USDC_SYMBOL,
-              tokenDecimals: USDC_DECIMALS,
-            },
-          });
-        } else if (!editLimit.trim() && existingLimit) {
-          await request(`/categories/${selected.id}/limit`, {
-            method: "DELETE",
-            query: { tokenAddress: USDC_ADDRESS },
-          });
-        }
-      }
-
-      setEditMode(false);
-      fetchCategories();
-      fetchLimits();
-      const updated: Category = {
-        ...selected,
-        name: editName.trim() || selected.name,
-        description: editDesc.trim() || selected.description,
-      };
-      setSelected(updated);
-    } catch (err) {
-      setEditError(err instanceof Error ? err.message : "Failed to update category");
-    }
-    setEditLoading(false);
+    const existingLimit = limits.find((l) => l.categoryId === selected.id) ?? null;
+    await updateMutation.mutateAsync({
+      id: selected.id,
+      name: data.name !== selected.name ? data.name : undefined,
+      description: data.description !== (selected.description ?? "") ? data.description : undefined,
+      monthlyLimit: data.monthlyLimit,
+      existingLimit,
+    });
+    setEditMode(false);
+    setSelected({ ...selected, name: data.name, description: data.description ?? null });
   };
 
   const handleDeleteCategory = async () => {
     if (!selected) return;
-    setDeleteLoading(true);
-    setDeleteError("");
-    try {
-      await request(`/categories/${selected.id}`, { method: "DELETE" });
-      setSelected(null);
-      fetchCategories();
-    } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : "Failed to delete category");
-    }
-    setDeleteLoading(false);
+    await deleteMutation.mutateAsync(selected.id);
+    setSelected(null);
   };
 
-
   const toggleQuickSetupPreset = (index: number) => {
-    setQuickSetupSelected(prev => {
+    setQuickSetupSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(index)) {
-        next.delete(index);
-      } else {
-        next.add(index);
-      }
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
       return next;
     });
   };
 
   const handleBatchCreate = async () => {
     if (quickSetupSelected.size === 0) return;
-    setBatchLoading(true);
-    setBatchError("");
-    try {
-      const payload = PRESET_CATEGORIES
-        .filter((_, i) => quickSetupSelected.has(i))
-        .map(({ name, description }) => ({ name, description }));
-      await request<Category[]>("/categories/batch", {
-        method: "POST",
-        body: payload,
-      });
-      fetchCategories();
-      fetchLimits();
-    } catch (err) {
-      setBatchError(err instanceof Error ? err.message : "Failed to create categories");
-    }
-    setBatchLoading(false);
+    const payload = PRESET_CATEGORIES
+      .filter((_, i) => quickSetupSelected.has(i))
+      .map(({ name, description }) => ({ name, description }));
+    await batchMutation.mutateAsync(payload);
   };
 
-  const openCategoryModal = (cat: Category) => {
-    setSelected(cat);
-    setEditMode(false);
-    setEditName(cat.name);
-    setEditDesc(cat.description ?? "");
-    const catLimit = limits.find(l => l.categoryId === cat.id);
-    setEditLimit(catLimit ? (Number(catLimit.monthlyLimit) / Math.pow(10, catLimit.tokenDecimals)).toString() : "");
-    setEditError("");
-    setDeleteError("");
-  };
+  const openCategoryModal = useCallback(
+    (cat: Category) => {
+      setSelected(cat);
+      setEditMode(false);
+      const catLimit = limits.find((l) => l.categoryId === cat.id);
+      editForm.reset({
+        name: cat.name,
+        description: cat.description ?? "",
+        monthlyLimit: catLimit
+          ? (Number(catLimit.monthlyLimit) / Math.pow(10, catLimit.tokenDecimals)).toString()
+          : "",
+      });
+    },
+    [limits, editForm]
+  );
 
   const closeCategoryModal = () => {
     setSelected(null);
     setEditMode(false);
-    setEditError("");
-    setDeleteError("");
   };
 
-  const userCategories = categories.filter(c => !c.isGlobal);
-  const globalCategories = categories.filter(c => c.isGlobal);
+  const userCategories = categories.filter((c) => !c.isGlobal);
+  const globalCategories = categories.filter((c) => c.isGlobal);
 
   return (
     <div className="exo-page">
@@ -305,13 +174,12 @@ export function CategoriesPage() {
       {/* ─── CATEGORIES TAB ─── */}
       {tab === "categories" && (
         <>
-          {loading ? (
+          {isLoading ? (
             <div className="exo-inline-spinner"><Spinner /></div>
           ) : (
             <div className="exo-animate-in">
               {categories.length === 0 && !showCreateForm ? (
                 <div className="exo-animate-in">
-                  {/* Quick Setup card for onboarding */}
                   <div className="exo-form-card" style={{ marginBottom: 16 }}>
                     <div className="exo-form-card-title">Quick Setup</div>
                     <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 12px" }}>
@@ -325,22 +193,15 @@ export function CategoriesPage() {
                             key={preset.name}
                             type="button"
                             onClick={() => toggleQuickSetupPreset(i)}
-                            disabled={batchLoading}
+                            disabled={batchMutation.isPending}
                             style={{
                               padding: "6px 12px",
                               borderRadius: 16,
-                              border: isSelected
-                                ? "1.5px solid var(--exo-accent, #8b5cf6)"
-                                : "1.5px solid var(--border-color, #333)",
-                              background: isSelected
-                                ? "var(--exo-accent-dim, rgba(139,92,246,0.15))"
-                                : "transparent",
-                              color: isSelected
-                                ? "var(--exo-accent, #8b5cf6)"
-                                : "var(--text-muted)",
-                              fontSize: 13,
-                              fontWeight: 500,
-                              cursor: batchLoading ? "not-allowed" : "pointer",
+                              border: isSelected ? "1.5px solid var(--exo-accent, #8b5cf6)" : "1.5px solid var(--border-color, #333)",
+                              background: isSelected ? "var(--exo-accent-dim, rgba(139,92,246,0.15))" : "transparent",
+                              color: isSelected ? "var(--exo-accent, #8b5cf6)" : "var(--text-muted)",
+                              fontSize: 13, fontWeight: 500,
+                              cursor: batchMutation.isPending ? "not-allowed" : "pointer",
                               transition: "all 0.15s ease",
                               fontFamily: "inherit",
                             }}
@@ -350,113 +211,67 @@ export function CategoriesPage() {
                         );
                       })}
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: batchError ? 8 : 0 }}>
-                      <button
-                        className="btn-exo btn-primary"
-                        disabled={quickSetupSelected.size === 0 || batchLoading}
-                        onClick={handleBatchCreate}
-                        style={{ flex: 1 }}
-                      >
-                        {batchLoading
-                          ? "Creating..."
-                          : `Create ${quickSetupSelected.size} ${quickSetupSelected.size === 1 ? "Category" : "Categories"}`}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <button className="btn-exo btn-primary" disabled={quickSetupSelected.size === 0 || batchMutation.isPending} onClick={handleBatchCreate} style={{ flex: 1 }}>
+                        {batchMutation.isPending ? "Creating..." : `Create ${quickSetupSelected.size} ${quickSetupSelected.size === 1 ? "Category" : "Categories"}`}
                       </button>
-                      <button
-                        className="btn-exo btn-secondary"
-                        onClick={() => {
-                          setQuickSetupSelected(new Set());
-                          setShowCreateForm(true);
-                          setBatchError("");
-                        }}
-                        disabled={batchLoading}
-                      >
+                      <button className="btn-exo btn-secondary" onClick={() => { setQuickSetupSelected(new Set()); setShowCreateForm(true); }} disabled={batchMutation.isPending}>
                         Custom
                       </button>
                     </div>
-                    {batchError && (
-                      <div className="msg-error" style={{ marginTop: 8 }}>{batchError}</div>
-                    )}
+                    {batchMutation.error && <div className="msg-error" style={{ marginTop: 8 }}>{batchMutation.error instanceof Error ? batchMutation.error.message : "Failed"}</div>}
                   </div>
                 </div>
               ) : (
                 <>
                   {!showCreateForm && (
-                    <button
-                      className="btn-exo btn-primary"
-                      style={{ width: "100%", padding: "12px", marginBottom: 16 }}
-                      onClick={() => { setShowCreateForm(true); setCreateError(""); }}
-                    >
+                    <button className="btn-exo btn-primary" style={{ width: "100%", padding: "12px", marginBottom: 16 }} onClick={() => setShowCreateForm(true)}>
                       Add Category
                     </button>
                   )}
 
                   {showCreateForm && (
-                    <div className="exo-form-card" style={{ marginBottom: 16 }}>
+                    <form className="exo-form-card" style={{ marginBottom: 16 }} onSubmit={createForm.handleSubmit(onCreateCategory)}>
                       <div className="exo-form-card-title">New Category</div>
                       <div className="form-group">
                         <label>Name</label>
-                        <input
-                          className="input-exo"
-                          value={createName}
-                          onChange={e => setCreateName(e.target.value)}
-                          placeholder="Food & Dining"
-                        />
+                        <input className="input-exo" {...createForm.register("name")} placeholder="Food & Dining" />
+                        {createForm.formState.errors.name && <span className="msg-error">{createForm.formState.errors.name.message}</span>}
                       </div>
                       <div className="form-group">
                         <label>Description (optional)</label>
-                        <input
-                          className="input-exo"
-                          value={createDesc}
-                          onChange={e => setCreateDesc(e.target.value)}
-                          placeholder="Meals, groceries, and restaurants"
-                        />
+                        <input className="input-exo" {...createForm.register("description")} placeholder="Meals, groceries, and restaurants" />
                       </div>
                       <div className="form-group">
                         <label>Monthly Limit — USDC (optional)</label>
-                        <input
-                          className="input-exo"
-                          value={createLimit}
-                          onChange={e => setCreateLimit(e.target.value)}
-                          placeholder="500.00"
-                          inputMode="decimal"
-                        />
+                        <input className="input-exo" {...createForm.register("monthlyLimit")} placeholder="500.00" inputMode="decimal" />
                       </div>
                       <div className="form-group">
                         <label>Wallet</label>
-                        <select className="input-exo" value={createWallet} onChange={e => setCreateWallet(e.target.value as typeof createWallet)}>
+                        <select className="input-exo" {...createForm.register("wallet")}>
                           <option value="user">User Wallet</option>
                           <option value="server">Server Wallet</option>
                           <option value="agent">Agent Wallet</option>
                         </select>
                       </div>
-                      {createError && (
-                        <div className="msg-error" style={{ marginBottom: 8 }}>{createError}</div>
-                      )}
+                      {createMutation.error && <div className="msg-error" style={{ marginBottom: 8 }}>{createMutation.error instanceof Error ? createMutation.error.message : "Failed"}</div>}
                       <div className="exo-actions">
-                        <button
-                          className="btn-exo btn-secondary"
-                          onClick={() => { setShowCreateForm(false); setCreateName(""); setCreateDesc(""); setCreateLimit(""); setCreateWallet("user"); setCreateError(""); }}
-                          disabled={createLoading}
-                        >
+                        <button type="button" className="btn-exo btn-secondary" onClick={() => { setShowCreateForm(false); createForm.reset(); }} disabled={createMutation.isPending}>
                           Cancel
                         </button>
-                        <button
-                          className="btn-exo btn-primary"
-                          disabled={!createName.trim() || createLoading}
-                          onClick={handleCreateCategory}
-                        >
-                          {createLoading ? "Creating..." : "Create"}
+                        <button type="submit" className="btn-exo btn-primary" disabled={createMutation.isPending}>
+                          {createMutation.isPending ? "Creating..." : "Create"}
                         </button>
                       </div>
-                    </div>
+                    </form>
                   )}
 
                   {userCategories.length > 0 && (
                     <>
                       <div className="exo-form-card-title" style={{ marginBottom: 8 }}>Your Categories</div>
                       <div className="exo-list" style={{ marginBottom: 20 }}>
-                        {userCategories.map(c => {
-                          const catLimit = limits.find(l => l.categoryId === c.id);
+                        {userCategories.map((c) => {
+                          const catLimit = limits.find((l) => l.categoryId === c.id);
                           return (
                             <div key={c.id} className="exo-list-item" onClick={() => openCategoryModal(c)}>
                               <div className="exo-list-item-left">
@@ -477,7 +292,7 @@ export function CategoriesPage() {
                     <>
                       <div className="exo-form-card-title" style={{ marginBottom: 8 }}>Global Categories</div>
                       <div className="exo-list">
-                        {globalCategories.map(c => (
+                        {globalCategories.map((c) => (
                           <div key={c.id} className="exo-list-item" onClick={() => openCategoryModal(c)}>
                             <div className="exo-list-item-left">
                               <span className="exo-list-item-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -498,7 +313,7 @@ export function CategoriesPage() {
 
           {/* Category detail modal */}
           {selected && (
-            <div className="exo-modal-backdrop" onClick={e => { if (e.target === e.currentTarget) closeCategoryModal(); }}>
+            <div className="exo-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) closeCategoryModal(); }}>
               <div className="exo-modal">
                 <div className="exo-modal-header">
                   <span className="exo-modal-title">{selected.name}</span>
@@ -530,7 +345,7 @@ export function CategoriesPage() {
                           <span className="exo-review-label">Monthly Limit</span>
                           <span className="exo-review-value">
                             {(() => {
-                              const catLimit = limits.find(l => l.categoryId === selected.id);
+                              const catLimit = limits.find((l) => l.categoryId === selected.id);
                               return catLimit
                                 ? `${formatTokenAmount(catLimit.monthlyLimit, catLimit.tokenDecimals)} ${catLimit.tokenSymbol}`
                                 : "None";
@@ -543,92 +358,52 @@ export function CategoriesPage() {
                         </div>
                       </div>
 
-                      {deleteError && (
-                        <div className="msg-error" style={{ marginBottom: 12 }}>{deleteError}</div>
-                      )}
+                      {deleteMutation.error && <div className="msg-error" style={{ marginBottom: 12 }}>{deleteMutation.error instanceof Error ? deleteMutation.error.message : "Failed"}</div>}
 
                       <div className="exo-actions">
                         {!selected.isGlobal && (
                           <>
-                            <button
-                              className="btn-exo btn-secondary"
-                              onClick={() => {
-                                setEditMode(true);
-                                setEditName(selected.name);
-                                setEditDesc(selected.description ?? "");
-                                setEditError("");
-                              }}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              className="btn-exo btn-danger"
-                              disabled={deleteLoading}
-                              onClick={handleDeleteCategory}
-                            >
-                              {deleteLoading ? "Deleting..." : "Delete"}
+                            <button className="btn-exo btn-secondary" onClick={() => setEditMode(true)}>Edit</button>
+                            <button className="btn-exo btn-danger" disabled={deleteMutation.isPending} onClick={handleDeleteCategory}>
+                              {deleteMutation.isPending ? "Deleting..." : "Delete"}
                             </button>
                           </>
                         )}
                       </div>
                     </>
                   ) : (
-                    <>
+                    <form onSubmit={editForm.handleSubmit(onUpdateCategory)}>
                       <div className="exo-form-card" style={{ marginBottom: 16 }}>
                         <div className="exo-form-card-title">Edit Category</div>
                         <div className="form-group">
                           <label>Name</label>
-                          <input
-                            className="input-exo"
-                            value={editName}
-                            onChange={e => setEditName(e.target.value)}
-                          />
+                          <input className="input-exo" {...editForm.register("name")} />
+                          {editForm.formState.errors.name && <span className="msg-error">{editForm.formState.errors.name.message}</span>}
                         </div>
                         <div className="form-group">
                           <label>Description</label>
-                          <input
-                            className="input-exo"
-                            value={editDesc}
-                            onChange={e => setEditDesc(e.target.value)}
-                            placeholder="Add a description"
-                          />
+                          <input className="input-exo" {...editForm.register("description")} placeholder="Add a description" />
                         </div>
                         <div className="form-group">
                           <label>Monthly Limit — USDC</label>
-                          <input
-                            className="input-exo"
-                            value={editLimit}
-                            onChange={e => setEditLimit(e.target.value)}
-                            placeholder="500.00"
-                            inputMode="decimal"
-                          />
+                          <input className="input-exo" {...editForm.register("monthlyLimit")} placeholder="500.00" inputMode="decimal" />
                           <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
                             Leave empty to remove limit
                           </div>
                         </div>
                       </div>
 
-                      {editError && (
-                        <div className="msg-error" style={{ marginBottom: 12 }}>{editError}</div>
-                      )}
+                      {updateMutation.error && <div className="msg-error" style={{ marginBottom: 12 }}>{updateMutation.error instanceof Error ? updateMutation.error.message : "Failed"}</div>}
 
                       <div className="exo-actions">
-                        <button
-                          className="btn-exo btn-secondary"
-                          onClick={() => { setEditMode(false); setEditError(""); }}
-                          disabled={editLoading}
-                        >
+                        <button type="button" className="btn-exo btn-secondary" onClick={() => setEditMode(false)} disabled={updateMutation.isPending}>
                           Cancel
                         </button>
-                        <button
-                          className="btn-exo btn-primary"
-                          disabled={!editName.trim() || editLoading}
-                          onClick={handleUpdateCategory}
-                        >
-                          {editLoading ? "Saving..." : "Save Changes"}
+                        <button type="submit" className="btn-exo btn-primary" disabled={updateMutation.isPending}>
+                          {updateMutation.isPending ? "Saving..." : "Save Changes"}
                         </button>
                       </div>
-                    </>
+                    </form>
                   )}
                 </div>
               </div>
@@ -656,35 +431,22 @@ export function CategoriesPage() {
                 </div>
               ) : (
                 <>
-                  {/* Pie chart: spending by category */}
                   <div className="exo-form-card" style={{ marginBottom: 16, padding: 16 }}>
                     <div className="exo-form-card-title">This Month by Category</div>
                     <ResponsiveContainer width="100%" height={220}>
                       <PieChart>
                         <Pie
-                          data={spending.map(s => ({
-                            name: s.categoryName,
-                            value: Number(s.totalSpent) / 1e6,
-                          }))}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={50}
-                          outerRadius={80}
-                          paddingAngle={2}
-                          dataKey="value"
-                          label={({ name, value }) => `${name}: ${value.toFixed(2)}`}
-                          labelLine={false}
+                          data={spending.map((s) => ({ name: s.categoryName, value: Number(s.totalSpent) / 1e6 }))}
+                          cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} dataKey="value"
+                          label={({ name, value }) => `${name}: ${value.toFixed(2)}`} labelLine={false}
                         >
-                          {spending.map((_, i) => (
-                            <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                          ))}
+                          {spending.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
                         </Pie>
                         <Tooltip formatter={(v) => `${Number(v).toFixed(2)} USDC`} />
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
 
-                  {/* Spending vs limits */}
                   <div className="exo-form-card" style={{ marginBottom: 16, padding: 16 }}>
                     <div className="exo-form-card-title">Spending vs Limits</div>
                     <div className="exo-list">
@@ -707,21 +469,11 @@ export function CategoriesPage() {
                             {pct !== null && (
                               <>
                                 <div className="exo-progress" style={{ height: 6 }}>
-                                  <div
-                                    className="exo-progress-fill"
-                                    style={{
-                                      width: `${Math.min(pct, 100)}%`,
-                                      background: overBudget ? "var(--exo-error, #ef4444)" : undefined,
-                                    }}
-                                  />
+                                  <div className="exo-progress-fill" style={{ width: `${Math.min(pct, 100)}%`, background: overBudget ? "var(--exo-error, #ef4444)" : undefined }} />
                                 </div>
                                 <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
-                                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>
-                                    {pct.toFixed(0)}% of limit
-                                  </span>
-                                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>
-                                    {limitVal!.toFixed(2)} USDC
-                                  </span>
+                                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>{pct.toFixed(0)}% of limit</span>
+                                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)" }}>{limitVal!.toFixed(2)} USDC</span>
                                 </div>
                               </>
                             )}
@@ -736,10 +488,8 @@ export function CategoriesPage() {
                     </div>
                   </div>
 
-                  {/* Daily spending bar chart */}
                   {dailySpending.length > 0 && (() => {
-                    // Pivot daily data: { date, [categoryName]: amount }
-                    const categoryNames = [...new Set(dailySpending.map(d => d.categoryName))];
+                    const categoryNames = [...new Set(dailySpending.map((d) => d.categoryName))];
                     const dateMap = new Map<string, Record<string, number>>();
                     for (const row of dailySpending) {
                       if (!dateMap.has(row.date)) dateMap.set(row.date, { date: 0 } as unknown as Record<string, number>);

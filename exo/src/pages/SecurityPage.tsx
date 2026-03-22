@@ -1,59 +1,61 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useApi } from "../hooks/useApi";
+import {
+  useApprovalSettingsQuery,
+  usePasskeysQuery,
+  useSetupPinMutation,
+  useChangePinMutation,
+  useRemovePinMutation,
+  useRemovePasskeyMutation,
+  useDisableApprovalMutation,
+} from "../hooks/queries";
 import { ActionPanel } from "../components/ActionPanel";
 import { ApiForm } from "../components/ApiForm";
 import { JsonViewer } from "../components/JsonViewer";
 import { Spinner } from "../components/Spinner";
-import type { ApprovalSettings, Passkey } from "../lib/types";
+import { setupPinSchema, changePinSchema, type SetupPinFormData, type ChangePinFormData } from "../lib/schemas";
 
 export function SecurityPage() {
   const { request } = useApi();
-  const [settings, setSettings] = useState<ApprovalSettings | null>(null);
-  const [passkeys, setPasskeys] = useState<Passkey[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { data: settings, isLoading, refetch: refetchSettings } = useApprovalSettingsQuery();
+  const { data: passkeys = [], refetch: refetchPasskeys } = usePasskeysQuery();
 
-  // PIN
-  const [setupPin, setSetupPin] = useState("");
-  const [currentPin, setCurrentPin] = useState("");
-  const [newPin, setNewPin] = useState("");
+  const setupPinMutation = useSetupPinMutation();
+  const changePinMutation = useChangePinMutation();
+  const removePinMutation = useRemovePinMutation();
+  const removePasskeyMutation = useRemovePasskeyMutation();
+  const disableApprovalMutation = useDisableApprovalMutation();
+
+  // Setup PIN form
+  const setupForm = useForm<SetupPinFormData>({
+    resolver: zodResolver(setupPinSchema),
+    defaultValues: { pin: "" },
+  });
+
+  // Change PIN form
+  const changeForm = useForm<ChangePinFormData>({
+    resolver: zodResolver(changePinSchema),
+    defaultValues: { currentPin: "", newPin: "" },
+  });
+
+  // Simple state for non-form fields
   const [removePin, setRemovePin] = useState("");
-
-  // Verify
   const [verifyMethod, setVerifyMethod] = useState<"pin" | "passkey">("pin");
   const [verifyPin, setVerifyPin] = useState("");
-
-  // Disable
   const [disablePin, setDisablePin] = useState("");
-
-  // Passkey
-  const [passkeyLabel, setPasskeyLabel] = useState("");
   const [removePasskeyId, setRemovePasskeyId] = useState("");
 
-  const fetchSettings = async () => {
-    setLoading(true);
-    try {
-      const s = await request<ApprovalSettings>("/security/approval");
-      setSettings(s);
-    } catch {
-      // handled
-    } finally {
-      setLoading(false);
-    }
+  const onSetupPin = async (data: SetupPinFormData) => {
+    await setupPinMutation.mutateAsync(data.pin);
+    setupForm.reset();
   };
 
-  const fetchPasskeys = async () => {
-    try {
-      const p = await request<Passkey[]>("/security/approval/passkeys");
-      setPasskeys(p);
-    } catch {
-      // handled
-    }
+  const onChangePin = async (data: ChangePinFormData) => {
+    await changePinMutation.mutateAsync(data);
+    changeForm.reset();
   };
-
-  useEffect(() => {
-    fetchSettings();
-    fetchPasskeys();
-  }, []);
 
   return (
     <div>
@@ -63,8 +65,8 @@ export function SecurityPage() {
       </div>
 
       <ActionPanel title="Approval Settings" method="GET" path="/api/security/approval">
-        <button className="btn-exo btn-primary btn-sm" onClick={fetchSettings} disabled={loading}>
-          {loading ? <Spinner /> : "Refresh"}
+        <button className="btn-exo btn-primary btn-sm" onClick={() => refetchSettings()} disabled={isLoading}>
+          {isLoading ? <Spinner /> : "Refresh"}
         </button>
         {settings && (
           <div style={{ marginTop: 12 }}>
@@ -82,63 +84,51 @@ export function SecurityPage() {
       </ActionPanel>
 
       <ActionPanel title="Setup PIN" method="POST" path="/api/security/approval/pin/setup">
-        <ApiForm
-          onSubmit={async () => {
-            const data = await request("/security/approval/pin/setup", {
-              method: "POST",
-              body: { pin: setupPin },
-            });
-            fetchSettings();
-            return data;
-          }}
-          submitLabel="Setup PIN"
-        >
+        <form onSubmit={setupForm.handleSubmit(onSetupPin)}>
           <div className="form-group">
             <label>PIN (4-6 digits)</label>
-            <input
-              className="input-exo"
-              type="password"
-              value={setupPin}
-              onChange={(e) => setSetupPin(e.target.value)}
-              placeholder="1234"
-              maxLength={6}
-            />
+            <input className="input-exo" type="password" {...setupForm.register("pin")} placeholder="1234" maxLength={6} />
+            {setupForm.formState.errors.pin && <span className="msg-error">{setupForm.formState.errors.pin.message}</span>}
           </div>
-        </ApiForm>
+          <div className="form-actions">
+            <button type="submit" className="btn-exo btn-primary" disabled={setupPinMutation.isPending}>
+              {setupPinMutation.isPending ? <Spinner /> : "Setup PIN"}
+            </button>
+          </div>
+          {setupPinMutation.error && <div className="msg-error">{setupPinMutation.error instanceof Error ? setupPinMutation.error.message : "Failed"}</div>}
+          {setupPinMutation.isSuccess && <div className="msg-success">PIN set up successfully</div>}
+        </form>
       </ActionPanel>
 
       <ActionPanel title="Change PIN" method="POST" path="/api/security/approval/pin/change">
-        <ApiForm
-          onSubmit={async () => {
-            const data = await request("/security/approval/pin/change", {
-              method: "POST",
-              body: { currentPin, newPin },
-            });
-            return data;
-          }}
-          submitLabel="Change PIN"
-        >
+        <form onSubmit={changeForm.handleSubmit(onChangePin)}>
           <div className="form-row">
             <div className="form-group">
               <label>Current PIN</label>
-              <input className="input-exo" type="password" value={currentPin} onChange={(e) => setCurrentPin(e.target.value)} placeholder="1234" maxLength={6} />
+              <input className="input-exo" type="password" {...changeForm.register("currentPin")} placeholder="1234" maxLength={6} />
+              {changeForm.formState.errors.currentPin && <span className="msg-error">{changeForm.formState.errors.currentPin.message}</span>}
             </div>
             <div className="form-group">
               <label>New PIN</label>
-              <input className="input-exo" type="password" value={newPin} onChange={(e) => setNewPin(e.target.value)} placeholder="5678" maxLength={6} />
+              <input className="input-exo" type="password" {...changeForm.register("newPin")} placeholder="5678" maxLength={6} />
+              {changeForm.formState.errors.newPin && <span className="msg-error">{changeForm.formState.errors.newPin.message}</span>}
             </div>
           </div>
-        </ApiForm>
+          <div className="form-actions">
+            <button type="submit" className="btn-exo btn-primary" disabled={changePinMutation.isPending}>
+              {changePinMutation.isPending ? <Spinner /> : "Change PIN"}
+            </button>
+          </div>
+          {changePinMutation.error && <div className="msg-error">{changePinMutation.error instanceof Error ? changePinMutation.error.message : "Failed"}</div>}
+          {changePinMutation.isSuccess && <div className="msg-success">PIN changed successfully</div>}
+        </form>
       </ActionPanel>
 
       <ActionPanel title="Remove PIN" method="DELETE" path="/api/security/approval/pin">
         <ApiForm
           onSubmit={async () => {
-            const data = await request("/security/approval/pin", {
-              method: "DELETE",
-              body: { pin: removePin },
-            });
-            fetchSettings();
+            const data = await removePinMutation.mutateAsync(removePin);
+            setRemovePin("");
             return data;
           }}
           submitLabel="Remove PIN"
@@ -186,7 +176,7 @@ export function SecurityPage() {
       </ActionPanel>
 
       <ActionPanel title="Registered Passkeys" method="GET" path="/api/security/approval/passkeys">
-        <button className="btn-exo btn-primary btn-sm" onClick={fetchPasskeys}>Refresh</button>
+        <button className="btn-exo btn-primary btn-sm" onClick={() => refetchPasskeys()}>Refresh</button>
         {passkeys.length > 0 ? (
           <div className="data-list" style={{ marginTop: 12 }}>
             {passkeys.map((pk) => (
@@ -209,7 +199,6 @@ export function SecurityPage() {
       <ActionPanel title="Register Passkey" method="POST" path="/api/security/approval/passkey/register">
         <ApiForm
           onSubmit={async () => {
-            // Step 1: Get registration options
             const options = await request("/security/approval/passkey/register", { method: "POST" });
             return { step: "registration_options", options, note: "In a full implementation, pass these options to navigator.credentials.create() and then POST the credential to /passkey/register/verify" };
           }}
@@ -224,8 +213,7 @@ export function SecurityPage() {
       <ActionPanel title="Remove Passkey" method="DELETE" path="/api/security/approval/passkeys/:id">
         <ApiForm
           onSubmit={async () => {
-            const data = await request(`/security/approval/passkeys/${removePasskeyId}`, { method: "DELETE" });
-            fetchPasskeys();
+            const data = await removePasskeyMutation.mutateAsync(removePasskeyId);
             return data;
           }}
           submitLabel="Remove Passkey"
@@ -241,10 +229,8 @@ export function SecurityPage() {
       <ActionPanel title="Disable Transaction Approval" method="DELETE" path="/api/security/approval">
         <ApiForm
           onSubmit={async () => {
-            const body: Record<string, string> = {};
-            if (disablePin) body.pin = disablePin;
-            const data = await request("/security/approval", { method: "DELETE", body });
-            fetchSettings();
+            const data = await disableApprovalMutation.mutateAsync(disablePin || undefined);
+            setDisablePin("");
             return data;
           }}
           submitLabel="Disable Approval"

@@ -1,15 +1,18 @@
-import { useState, useCallback, useRef, useMemo } from "react";
+import { useState, useCallback, useMemo } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Drawer } from "vaul";
-import { useApi, ApiRequestError } from "../hooks/useApi";
+import { ApiRequestError } from "../hooks/useApi";
 import { useDashboard } from "../context/DashboardContext";
 import { useApprovalContext } from "../context/ApprovalContext";
-import { useTokenPrices } from "../hooks/useTokenPrices";
+import { useTokenPricesQuery, useSwapQuoteMutation, useSwapMutation } from "../hooks/queries";
 import { Spinner } from "../components/Spinner";
 import { SuccessCheck } from "../components/SuccessCheck";
 import { triggerConfetti } from "../components/Confetti";
 import { useToast } from "../components/Toast";
 import { MorphingButton } from "../components/MorphingButton";
 import { TOKEN_ADDRESSES } from "../lib/constants";
+import { swapSchema, type SwapFormData } from "../lib/schemas";
 import type { SwapQuote, SwapResult } from "../lib/types";
 import "../styles/pages.css";
 
@@ -69,16 +72,29 @@ function TokenIcon({ name, size = 24 }: { name: string; size?: number }) {
 }
 
 export function SwapPage() {
-  const { request } = useApi();
   const { walletBalances, refresh } = useDashboard();
   const toast = useToast();
   const approvalCtx = useApprovalContext();
-  const { prices } = useTokenPrices();
+  const { data: prices = {} } = useTokenPricesQuery();
+  const quoteMutation = useSwapQuoteMutation();
+  const swapMutation = useSwapMutation();
 
-  const [tokenIn, setTokenIn] = useState("USDC");
-  const [tokenOut, setTokenOut] = useState("ETH");
-  const [amount, setAmount] = useState("");
-  const [slippage, setSlippage] = useState("0.5");
+  const form = useForm<SwapFormData>({
+    resolver: zodResolver(swapSchema),
+    defaultValues: {
+      tokenIn: "USDC",
+      tokenOut: "ETH",
+      amount: "",
+      slippage: "0.5",
+    },
+  });
+
+  const { watch, setValue } = form;
+  const tokenIn = watch("tokenIn");
+  const tokenOut = watch("tokenOut");
+  const amount = watch("amount");
+  const slippage = watch("slippage");
+
   const [step, setStep] = useState<Step>("input");
   const [quote, setQuote] = useState<SwapQuote | null>(null);
   const [result, setResult] = useState<SwapResult | null>(null);
@@ -86,9 +102,7 @@ export function SwapPage() {
   const [pickerFor, setPickerFor] = useState<"in" | "out" | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
 
-  const amountRef = useRef<HTMLInputElement>(null);
-
-  const userWallet = walletBalances.find(w => w.type === "user");
+  const userWallet = walletBalances.find((w) => w.type === "user");
   const walletId = userWallet?.walletId ?? "";
 
   const tokenInInfo = TOKEN_ADDRESSES[tokenIn];
@@ -135,49 +149,35 @@ export function SwapPage() {
     return `$${usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }, [amount, tokenIn, prices]);
 
-  const requestWithApproval = useCallback(
-    async <T,>(path: string, options?: { method?: "GET" | "POST"; body?: unknown }) => {
-      try {
-        return await request<T>(path, options);
-      } catch (err) {
-        if (err instanceof ApiRequestError && err._tag === "TransactionApprovalRequired" && approvalCtx) {
-          const token = await approvalCtx.requestApproval(err.method ?? "pin");
-          if (!token) throw new Error("Approval cancelled");
-          return request<T>(path, { ...options, approvalToken: token });
-        }
-        throw err;
-      }
-    },
-    [request, approvalCtx]
-  );
-
   const handleFlip = () => {
-    setTokenIn(tokenOut);
-    setTokenOut(tokenIn);
-    setAmount("");
+    const oldIn = tokenIn;
+    const oldOut = tokenOut;
+    setValue("tokenIn", oldOut);
+    setValue("tokenOut", oldIn);
+    setValue("amount", "");
     setQuote(null);
   };
 
   const handleAmountChange = (val: string) => {
-    if (val === "") { setAmount(""); setQuote(null); return; }
-    if (val === ".") { setAmount("0."); setQuote(null); return; }
+    if (val === "") { setValue("amount", ""); setQuote(null); return; }
+    if (val === ".") { setValue("amount", "0."); setQuote(null); return; }
     if (!/^\d*\.?\d*$/.test(val)) return;
     const parts = val.split(".");
     if (parts[1] && parts[1].length > tokenInInfo.decimals) return;
     if (parts[0].length > 1 && parts[0].startsWith("0") && !val.startsWith("0.")) {
       val = val.replace(/^0+/, "");
     }
-    setAmount(val);
+    setValue("amount", val);
     setQuote(null);
   };
 
   const selectToken = (name: string) => {
     if (pickerFor === "in") {
-      if (name === tokenOut) setTokenOut(tokenIn);
-      setTokenIn(name);
+      if (name === tokenOut) setValue("tokenOut", tokenIn);
+      setValue("tokenIn", name);
     } else if (pickerFor === "out") {
-      if (name === tokenIn) setTokenIn(tokenOut);
-      setTokenOut(name);
+      if (name === tokenIn) setValue("tokenIn", tokenOut);
+      setValue("tokenOut", name);
     }
     setQuote(null);
     setPickerFor(null);
@@ -187,16 +187,13 @@ export function SwapPage() {
     setStep("quoting");
     setError("");
     try {
-      const data = await request<SwapQuote>("/uniswap/quote", {
-        method: "POST",
-        body: {
-          walletId,
-          tokenIn: tokenInInfo.address,
-          tokenOut: tokenOutInfo.address,
-          amount: parseAmount(amount, tokenInInfo.decimals),
-          type: "EXACT_INPUT",
-          slippageTolerance: Number(slippage),
-        },
+      const data = await quoteMutation.mutateAsync({
+        walletId,
+        tokenIn: tokenInInfo.address,
+        tokenOut: tokenOutInfo.address,
+        amount: parseAmount(amount, tokenInInfo.decimals),
+        type: "EXACT_INPUT",
+        slippageTolerance: Number(slippage),
       });
       setQuote(data);
       setStep("review");
@@ -207,29 +204,46 @@ export function SwapPage() {
     }
   };
 
-  const handleSwap = async () => {
-    setStep("swapping");
-    setError("");
-    try {
-      const data = await requestWithApproval<SwapResult>("/uniswap/swap", {
-        method: "POST",
-        body: {
-          walletId,
-          tokenIn: tokenInInfo.address,
-          tokenOut: tokenOutInfo.address,
-          amount: parseAmount(amount, tokenInInfo.decimals),
-          type: "EXACT_INPUT",
-          slippageTolerance: Number(slippage),
-        },
-      });
+  const executeSwap = useCallback(
+    async (approvalToken?: string) => {
+      const body = {
+        walletId,
+        tokenIn: tokenInInfo.address,
+        tokenOut: tokenOutInfo.address,
+        amount: parseAmount(amount, tokenInInfo.decimals),
+        type: "EXACT_INPUT",
+        slippageTolerance: Number(slippage),
+        approvalToken,
+      };
+      const data = await swapMutation.mutateAsync(body);
       setResult(data);
       setStep("success");
       setReviewOpen(false);
       triggerConfetti();
       toast.info("Transaction submitted");
       refresh();
+    },
+    [walletId, tokenInInfo, tokenOutInfo, amount, slippage, swapMutation, toast, refresh]
+  );
+
+  const handleSwap = async () => {
+    setStep("swapping");
+    setError("");
+    try {
+      await executeSwap();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Swap failed");
+      if (err instanceof ApiRequestError && err._tag === "TransactionApprovalRequired" && approvalCtx) {
+        const token = await approvalCtx.requestApproval(err.method ?? "pin");
+        if (!token) { setStep("review"); return; }
+        try {
+          await executeSwap(token);
+          return;
+        } catch (retryErr) {
+          setError(retryErr instanceof Error ? retryErr.message : "Swap failed");
+        }
+      } else {
+        setError(err instanceof Error ? err.message : "Swap failed");
+      }
       setStep("error");
       setReviewOpen(false);
       toast.error("Swap failed");
@@ -247,9 +261,7 @@ export function SwapPage() {
   const handleReviewClose = (open: boolean) => {
     if (!open) {
       setReviewOpen(false);
-      if (step === "review") {
-        setStep("input");
-      }
+      if (step === "review") setStep("input");
     }
   };
 
@@ -375,7 +387,6 @@ export function SwapPage() {
                       <span className="exo-review-value">{slippage}%</span>
                     </div>
                   </div>
-
                   <div className="exo-actions" style={{ marginTop: 16 }}>
                     <button className="btn-exo btn-secondary" onClick={() => { setReviewOpen(false); setStep("input"); }}>Back</button>
                     <MorphingButton label="Convert" className="btn-exo btn-primary" onClick={handleSwap} />
@@ -407,17 +418,14 @@ export function SwapPage() {
                   {displayInBalance} {tokenIn}
                   <button
                     className="swap-max-btn"
-                    onClick={() => { setAmount(maxAmount); setQuote(null); }}
+                    onClick={() => { setValue("amount", maxAmount); setQuote(null); }}
                   >
                     MAX
                   </button>
                 </span>
               </div>
               <div className="swap-token-box-row">
-                <button
-                  className="swap-token-chooser"
-                  onClick={() => setPickerFor("in")}
-                >
+                <button className="swap-token-chooser" onClick={() => setPickerFor("in")}>
                   <TokenIcon name={tokenIn} size={24} />
                   <span className="swap-token-chooser-name">{tokenIn}</span>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
@@ -426,13 +434,12 @@ export function SwapPage() {
                 </button>
                 <div style={{ flex: 1, textAlign: "right" }}>
                   <input
-                    ref={amountRef}
                     className="swap-token-amount"
                     type="text"
                     inputMode="decimal"
                     placeholder="0"
                     value={amount}
-                    onChange={e => handleAmountChange(e.target.value)}
+                    onChange={(e) => handleAmountChange(e.target.value)}
                     autoComplete="off"
                     style={amountExceedsBalance ? { color: "#ef4444" } : undefined}
                   />
@@ -466,10 +473,7 @@ export function SwapPage() {
                 </span>
               </div>
               <div className="swap-token-box-row">
-                <button
-                  className="swap-token-chooser"
-                  onClick={() => setPickerFor("out")}
-                >
+                <button className="swap-token-chooser" onClick={() => setPickerFor("out")}>
                   <TokenIcon name={tokenOut} size={24} />
                   <span className="swap-token-chooser-name">{tokenOut}</span>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
@@ -513,8 +517,12 @@ export function SwapPage() {
             <div className="form-group">
               <label>Price flexibility</label>
               <div className="exo-token-pills">
-                {["0.1", "0.5", "1.0"].map(s => (
-                  <button key={s} className={`exo-token-pill ${slippage === s ? "active" : ""}`} onClick={() => setSlippage(s)}>
+                {["0.1", "0.5", "1.0"].map((s) => (
+                  <button
+                    key={s}
+                    className={`exo-token-pill ${slippage === s ? "active" : ""}`}
+                    onClick={() => setValue("slippage", s)}
+                  >
                     {s}%
                   </button>
                 ))}
@@ -549,7 +557,7 @@ export function SwapPage() {
               View on BaseScan
             </a>
           )}
-          <button className="btn-exo btn-primary" style={{ marginTop: 8 }} onClick={() => { setStep("input"); setAmount(""); setQuote(null); setResult(null); }}>
+          <button className="btn-exo btn-primary" style={{ marginTop: 8 }} onClick={() => { setStep("input"); setValue("amount", ""); setQuote(null); setResult(null); }}>
             Convert More
           </button>
         </div>

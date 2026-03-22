@@ -1,7 +1,9 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 import { usePrivy } from "@privy-io/react-auth";
+import { useQueryClient } from "@tanstack/react-query";
+import { useProfileQuery } from "../hooks/queries";
+import { queryKeys } from "../lib/query-client";
 import type { ProfileWithWallets } from "../lib/types";
-import { apiRequest } from "../lib/api";
 
 interface AuthContextValue {
   authenticated: boolean;
@@ -22,9 +24,10 @@ const AuthContext = createContext<AuthContextValue>({
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { authenticated, ready, getAccessToken } = usePrivy();
-  const [profile, setProfile] = useState<ProfileWithWallets | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { authenticated, ready } = usePrivy();
+  const queryClient = useQueryClient();
+  const profileQuery = useProfileQuery();
+
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     const saved = localStorage.getItem("exo-theme");
     return (saved === "light" ? "light" : "dark");
@@ -37,29 +40,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
 
-  const refreshProfile = async () => {
-    try {
-      const accessToken = await getAccessToken();
-      const result = await apiRequest<ProfileWithWallets>("/profile", { accessToken });
-      if (result.success) {
-        setProfile(result.data);
-      }
-    } catch {
-      // Profile may not exist yet
-    }
-  };
+  const refreshProfile = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.profile });
+  }, [queryClient]);
 
-  useEffect(() => {
-    if (!ready) return;
-    if (!authenticated) {
-      setProfile(null);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    refreshProfile().finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authenticated, ready]);
+  const loading = !ready || (authenticated && profileQuery.isLoading);
+  const profile = authenticated ? (profileQuery.data ?? null) : null;
 
   return (
     <AuthContext.Provider value={{ authenticated, loading, profile, refreshProfile, theme, toggleTheme }}>
