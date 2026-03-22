@@ -142,7 +142,7 @@ function makeTestRuntime(opts?: {
           ),
 
     processDueDeposits: () =>
-      Effect.succeed({ deposits: opts?.processDueResult ?? [], failures: [] }),
+      Effect.succeed(opts?.processDueResult ?? []),
   });
 
   return ManagedRuntime.make(Layer.mergeAll(MockGoalSavingsLayer));
