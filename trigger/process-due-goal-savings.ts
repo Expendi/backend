@@ -7,8 +7,10 @@ export const processDueGoalSavings = schedules.task({
   id: "process-due-goal-savings",
   cron: "*/5 * * * *",
   run: async (payload) => {
+    const dbUrl = process.env.DATABASE_URL;
     logger.info("🔍 Fetching due goal savings deposits", {
       timestamp: payload.timestamp,
+      dbHost: dbUrl ? new URL(dbUrl).host : "DATABASE_URL NOT SET",
     });
 
     const deposits = await runtime.runPromise(

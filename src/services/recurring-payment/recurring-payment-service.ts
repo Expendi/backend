@@ -606,9 +606,12 @@ export const RecurringPaymentServiceLive: Layer.Layer<
           try: async () => {
             const chainId = params.chainId ?? config.defaultChainId;
             const startDate = params.startDate ?? new Date();
-            const nextExecutionAt = params.executeImmediately
-              ? startDate
-              : computeNextExecution(startDate, params.frequency);
+            // First execution should happen at startDate (or immediately if
+            // startDate is in the past).  computeNextExecution is used AFTER
+            // the first execution to schedule subsequent runs.
+            const nextExecutionAt = startDate.getTime() <= Date.now()
+              ? new Date()
+              : startDate;
 
             const values: NewRecurringPayment = {
               userId: params.userId,
@@ -846,23 +849,46 @@ export const RecurringPaymentServiceLive: Layer.Layer<
 
       processDuePayments: () =>
         Effect.gen(function* () {
-          const dueSchedules = yield* Effect.tryPromise({
-            try: () =>
-              db
-                .select()
-                .from(recurringPayments)
-                .where(
-                  and(
-                    eq(recurringPayments.status, "active"),
-                    lte(recurringPayments.nextExecutionAt, new Date())
-                  )
-                ),
+          const queryTime = new Date();
+
+          // Diagnostic: count ALL recurring_payments rows to verify DB connectivity
+          const allPayments = yield* Effect.tryPromise({
+            try: () => db.select().from(recurringPayments),
             catch: (error) =>
               new RecurringPaymentError({
-                message: `Failed to fetch due schedules: ${error}`,
+                message: `Failed to fetch all payments: ${error}`,
                 cause: error,
               }),
           });
+
+          console.log(
+            `[processDuePayments] DB check: total recurring_payments rows = ${allPayments.length}, ` +
+            `statuses = ${JSON.stringify(allPayments.reduce((acc, p) => { acc[p.status] = (acc[p.status] ?? 0) + 1; return acc; }, {} as Record<string, number>))}`
+          );
+
+          const allActiveSchedules = allPayments.filter(
+            (p) => p.status === "active"
+          );
+
+          console.log(
+            `[processDuePayments] queryTime=${queryTime.toISOString()}, activeSchedules=${allActiveSchedules.length}`,
+            allActiveSchedules.map((s) => ({
+              id: s.id,
+              paymentType: s.paymentType,
+              status: s.status,
+              frequency: s.frequency,
+              nextExecutionAt: s.nextExecutionAt.toISOString(),
+              isOfframp: s.isOfframp,
+            }))
+          );
+
+          const dueSchedules = allActiveSchedules.filter(
+            (s) => s.nextExecutionAt <= queryTime
+          );
+
+          console.log(
+            `[processDuePayments] dueSchedules=${dueSchedules.length} (filtered from ${allActiveSchedules.length} active)`
+          );
 
           const executions: RecurringPaymentExecution[] = [];
 

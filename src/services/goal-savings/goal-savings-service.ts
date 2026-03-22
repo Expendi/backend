@@ -299,8 +299,12 @@ export const GoalSavingsServiceLive: Layer.Layer<
           let nextDepositAt: Date | null = null;
 
           if (params.frequency) {
-            const intervalMs = parseFrequencyToMs(params.frequency);
-            nextDepositAt = new Date(startDate.getTime() + intervalMs);
+            // First deposit should happen at startDate (or immediately if
+            // startDate is in the past).  Subsequent deposits are advanced
+            // by the interval inside processDueDeposits.
+            nextDepositAt = startDate.getTime() <= Date.now()
+              ? new Date()
+              : startDate;
           }
 
           const values: NewGoalSaving = {
@@ -605,24 +609,46 @@ export const GoalSavingsServiceLive: Layer.Layer<
 
       processDueDeposits: () =>
         Effect.gen(function* () {
-          const dueGoals = yield* Effect.tryPromise({
-            try: () =>
-              db
-                .select()
-                .from(goalSavings)
-                .where(
-                  and(
-                    eq(goalSavings.status, "active"),
-                    isNotNull(goalSavings.frequency),
-                    lte(goalSavings.nextDepositAt, new Date())
-                  )
-                ),
+          const queryTime = new Date();
+
+          // Diagnostic: count ALL goal_savings rows to verify DB connectivity
+          const allGoals = yield* Effect.tryPromise({
+            try: () => db.select().from(goalSavings),
             catch: (error) =>
               new GoalSavingsError({
-                message: `Failed to fetch due goals: ${error}`,
+                message: `Failed to fetch all goals: ${error}`,
                 cause: error,
               }),
           });
+
+          console.log(
+            `[processDueDeposits] DB check: total goal_savings rows = ${allGoals.length}, ` +
+            `statuses = ${JSON.stringify(allGoals.reduce((acc, g) => { acc[g.status] = (acc[g.status] ?? 0) + 1; return acc; }, {} as Record<string, number>))}`
+          );
+
+          // Filter to active goals with frequency
+          const activeGoals = allGoals.filter(
+            (g) => g.status === "active" && g.frequency != null
+          );
+
+          console.log(
+            `[processDueDeposits] queryTime=${queryTime.toISOString()}, activeGoalsWithFrequency=${activeGoals.length}`,
+            activeGoals.map((g) => ({
+              id: g.id,
+              status: g.status,
+              frequency: g.frequency,
+              nextDepositAt: g.nextDepositAt?.toISOString() ?? "NULL",
+              depositAmount: g.depositAmount,
+            }))
+          );
+
+          const dueGoals = activeGoals.filter(
+            (g) => g.nextDepositAt && g.nextDepositAt <= queryTime
+          );
+
+          console.log(
+            `[processDueDeposits] dueGoals=${dueGoals.length} (filtered from ${activeGoals.length} active)`
+          );
 
           const deposits: GoalSavingsDeposit[] = [];
 
