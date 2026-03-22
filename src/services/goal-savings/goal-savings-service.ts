@@ -182,7 +182,7 @@ export const GoalSavingsServiceLive: Layer.Layer<
       Effect.gen(function* () {
         const walletId = overrides?.walletId ?? goal.walletId;
         const walletType =
-          (overrides?.walletType ?? goal.walletType) as "server" | "agent";
+          (overrides?.walletType ?? goal.walletType ?? "server") as "server" | "agent";
         const vaultId = overrides?.vaultId ?? goal.vaultId;
         const chainId = overrides?.chainId ?? goal.chainId ?? config.defaultChainId;
         const offsetSeconds =
