@@ -18,7 +18,6 @@ import {
   fetchPreferences,
   getUserWallet,
   getTokenBalance,
-  fromBaseUnits,
 } from "./helpers";
 
 /** Set of known fiat currency codes used for amount disambiguation. */
@@ -173,9 +172,11 @@ export const buySellTool: ToolConfig = defineTool({
         };
       }
 
-      // Use the appropriate rate for the direction
+      // Use the appropriate rate for the direction:
+      // "buy" = user buys crypto (Pretium sells USDC → use sellingRate)
+      // "sell" = user sells crypto (Pretium buys USDC → use buyingRate)
       const rate =
-        input.direction === "sell" ? rateData.sellingRate : rateData.buyingRate;
+        input.direction === "buy" ? rateData.sellingRate : rateData.buyingRate;
 
       if (rate <= 0) {
         return {
@@ -217,10 +218,8 @@ export const buySellTool: ToolConfig = defineTool({
         }
 
         walletId = wallet.walletId;
-        const usdcBalanceBase = getTokenBalance(wallet, "USDC");
-        const usdcBalance = Number(
-          fromBaseUnits(usdcBalanceBase, TOKEN_MAP.USDC!.decimals)
-        );
+        // Backend returns human-readable balances (e.g. "100" for 100 USDC)
+        const usdcBalance = Number(getTokenBalance(wallet, "USDC"));
 
         if (cryptoAmount > usdcBalance) {
           return {

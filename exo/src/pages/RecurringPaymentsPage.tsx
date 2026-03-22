@@ -4,7 +4,7 @@ import { useApprovalContext } from "../context/ApprovalContext";
 import { usePreferences } from "../context/PreferencesContext";
 import { Spinner } from "../components/Spinner";
 import { BottomSheet } from "../components/BottomSheet";
-import { TokenAmountInput, toBaseUnits } from "../components/TokenAmountInput";
+import { TokenAmountInput } from "../components/TokenAmountInput";
 import type { RecurringPayment, RecurringExecution, Category } from "../lib/types";
 import { TOKEN_ADDRESSES, FREQUENCY_OPTIONS, OFFRAMP_COUNTRIES } from "../lib/constants";
 import "../styles/pages.css";
@@ -249,7 +249,7 @@ export function RecurringPaymentsPage() {
             name: paymentName || undefined,
             wallet: "server",
             to: recipient,
-            amount: toBaseUnits(amount, decimals),
+            amount,
             token: tokenName.toLowerCase(),
             frequency,
             executeImmediately: executeImm,
@@ -286,7 +286,7 @@ export function RecurringPaymentsPage() {
             type: "offramp",
             name: paymentName || undefined,
             wallet: "server",
-            amount: toBaseUnits(amount, 6),
+            amount,
             amountInUsdc: true,
             recipient,
             frequency,

@@ -6,7 +6,7 @@ import { Spinner } from "../components/Spinner";
 import { SuccessCheck } from "../components/SuccessCheck";
 import { triggerConfetti } from "../components/Confetti";
 import { useToast } from "../components/Toast";
-import { TokenAmountInput, formatHumanAmount } from "../components/TokenAmountInput";
+import { TokenAmountInput } from "../components/TokenAmountInput";
 import { TOKEN_ADDRESSES } from "../lib/constants";
 import type { Category } from "../lib/types";
 import "../styles/pages.css";
