@@ -7,8 +7,10 @@ export const processDuePayments = schedules.task({
   id: "process-due-payments",
   cron: "*/5 * * * *",
   run: async (payload) => {
+    const dbUrl = process.env.DATABASE_URL;
     logger.info("🔍 Fetching due recurring payments", {
       timestamp: payload.timestamp,
+      dbHost: dbUrl ? new URL(dbUrl).host : "DATABASE_URL NOT SET",
     });
 
     const executions = await runtime.runPromise(

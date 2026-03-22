@@ -851,19 +851,24 @@ export const RecurringPaymentServiceLive: Layer.Layer<
         Effect.gen(function* () {
           const queryTime = new Date();
 
-          // First, fetch all active schedules for diagnostics
-          const allActiveSchedules = yield* Effect.tryPromise({
-            try: () =>
-              db
-                .select()
-                .from(recurringPayments)
-                .where(eq(recurringPayments.status, "active")),
+          // Diagnostic: count ALL recurring_payments rows to verify DB connectivity
+          const allPayments = yield* Effect.tryPromise({
+            try: () => db.select().from(recurringPayments),
             catch: (error) =>
               new RecurringPaymentError({
-                message: `Failed to fetch active schedules: ${error}`,
+                message: `Failed to fetch all payments: ${error}`,
                 cause: error,
               }),
           });
+
+          console.log(
+            `[processDuePayments] DB check: total recurring_payments rows = ${allPayments.length}, ` +
+            `statuses = ${JSON.stringify(allPayments.reduce((acc, p) => { acc[p.status] = (acc[p.status] ?? 0) + 1; return acc; }, {} as Record<string, number>))}`
+          );
+
+          const allActiveSchedules = allPayments.filter(
+            (p) => p.status === "active"
+          );
 
           console.log(
             `[processDuePayments] queryTime=${queryTime.toISOString()}, activeSchedules=${allActiveSchedules.length}`,
