@@ -185,8 +185,10 @@ export const GoalSavingsServiceLive: Layer.Layer<
           (overrides?.walletType ?? goal.walletType ?? "server") as "server" | "agent";
         const vaultId = overrides?.vaultId ?? goal.vaultId;
         const chainId = overrides?.chainId ?? goal.chainId ?? config.defaultChainId;
+        // Default to 60s buffer so the lock is safely in the past by withdrawal time
+        // (avoids LockNotExpired race when offset is 0 and block.timestamp ≈ unlockTime)
         const offsetSeconds =
-          overrides?.unlockTimeOffsetSeconds ?? goal.unlockTimeOffsetSeconds ?? 0;
+          overrides?.unlockTimeOffsetSeconds ?? goal.unlockTimeOffsetSeconds ?? 60;
 
         // Create a pending deposit record FIRST so every attempt is tracked
         const [pendingDeposit] = yield* Effect.tryPromise({
