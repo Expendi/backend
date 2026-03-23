@@ -24,6 +24,9 @@ import {
 import { RecurringPaymentService } from "../recurring-payment/recurring-payment-service.js";
 import { GoalSavingsService } from "../goal-savings/goal-savings-service.js";
 import { GroupAccountService } from "../group-account/group-account-service.js";
+import { AgentMandateService } from "./agent-mandate-service.js";
+import { SwapAutomationService } from "../swap-automation/swap-automation-service.js";
+import type { MandateTrigger, MandateAction, MandateConstraints } from "../../db/schema/index.js";
 
 // ── Token map for Base chain ─────────────────────────────────────────
 
@@ -150,6 +153,31 @@ function getUserWalletAddress(
       (w) => w.address !== null && w.address !== ""
     );
     return wallet?.address ?? "";
+  });
+}
+
+/**
+ * Get the user's primary wallet (ID + address).
+ */
+function getUserWallet(
+  userId: string
+): Effect.Effect<{ id: string; address: string } | null, never, DatabaseService> {
+  return Effect.gen(function* () {
+    const { db } = yield* DatabaseService;
+
+    const userWallets = yield* Effect.tryPromise({
+      try: () =>
+        db
+          .select()
+          .from(wallets)
+          .where(and(eq(wallets.ownerId, userId), eq(wallets.type, "user"))),
+      catch: () => new Error("Failed to fetch user wallets"),
+    }).pipe(Effect.catchAll(() => Effect.succeed([] as Array<{ id: string; address: string | null }>)));
+
+    const wallet = userWallets.find(
+      (w) => w.address !== null && w.address !== ""
+    );
+    return wallet ? { id: wallet.id, address: wallet.address! } : null;
   });
 }
 
@@ -1141,13 +1169,15 @@ const earnTool: SuperToolDefinition = {
 const manageTool: SuperToolDefinition = {
   name: "manage",
   description:
-    "Manage recurring payments, savings goals, categories, groups, and security settings.",
+    "Manage DCA orders, swap automations, recurring payments, savings goals, and more. Use domain 'mandates' for schedule-based DCA and standing automations. Use domain 'swap_automation' for price-triggered auto-swaps.",
   parameters: {
     type: "object",
     properties: {
       domain: {
         type: "string",
         enum: [
+          "mandates",
+          "swap_automation",
           "recurring",
           "goals",
           "categories",
@@ -1155,7 +1185,7 @@ const manageTool: SuperToolDefinition = {
           "settings",
           "security",
         ],
-        description: "What to manage",
+        description: "What to manage. Use 'mandates' for DCA orders, auto-offramp, rebalancing, price alerts, and custom standing automations. Use 'swap_automation' for price-triggered auto-swaps (buy when price drops below X, sell when above Y). Use 'recurring' for scheduled payments to people.",
       },
       action: {
         type: "string",
@@ -1187,6 +1217,397 @@ const manageTool: SuperToolDefinition = {
       const action = String(input.action ?? "list");
       const id = input.id ? String(input.id) : undefined;
       const params = (input.params as Record<string, unknown>) ?? {};
+
+      // ── Mandates (DCA, auto-offramp, alerts, rebalancing) ────────
+
+      if (domain === "mandates") {
+        const mandateService = yield* AgentMandateService;
+
+        if (action === "list") {
+          const mandates = yield* mandateService
+            .listMandates(ctx.userId)
+            .pipe(
+              Effect.catchAll(() =>
+                Effect.succeed([] as ReadonlyArray<unknown>)
+              )
+            );
+
+          if ((mandates as ReadonlyArray<unknown>).length === 0) {
+            return {
+              status: "success" as const,
+              message:
+                "You have no active mandates (DCA orders, automations, or alerts).",
+              data: { mandates: [] },
+            };
+          }
+
+          const summary = (mandates as ReadonlyArray<Record<string, unknown>>)
+            .map((m) => {
+              const name = m.name ?? m.type;
+              const status = m.status ?? "active";
+              const trigger = m.trigger as MandateTrigger | undefined;
+              const mAction = m.action as MandateAction | undefined;
+              let detail = "";
+              if (trigger?.type === "schedule" && trigger.frequency) {
+                detail += ` every ${trigger.frequency}`;
+              }
+              if (trigger?.type === "price") {
+                detail += ` when ${trigger.token ?? "token"} is ${trigger.condition ?? ""} ${trigger.value ?? ""}`;
+              }
+              if (mAction?.type === "swap" && mAction.from && mAction.to) {
+                detail += ` — swap ${mAction.amount ?? ""} ${mAction.from} → ${mAction.to}`;
+              }
+              return `• ${name} (${status})${detail}`;
+            })
+            .join("\n");
+
+          return {
+            status: "success" as const,
+            message: `You have ${(mandates as ReadonlyArray<unknown>).length} mandate(s):\n${summary}`,
+            data: { mandates },
+          };
+        }
+
+        if (action === "create") {
+          // Required: type, trigger, action
+          const mandateType = String(params.type ?? "dca");
+          const name = params.name ? String(params.name) : undefined;
+          const description = params.description ? String(params.description) : undefined;
+
+          // Build trigger
+          const triggerInput = params.trigger as Record<string, unknown> | undefined;
+          if (!triggerInput || !triggerInput.type) {
+            return {
+              status: "needs_input" as const,
+              message:
+                "I need trigger details to create this automation. For a DCA, provide: trigger type ('schedule'), frequency (e.g. '1d', '1w'), and optionally an anchor time. For price-based, provide: trigger type ('price'), token, condition ('above' or 'below'), and value.",
+            };
+          }
+          const trigger: MandateTrigger = {
+            type: String(triggerInput.type) as MandateTrigger["type"],
+            token: triggerInput.token ? String(triggerInput.token) : undefined,
+            condition: triggerInput.condition ? String(triggerInput.condition) as "above" | "below" : undefined,
+            value: triggerInput.value !== undefined ? triggerInput.value as string | number : undefined,
+            frequency: triggerInput.frequency ? String(triggerInput.frequency) : undefined,
+            anchor: triggerInput.anchor ? String(triggerInput.anchor) : new Date().toISOString(),
+            wallet: triggerInput.wallet ? String(triggerInput.wallet) : undefined,
+          };
+
+          // Build action
+          const actionInput = params.action as Record<string, unknown> | undefined;
+          if (!actionInput || !actionInput.type) {
+            return {
+              status: "needs_input" as const,
+              message:
+                "I need action details. For a DCA swap, provide: action type ('swap'), from token, to token, and amount. Example: { type: 'swap', from: 'USDC', to: 'ETH', amount: '50' }",
+            };
+          }
+          const mandateAction: MandateAction = {
+            type: String(actionInput.type) as MandateAction["type"],
+            from: actionInput.from ? String(actionInput.from) : undefined,
+            to: actionInput.to ? String(actionInput.to) : undefined,
+            amount: actionInput.amount ? String(actionInput.amount) : undefined,
+            phone: actionInput.phone ? String(actionInput.phone) : undefined,
+            network: actionInput.network ? String(actionInput.network) : undefined,
+            country: actionInput.country ? String(actionInput.country) : undefined,
+            goalId: actionInput.goalId ? String(actionInput.goalId) : undefined,
+            message: actionInput.message ? String(actionInput.message) : undefined,
+          };
+
+          // Build optional constraints
+          const constraintInput = params.constraints as Record<string, unknown> | undefined;
+          const constraints: MandateConstraints | undefined = constraintInput
+            ? {
+                maxPerExecution: constraintInput.maxPerExecution ? String(constraintInput.maxPerExecution) : undefined,
+                maxPerDay: constraintInput.maxPerDay ? String(constraintInput.maxPerDay) : undefined,
+                requireConfirmation: constraintInput.requireConfirmation === true,
+              }
+            : undefined;
+
+          const created = yield* mandateService.createMandate({
+            userId: ctx.userId,
+            type: mandateType,
+            name,
+            description,
+            trigger,
+            action: mandateAction,
+            constraints,
+            source: "explicit",
+          }).pipe(
+            Effect.catchAll((err) =>
+              Effect.fail(new Error(`Failed to create mandate: ${err.message}`))
+            )
+          );
+
+          // Build a human-friendly confirmation
+          let summary = `${name ?? mandateType} mandate created.`;
+          if (trigger.type === "schedule" && trigger.frequency) {
+            summary += ` Runs every ${trigger.frequency}.`;
+          }
+          if (trigger.type === "price") {
+            summary += ` Triggers when ${trigger.token ?? "token"} is ${trigger.condition ?? ""} ${trigger.value ?? ""}.`;
+          }
+          if (mandateAction.type === "swap") {
+            summary += ` Action: swap ${mandateAction.amount ?? ""} ${mandateAction.from ?? ""} → ${mandateAction.to ?? ""}.`;
+          }
+
+          return {
+            status: "success" as const,
+            message: summary,
+            data: { mandate: created },
+          };
+        }
+
+        if (action === "pause") {
+          if (!id) {
+            return {
+              status: "needs_input" as const,
+              message: "Which mandate would you like to pause? Please provide the mandate ID.",
+            };
+          }
+          const paused = yield* mandateService.pauseMandate(id).pipe(
+            Effect.catchAll((err) =>
+              Effect.fail(new Error(`Failed to pause mandate: ${err.message}`))
+            )
+          );
+          return {
+            status: "success" as const,
+            message: `Mandate "${(paused as Record<string, unknown>).name ?? id}" has been paused.`,
+            data: { mandate: paused },
+          };
+        }
+
+        if (action === "resume") {
+          if (!id) {
+            return {
+              status: "needs_input" as const,
+              message: "Which mandate would you like to resume? Please provide the mandate ID.",
+            };
+          }
+          const resumed = yield* mandateService.resumeMandate(id).pipe(
+            Effect.catchAll((err) =>
+              Effect.fail(new Error(`Failed to resume mandate: ${err.message}`))
+            )
+          );
+          return {
+            status: "success" as const,
+            message: `Mandate "${(resumed as Record<string, unknown>).name ?? id}" has been resumed.`,
+            data: { mandate: resumed },
+          };
+        }
+
+        if (action === "cancel" || action === "delete") {
+          if (!id) {
+            return {
+              status: "needs_input" as const,
+              message: "Which mandate would you like to cancel? Please provide the mandate ID.",
+            };
+          }
+          const revoked = yield* mandateService.revokeMandate(id).pipe(
+            Effect.catchAll((err) =>
+              Effect.fail(new Error(`Failed to cancel mandate: ${err.message}`))
+            )
+          );
+          return {
+            status: "success" as const,
+            message: `Mandate "${(revoked as Record<string, unknown>).name ?? id}" has been cancelled.`,
+            data: { mandate: revoked },
+          };
+        }
+
+        return {
+          status: "error" as const,
+          message: `Unsupported action "${action}" for mandates. Valid actions: list, create, pause, resume, cancel.`,
+        };
+      }
+
+      // ── Swap Automations (price-triggered) ─────────────────────────
+
+      if (domain === "swap_automation") {
+        const automationService = yield* SwapAutomationService;
+
+        if (action === "list") {
+          const automations = yield* automationService
+            .listByUser(ctx.userId)
+            .pipe(
+              Effect.catchAll(() =>
+                Effect.succeed([] as ReadonlyArray<unknown>)
+              )
+            );
+
+          if ((automations as ReadonlyArray<unknown>).length === 0) {
+            return {
+              status: "success" as const,
+              message: "You have no active swap automations.",
+              data: { automations: [] },
+            };
+          }
+
+          const summary = (automations as ReadonlyArray<Record<string, unknown>>)
+            .map((a) => {
+              const tokenIn = a.tokenIn ?? "?";
+              const tokenOut = a.tokenOut ?? "?";
+              const amount = a.amount ?? "?";
+              const indicator = a.indicatorType ?? "";
+              const threshold = a.thresholdValue ?? "";
+              const indicatorToken = a.indicatorToken ?? "";
+              const status = a.status ?? "active";
+              const total = a.totalExecutions ?? 0;
+              const max = a.maxExecutions;
+              return `• ${amount} ${tokenIn} → ${tokenOut} when ${indicatorToken} ${String(indicator).replace(/_/g, " ")} $${threshold} (${status}, ${total}${max ? `/${max}` : ""} executions)`;
+            })
+            .join("\n");
+
+          return {
+            status: "success" as const,
+            message: `You have ${(automations as ReadonlyArray<unknown>).length} swap automation(s):\n${summary}`,
+            data: { automations },
+          };
+        }
+
+        if (action === "create") {
+          const tokenIn = params.from ? resolveTokenSymbol(String(params.from)) : undefined;
+          const tokenOut = params.to ? resolveTokenSymbol(String(params.to)) : undefined;
+          const amount = params.amount ? String(params.amount) : undefined;
+          const indicatorType = params.indicatorType ? String(params.indicatorType) : undefined;
+          const indicatorToken = params.indicatorToken ? resolveTokenSymbol(String(params.indicatorToken)) : undefined;
+          const thresholdValue = params.thresholdValue !== undefined ? Number(params.thresholdValue) : undefined;
+
+          if (!tokenIn || !tokenOut || !amount) {
+            return {
+              status: "needs_input" as const,
+              message:
+                "I need swap details: which token to sell (from), which to buy (to), and how much. Example: from 'USDC', to 'ETH', amount '100'.",
+            };
+          }
+
+          if (!indicatorType || !indicatorToken || thresholdValue === undefined || isNaN(thresholdValue)) {
+            return {
+              status: "needs_input" as const,
+              message:
+                "I need the price trigger: indicatorToken (which token's price to watch, e.g. 'ETH'), indicatorType ('price_below', 'price_above', 'percent_change_up', 'percent_change_down'), and thresholdValue (the price or percentage). Example: watch ETH, trigger when price_below 2000.",
+            };
+          }
+
+          // Get user wallet
+          const wallet = yield* getUserWallet(ctx.userId);
+          if (!wallet) {
+            return {
+              status: "error" as const,
+              message: "No wallet found for your account. Please complete onboarding first.",
+            };
+          }
+
+          // Resolve token addresses
+          const fromInfo = TOKEN_MAP[tokenIn];
+          const toInfo = TOKEN_MAP[tokenOut];
+          if (!fromInfo) {
+            return {
+              status: "error" as const,
+              message: `Unsupported source token "${tokenIn}". Supported: ${Object.keys(TOKEN_MAP).join(", ")}.`,
+            };
+          }
+          if (!toInfo) {
+            return {
+              status: "error" as const,
+              message: `Unsupported destination token "${tokenOut}". Supported: ${Object.keys(TOKEN_MAP).join(", ")}.`,
+            };
+          }
+
+          const maxExecutions = params.maxExecutions !== undefined ? Number(params.maxExecutions) : undefined;
+          const maxExecutionsPerDay = params.maxExecutionsPerDay !== undefined ? Number(params.maxExecutionsPerDay) : undefined;
+          const slippage = params.slippage !== undefined ? Number(params.slippage) : 0.5;
+
+          const created = yield* automationService.createAutomation({
+            userId: ctx.userId,
+            walletId: wallet.id,
+            walletType: "server",
+            tokenIn: fromInfo.address,
+            tokenOut: toInfo.address,
+            amount,
+            slippageTolerance: slippage,
+            chainId: 8453,
+            indicatorType: indicatorType as "price_above" | "price_below" | "percent_change_up" | "percent_change_down",
+            indicatorToken,
+            thresholdValue,
+            maxExecutions,
+            maxExecutionsPerDay,
+          }).pipe(
+            Effect.catchAll((err) =>
+              Effect.fail(new Error(`Failed to create swap automation: ${err.message}`))
+            )
+          );
+
+          const typeLabel = String(indicatorType).replace(/_/g, " ");
+          return {
+            status: "success" as const,
+            message: `Swap automation created: ${amount} ${tokenIn} → ${tokenOut} whenever ${indicatorToken} is ${typeLabel} $${thresholdValue}.${maxExecutions ? ` Max ${maxExecutions} executions.` : ""}`,
+            data: { automation: created },
+          };
+        }
+
+        if (action === "pause") {
+          if (!id) {
+            return {
+              status: "needs_input" as const,
+              message: "Which swap automation would you like to pause? Provide the automation ID.",
+            };
+          }
+          const paused = yield* automationService.pauseAutomation(id).pipe(
+            Effect.catchAll((err) =>
+              Effect.fail(new Error(`Failed to pause automation: ${err.message}`))
+            )
+          );
+          return {
+            status: "success" as const,
+            message: "Swap automation paused.",
+            data: { automation: paused },
+          };
+        }
+
+        if (action === "resume") {
+          if (!id) {
+            return {
+              status: "needs_input" as const,
+              message: "Which swap automation would you like to resume? Provide the automation ID.",
+            };
+          }
+          const resumed = yield* automationService.resumeAutomation(id).pipe(
+            Effect.catchAll((err) =>
+              Effect.fail(new Error(`Failed to resume automation: ${err.message}`))
+            )
+          );
+          return {
+            status: "success" as const,
+            message: "Swap automation resumed.",
+            data: { automation: resumed },
+          };
+        }
+
+        if (action === "cancel" || action === "delete") {
+          if (!id) {
+            return {
+              status: "needs_input" as const,
+              message: "Which swap automation would you like to cancel? Provide the automation ID.",
+            };
+          }
+          const cancelled = yield* automationService.cancelAutomation(id).pipe(
+            Effect.catchAll((err) =>
+              Effect.fail(new Error(`Failed to cancel automation: ${err.message}`))
+            )
+          );
+          return {
+            status: "success" as const,
+            message: "Swap automation cancelled.",
+            data: { automation: cancelled },
+          };
+        }
+
+        return {
+          status: "error" as const,
+          message: `Unsupported action "${action}" for swap automations. Valid actions: list, create, pause, resume, cancel.`,
+        };
+      }
 
       // ── Recurring Payments ───────────────────────────────────────
 
@@ -1610,7 +2031,7 @@ const manageTool: SuperToolDefinition = {
 
       return {
         status: "error" as const,
-        message: `Unknown management domain "${domain}". Valid domains: recurring, goals, categories, groups, settings, security.`,
+        message: `Unknown management domain "${domain}". Valid domains: mandates, swap_automation, recurring, goals, categories, groups, settings, security.`,
       };
     }).pipe(
       Effect.catchAll((err: unknown) =>
