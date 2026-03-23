@@ -113,14 +113,19 @@ export function SwapPage() {
     return userWallet.balances[tokenName] ?? "0";
   };
 
+  // Balances from API are already human-readable (formatted via formatUnits on the backend)
   const inBalance = getBalance(tokenIn);
-  const displayInBalance = formatTokenAmount(inBalance, tokenInInfo.decimals);
+  const inBalanceNum = Number(inBalance);
+  const displayInBalance = inBalanceNum === 0
+    ? "0"
+    : inBalanceNum < 0.0001
+      ? "<0.0001"
+      : inBalanceNum.toLocaleString(undefined, { maximumFractionDigits: 6 });
 
   const maxAmount = (() => {
-    const num = Number(inBalance) / 10 ** tokenInInfo.decimals;
-    if (num === 0) return "0";
-    if (tokenInInfo.decimals <= 6) return num.toFixed(6).replace(/\.?0+$/, "");
-    return num.toFixed(8).replace(/\.?0+$/, "");
+    if (inBalanceNum === 0) return "0";
+    if (tokenInInfo.decimals <= 6) return inBalanceNum.toFixed(6).replace(/\.?0+$/, "");
+    return inBalanceNum.toFixed(8).replace(/\.?0+$/, "");
   })();
 
   const parseAmount = (amt: string, decimals: number): string => {
@@ -253,7 +258,7 @@ export function SwapPage() {
   const amountExceedsBalance =
     amount !== "" &&
     Number(amount) > 0 &&
-    Number(amount) > Number(inBalance) / 10 ** tokenInInfo.decimals;
+    Number(amount) > inBalanceNum;
 
   const canQuote =
     amount && Number(amount) > 0 && !amountExceedsBalance && tokenIn !== tokenOut && walletId;
@@ -297,7 +302,8 @@ export function SwapPage() {
             <div style={{ overflow: "auto", padding: "0 8px 20px" }}>
               {TOKEN_LIST.map(([name, info]) => {
                 const bal = getBalance(name);
-                const displayBal = formatTokenAmount(bal, info.decimals);
+                const balNum = Number(bal);
+                const displayBal = balNum === 0 ? "0" : balNum < 0.0001 ? "<0.0001" : balNum.toLocaleString(undefined, { maximumFractionDigits: 6 });
                 const isSelected = pickerFor === "in" ? name === tokenIn : name === tokenOut;
                 const price = prices[name];
                 return (
@@ -469,7 +475,10 @@ export function SwapPage() {
               <div className="swap-token-box-header">
                 <span className="swap-token-box-label">You Receive</span>
                 <span className="swap-token-balance">
-                  {formatTokenAmount(getBalance(tokenOut), tokenOutInfo.decimals)} {tokenOut}
+                  {(() => {
+                    const bal = Number(getBalance(tokenOut));
+                    return bal === 0 ? "0" : bal < 0.0001 ? "<0.0001" : bal.toLocaleString(undefined, { maximumFractionDigits: 6 });
+                  })()} {tokenOut}
                 </span>
               </div>
               <div className="swap-token-box-row">

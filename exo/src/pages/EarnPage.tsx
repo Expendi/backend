@@ -179,26 +179,24 @@ export function EarnPage() {
       </div>
 
       {/* Portfolio summary strip */}
-      {portfolio && (
-        <div className="exo-stats exo-animate-in">
-          <div className="exo-stat">
-            <div className="exo-stat-label">Deposited</div>
-            <div className="exo-stat-value">{portfolio.totalDeposited}</div>
-          </div>
-          <div className="exo-stat">
-            <div className="exo-stat-label">Earned</div>
-            <div className="exo-stat-value lime">{portfolio.totalYieldEarned}</div>
-          </div>
-          <div className="exo-stat">
-            <div className="exo-stat-label">Current Value</div>
-            <div className="exo-stat-value">{portfolio.totalCurrentValue}</div>
-          </div>
-          <div className="exo-stat">
-            <div className="exo-stat-label">Avg APY</div>
-            <div className="exo-stat-value violet">{portfolio.weightedApy}</div>
-          </div>
+      <div className="exo-stats exo-animate-in">
+        <div className="exo-stat">
+          <div className="exo-stat-label">Deposited</div>
+          <div className="exo-stat-value">{portfolio?.totalDeposited || "$0.00"}</div>
         </div>
-      )}
+        <div className="exo-stat">
+          <div className="exo-stat-label">Earned</div>
+          <div className="exo-stat-value lime">{portfolio?.totalYieldEarned || "$0.00"}</div>
+        </div>
+        <div className="exo-stat">
+          <div className="exo-stat-label">Current Value</div>
+          <div className="exo-stat-value">{portfolio?.totalCurrentValue || "$0.00"}</div>
+        </div>
+        <div className="exo-stat">
+          <div className="exo-stat-label">Avg APY</div>
+          <div className="exo-stat-value violet">{portfolio?.weightedApy || "0%"}</div>
+        </div>
+      </div>
 
       <div className="exo-tabs">
         <button className={`exo-tab ${tab === "vaults" ? "active" : ""}`} onClick={() => { setTab("vaults"); setDepositStep("idle"); }}>Ways to Earn</button>

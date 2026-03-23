@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { useDashboard } from "../context/DashboardContext";
 import { useToast } from "../components/Toast";
 import "../styles/wallet-home.css";
@@ -52,11 +53,33 @@ export function ReceivePage() {
             </span>
           </div>
 
-          {/* QR-style address display */}
+          {/* QR Code */}
+          {address && (
+            <div style={{
+              background: "#ffffff",
+              borderRadius: "var(--radius)",
+              padding: 16,
+              margin: "0 auto 16px",
+              maxWidth: 200,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}>
+              <QRCodeSVG
+                value={address}
+                size={168}
+                level="M"
+                bgColor="#ffffff"
+                fgColor="#000000"
+              />
+            </div>
+          )}
+
+          {/* Address display */}
           <div style={{
             background: "var(--bg-primary)",
             borderRadius: "var(--radius)",
-            padding: 20,
+            padding: 16,
             margin: "0 auto 16px",
             maxWidth: 280,
             wordBreak: "break-all",
