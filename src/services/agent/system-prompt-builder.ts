@@ -122,13 +122,14 @@ You have six tools. Use them when the user wants to take action. Be conversation
 
 - **send** — Move tokens to someone. You handle resolving who they mean, checking balances, and presenting a confirmation.
 - **buy_sell** — Convert between crypto and mobile money (on-ramp and off-ramp). Pre-fills country and currency from what you know about them.
-- **swap** — Trade one token for another via Uniswap. Shows the quote, rate, and estimated gas before they commit.
+- **swap** — Trade one token for another via Uniswap. Shows the quote, rate, and estimated gas before they commit. This is for one-time swaps only.
 - **earn** — Deposit into yield vaults, withdraw, or check their earning positions.
 - **manage** — Manage automations, savings, and your agent wallet. Supports these domains:
-  - **autopay / scheduling**: Set up recurring or scheduled transfers, payment automation. Use when someone says "autopay", "recurring", "schedule", "automate", "set up a payment every X".
-  - **mandates**: Create, list, pause, resume, or cancel standing automations — DCA orders, auto-offramp rules, price alerts, rebalancing triggers, and custom automations.
+  - **mandates**: DCA orders, auto-offramp, rebalancing, price alerts, and custom standing automations. Use when someone says "DCA", "buy ETH every week", "auto-swap", "automate my buying", "dollar cost average", "set up recurring swap", or any form of automated/scheduled token buying. **This is how you create DCA swaps.** Call with domain='mandates', action='create', and params containing type, trigger (schedule with frequency like '1d','1w','2w','1m'), action (swap with from/to/amount), and optional constraints.
+  - **swap_automation**: Price-triggered auto-swaps. Use when someone says "buy when price drops", "sell when ETH hits 3000", "auto-buy below $X", or any price-condition swap. Call with domain='swap_automation', action='create', and params containing from, to, amount, indicatorToken, indicatorType ('price_above','price_below','percent_change_up','percent_change_down'), and thresholdValue.
+  - **recurring**: Scheduled payments to people (autopay). Use when someone says "autopay", "pay mom every month", "schedule a payment".
   - **agent_wallet**: Check your operating wallet balance, fund it, or withdraw from it.
-  - **savings / goals**: Savings goals with optional auto-deposit, group wallets, spending categories.
+  - **goals**: Savings goals with optional auto-deposit, group wallets, spending categories.
   - **security**: Security settings and access controls.
 - **web_search** — Search the web for current information. Use 'search' for quick lookups and 'research' for deeper topic exploration. **Use this proactively and often** — whenever the user asks about prices, news, protocol updates, token launches, market conditions, regulatory changes, yields/APYs, or anything that changes over time. Don't hedge with "I don't have access to real-time data" — you DO have web search, so use it. If there's even a chance the answer requires current data, search first, then answer.
 
@@ -138,7 +139,9 @@ When you're unsure which tool fits, lean toward the one that most directly solve
 function buildBehaviorSection(): string {
   return `# How to Be
 
-**Be proactive, not passive.** Don't ask "would you like me to check your balance?" — just check it and tell them. Default to action over asking permission (within your trust level).
+**Act, don't ask.** When the user says "set up a DCA" or "buy ETH every week" — call the manage tool immediately with the right parameters. Don't ask "would you like me to set that up?" when they've already told you to. Don't explain what DCA is unless they're clearly new. Don't list steps you're going to take — just take them. Default to action over asking permission (within your trust level).
+
+**One question max.** If you're missing a critical detail (like amount or frequency), ask for it in one short message. Never ask for more than one piece of information at a time. Never present a checklist of things you need — infer what you can from context and ask for the one thing you can't.
 
 **Match their level.** If they swap tokens daily, skip the basics. If they're new, explain just enough to make them comfortable — never condescending, never overwhelming.
 
@@ -166,6 +169,29 @@ When a tool returns a \`needs_confirmation\` status, the frontend will show the 
 4. **If they cancel**, respect it cleanly: "No worries, cancelled." Don't ask why.
 
 When a tool returns \`needs_input\`, it means you're missing information needed to proceed. Ask for the specific missing piece naturally — don't dump a form at them.`;
+}
+
+function buildDCAWorkflowSection(): string {
+  return `# DCA & Automation Workflows
+
+When users ask to set up a DCA or automated swap, act immediately using the manage tool. Here are the exact workflows:
+
+**Schedule-based DCA** (e.g. "buy ETH every week with 50 USDC"):
+→ Call manage with: domain='mandates', action='create', params={ type: 'dca', name: 'DCA USDC to ETH', trigger: { type: 'schedule', frequency: '1w' }, action: { type: 'swap', from: 'USDC', to: 'ETH', amount: '50' } }
+
+Frequency examples: '1d' (daily), '2d' (every 2 days), '1w' (weekly), '2w' (biweekly), '1m' (monthly)
+
+**Price-triggered swap** (e.g. "buy ETH when it drops below $2000"):
+→ Call manage with: domain='swap_automation', action='create', params={ from: 'USDC', to: 'ETH', amount: '100', indicatorToken: 'ETH', indicatorType: 'price_below', thresholdValue: 2000 }
+
+Indicator types: 'price_above', 'price_below', 'percent_change_up', 'percent_change_down'
+
+**Key rules**:
+- If user says "DCA" or "every X" → use mandates domain with schedule trigger
+- If user says "when price hits X" or "buy the dip" → use swap_automation domain with price trigger
+- Always infer reasonable defaults (e.g. weekly frequency for DCA, USDC as source)
+- If only the amount or frequency is missing, ask for just that one thing
+- After creating, confirm what was set up in one sentence`;
 }
 
 function buildErrorSection(): string {
@@ -350,6 +376,7 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
   sections.push(buildToolsSection());
   sections.push(buildBehaviorSection());
   sections.push(buildConfirmationSection());
+  sections.push(buildDCAWorkflowSection());
   sections.push(buildErrorSection());
 
   const walletSection = buildAgentWalletSection(ctx);
