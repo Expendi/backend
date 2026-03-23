@@ -220,7 +220,7 @@ export function GoalsPage() {
   };
 
   const activeGoals = goals.filter(g => g.status === "active" || g.status === "paused");
-  const completedGoals = goals.filter(g => g.status === "completed" || g.status === "cancelled");
+  const completedGoals = goals.filter(g => g.status === "completed");
 
   const selectedCategoryName = categoryId
     ? categories.find(c => c.id === categoryId)?.name ?? ""
@@ -301,7 +301,7 @@ export function GoalsPage() {
 
                   {completedGoals.length > 0 && (
                     <>
-                      <div className="exo-form-card-title" style={{ marginTop: 20, marginBottom: 8 }}>Completed / Cancelled</div>
+                      <div className="exo-form-card-title" style={{ marginTop: 20, marginBottom: 8 }}>Completed</div>
                       {completedGoals.map(g => (
                         <div key={g.id} className="goal-card" style={{ opacity: 0.6 }} onClick={() => { setSelected(g); setDepositStep("idle"); }}>
                           <div className="goal-card-header">
