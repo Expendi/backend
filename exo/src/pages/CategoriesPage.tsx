@@ -426,8 +426,9 @@ export function CategoriesPage() {
                       <path d="M21.21 15.89A10 10 0 1 1 8 2.83" /><path d="M22 12A10 10 0 0 0 12 2v10z" />
                     </svg>
                   </div>
-                  <div className="exo-empty-text">No spending data yet</div>
-                  <div className="exo-empty-hint">Assign categories to your transactions to see spending breakdowns</div>
+                  <div className="exo-empty-text">No spending tracked yet</div>
+                  <div className="exo-empty-hint">Categorize your next transaction to see spending insights, charts, and budget tracking here</div>
+                  <button className="btn-exo btn-primary btn-sm" style={{ marginTop: 8 }} onClick={() => setTab("categories")}>Set Up Categories</button>
                 </div>
               ) : (
                 <>

@@ -114,9 +114,9 @@ export function GoalSavingsPage() {
         <button className="btn-exo btn-primary btn-sm" onClick={() => refetch()} disabled={isLoading}>
           {isLoading ? <Spinner /> : "Refresh"}
         </button>
-        {goals.length > 0 && (
+        {goals.filter(g => g.status !== "cancelled").length > 0 && (
           <div className="data-list" style={{ marginTop: 12 }}>
-            {goals.map((g) => (
+            {goals.filter(g => g.status !== "cancelled").map((g) => (
               <div key={g.id} className="data-list-item" onClick={() => { setSelected(g); setGoalId(g.id); updateForm.setValue("goalId", g.id); depositForm.setValue("goalId", g.id); }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <StatusTag status={g.status} />

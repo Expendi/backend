@@ -340,7 +340,7 @@ export function RecurringPaymentsPage() {
 
   // Group schedules by status
   const activeSchedules = schedules.filter(s => s.status === "active" || s.status === "paused");
-  const pastSchedules = schedules.filter(s => s.status === "cancelled" || s.status === "completed" || s.status === "failed");
+  const pastSchedules = schedules.filter(s => s.status === "completed" || s.status === "failed");
 
   return (
     <div className="exo-page">
