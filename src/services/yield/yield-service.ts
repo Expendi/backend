@@ -691,7 +691,7 @@ export const YieldServiceLive: Layer.Layer<
                     cause: e,
                   })
               )
-            ) as Effect.Effect<{ depositor: string }, YieldError>;
+            ) as Effect.Effect<{ depositor: string; unlockTime: bigint; withdrawn: boolean; isEmergencyWithdrawn: boolean }, YieldError>;
 
           const onChainDepositor = lockData.depositor.toLowerCase();
           const ourAddress = walletAddress.toLowerCase();
@@ -700,6 +700,35 @@ export const YieldServiceLive: Layer.Layer<
             return yield* Effect.fail(
               new YieldError({
                 message: `Depositor mismatch: on-chain depositor is ${lockData.depositor}, but wallet ${position.walletId} (${wallet.type}) resolves to ${walletAddress}. DB address: ${wallet.address ?? "null"}`,
+              })
+            );
+          }
+
+          // Check if lock has already been withdrawn
+          if (lockData.withdrawn) {
+            return yield* Effect.fail(
+              new YieldError({
+                message: `Lock ${position.onChainLockId} has already been withdrawn`,
+              })
+            );
+          }
+
+          // Check if lock has been emergency-withdrawn (must use claimEmergencyFunds instead)
+          if (lockData.isEmergencyWithdrawn) {
+            return yield* Effect.fail(
+              new YieldError({
+                message: `Lock ${position.onChainLockId} was emergency-withdrawn. Use claimEmergencyFunds instead`,
+              })
+            );
+          }
+
+          // Verify the lock has expired before attempting withdrawal
+          const nowSeconds = BigInt(Math.floor(Date.now() / 1000));
+          if (lockData.unlockTime > nowSeconds) {
+            const unlockDate = new Date(Number(lockData.unlockTime) * 1000);
+            return yield* Effect.fail(
+              new YieldError({
+                message: `Lock ${position.onChainLockId} has not expired yet. Unlock time: ${unlockDate.toISOString()}`,
               })
             );
           }
