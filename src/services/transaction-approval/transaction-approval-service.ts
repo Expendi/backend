@@ -128,10 +128,9 @@ const CHALLENGE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 const RP_NAME = "Expendi";
 const RP_ID = process.env.WEBAUTHN_RP_ID ?? "expendi.app";
-const RP_ORIGINS = [
-  process.env.WEBAUTHN_ORIGIN ?? `https://${RP_ID}`,  // web + iOS
-  process.env.WEBAUTHN_ANDROID_ORIGIN,                 // Android (android:apk-key-hash:...)
-].filter(Boolean) as string[];
+const RP_ORIGINS = process.env.WEBAUTHN_ORIGINS
+  ? process.env.WEBAUTHN_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
+  : [process.env.WEBAUTHN_ORIGIN ?? `https://${RP_ID}`];
 
 // ── Live implementation ──────────────────────────────────────────────
 
