@@ -44,6 +44,10 @@ export interface GetQuoteParams {
   readonly type?: "EXACT_INPUT" | "EXACT_OUTPUT";
   readonly slippageTolerance?: number;
   readonly chainId?: number;
+  /** Platform fee in basis points (e.g. 25 = 0.25%). Passed as portionBips to Uniswap. */
+  readonly portionBips?: number;
+  /** Address that receives the platform fee portion. */
+  readonly portionRecipient?: string;
 }
 
 export interface QuoteResponse {
@@ -56,6 +60,9 @@ export interface QuoteResponse {
     readonly gasFeeUSD: string;
     readonly gasUseEstimate: string;
   };
+  readonly portionBips?: number;
+  readonly portionAmount?: string;
+  readonly portionRecipient?: string;
   readonly permitData?: Record<string, unknown> | null;
   readonly [key: string]: unknown;
 }
@@ -174,7 +181,7 @@ export const UniswapServiceLive: Layer.Layer<
 
       getQuote: (params: GetQuoteParams) => {
         const chainId = params.chainId ?? BASE_CHAIN_ID;
-        return apiCall<QuoteResponse>("/quote", {
+        const body: Record<string, unknown> = {
           swapper: params.swapper,
           tokenIn: params.tokenIn,
           tokenOut: params.tokenOut,
@@ -184,7 +191,15 @@ export const UniswapServiceLive: Layer.Layer<
           type: params.type ?? "EXACT_INPUT",
           slippageTolerance: params.slippageTolerance ?? 0.5,
           routingPreference: "BEST_PRICE",
-        });
+        };
+
+        // Include platform fee parameters when both bips and recipient are set
+        if (params.portionBips && params.portionRecipient) {
+          body.portionBips = params.portionBips;
+          body.portionRecipient = params.portionRecipient;
+        }
+
+        return apiCall<QuoteResponse>("/quote", body);
       },
 
       getSwapTransaction: (quoteResponse: QuoteResponse) =>
