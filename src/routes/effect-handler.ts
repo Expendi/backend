@@ -36,6 +36,8 @@ import type { AgentAutonomyService } from "../services/agent/agent-autonomy-serv
 import type { AgentPatternService } from "../services/agent/agent-pattern-service.js";
 import type { MarketResearchService } from "../services/agent/market-research-service.js";
 import type { WebSearchService } from "../services/agent/web-search-service.js";
+import type { IndicatorService } from "../services/dca/indicator-service.js";
+import type { DcaStrategyService } from "../services/dca/dca-strategy-service.js";
 
 export type AppDeps =
   | WalletService
@@ -71,7 +73,9 @@ export type AppDeps =
   | AgentPatternService
   | MarketResearchService
   | AgentInboxService
-  | WebSearchService;
+  | WebSearchService
+  | IndicatorService
+  | DcaStrategyService;
 
 export type AppRuntime = ManagedRuntime.ManagedRuntime<AppDeps, ConfigError.ConfigError>;
 

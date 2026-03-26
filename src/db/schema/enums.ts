@@ -173,3 +173,29 @@ export const inboxStatusEnum = pgEnum("inbox_status", [
   "actioned",
   "dismissed",
 ]);
+
+export const dcaStrategyTypeEnum = pgEnum("dca_strategy_type", [
+  "frequency",
+  "indicator",
+]);
+
+export const dcaFrequencyEnum = pgEnum("dca_frequency", [
+  "daily",
+  "weekly",
+  "biweekly",
+  "monthly",
+]);
+
+export const dcaStrategyStatusEnum = pgEnum("dca_strategy_status", [
+  "active",
+  "paused",
+  "cancelled",
+  "completed",
+  "failed",
+]);
+
+export const dcaExecutionStatusEnum = pgEnum("dca_execution_status", [
+  "success",
+  "failed",
+  "skipped",
+]);
