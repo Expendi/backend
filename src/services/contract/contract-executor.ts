@@ -54,6 +54,15 @@ export class ContractExecutor extends Context.Tag("ContractExecutor")<
   ContractExecutorApi
 >() { }
 
+const worldchain: Chain = {
+  id: 480,
+  name: "World Chain",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: {
+    default: { http: ["https://worldchain-mainnet.g.alchemy.com/public"] },
+  },
+};
+
 const CHAIN_MAP: Record<number, Chain> = {
   1: mainnet,
   11155111: sepolia,
@@ -61,6 +70,7 @@ const CHAIN_MAP: Record<number, Chain> = {
   42161: arbitrum,
   10: optimism,
   8453: base,
+  480: worldchain,
 };
 
 function getChain(chainId: number): Chain {

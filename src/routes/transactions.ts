@@ -12,7 +12,7 @@ import { wallets } from "../db/schema/index.js";
 import type { AuthVariables } from "../middleware/auth.js";
 
 /** Chain IDs supported by CHAIN_MAP in the contract executor. */
-const SUPPORTED_CHAINS = new Set([1, 11155111, 137, 42161, 10, 8453]);
+const SUPPORTED_CHAINS = new Set([1, 11155111, 137, 42161, 10, 8453, 480]);
 
 /**
  * Public transaction routes -- all behind Privy auth middleware.

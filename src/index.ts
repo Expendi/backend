@@ -33,6 +33,7 @@ import { createTokenRoutes } from "./routes/tokens.js";
 import { createAgentResearchRoutes } from "./routes/agent-research.js";
 import { createAgentInboxRoutes } from "./routes/agent-inbox.js";
 import { createAgentSearchRoutes } from "./routes/agent-search.js";
+import { createCctpRoutes } from "./routes/cctp.js";
 
 // Resolve the Privy client and admin API key from the Effect runtime so
 // we can hand them to the Hono middleware layer without requiring Effect
@@ -76,6 +77,7 @@ app.get("/", (c) =>
       agentResearch: "/api/agent/research",
       agentInbox: "/api/agent/inbox",
       agentSearch: "/api/agent/search",
+      cctp: "/api/cctp",
       webhooks: "/webhooks/pretium",
     },
   })
@@ -100,6 +102,8 @@ app.use("/api/yield/positions/*", txApproval);
 app.use("/api/uniswap/swap", txApproval);
 app.use("/api/groups/*/pay", txApproval);
 app.use("/api/groups/*/deposit", txApproval);
+app.use("/api/cctp/transfer", txApproval);
+app.use("/api/cctp/transfer/*/mint", txApproval);
 
 app.route("/api/security/approval", createTransactionApprovalRoutes(runtime));
 app.route("/api/wallets", createWalletRoutes(runtime));
@@ -122,6 +126,7 @@ app.route("/api/tokens", createTokenRoutes(runtime));
 app.route("/api/agent/research", createAgentResearchRoutes(runtime));
 app.route("/api/agent/inbox", createAgentInboxRoutes(runtime));
 app.route("/api/agent/search", createAgentSearchRoutes(runtime));
+app.route("/api/cctp", createCctpRoutes(runtime));
 
 // ── Webhook routes (no auth -- called by payment providers) ────────
 
