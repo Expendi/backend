@@ -178,6 +178,7 @@ export interface OfframpTransaction {
   country: string;
   usdcAmount: string;
   fiatAmount: string;
+  feeFiatAmount: string;
   currency: string;
   phoneNumber: string;
   mobileNetwork: string;

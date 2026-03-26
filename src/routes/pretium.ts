@@ -22,6 +22,40 @@ import {
   ONRAMP_SUPPORTED_COUNTRIES,
   ONRAMP_SUPPORTED_ASSETS,
 } from "../services/pretium/pretium-service.js";
+import type { PretiumTransaction } from "../db/schema/pretium-transactions.js";
+
+// ── Helper: format offramp response with separate feeFiatAmount ──────
+
+/**
+ * Ensures `fiatAmount` is the net amount (excluding fee) and adds
+ * `feeFiatAmount` as a separate field.
+ *
+ * For new records `feeFiatAmount` is stored directly.
+ * For legacy records it is derived from `fee × exchangeRate`.
+ */
+const formatOfframpResponse = (record: PretiumTransaction) => {
+  const fee = Number(record.fee ?? 0);
+  const exchangeRate = Number(record.exchangeRate);
+
+  let feeFiat: number;
+  let netFiat: number;
+
+  if (record.feeFiatAmount != null) {
+    // New record – both fields are authoritative
+    feeFiat = Number(record.feeFiatAmount);
+    netFiat = Number(record.fiatAmount);
+  } else {
+    // Legacy record – fee is stored in USDC, fiatAmount is gross
+    feeFiat = Math.round(fee * exchangeRate * 100) / 100;
+    netFiat = Math.round((Number(record.fiatAmount) - feeFiat) * 100) / 100;
+  }
+
+  return {
+    ...record,
+    fiatAmount: netFiat.toFixed(2),
+    feeFiatAmount: feeFiat.toFixed(2),
+  };
+};
 
 // ── Helper: persist phone number & network to user preferences ───────
 
@@ -389,6 +423,7 @@ export function createPretiumRoutes(runtime: AppRuntime) {
                 fiatAmount: String(conversion.amount - fee),
                 exchangeRate: String(conversion.exchangeRate),
                 fee: String(fee),
+                feeFiatAmount: String(fee),
                 paymentType,
                 status: "pending",
                 onChainTxHash: transferTx.txHash!,
@@ -418,7 +453,7 @@ export function createPretiumRoutes(runtime: AppRuntime) {
         );
 
         return {
-          transaction: record,
+          transaction: formatOfframpResponse(record!),
           pretiumResponse: disburseResult,
           appliedFee: fee,
           feeCurrency: countryConfig.currency,
@@ -457,7 +492,7 @@ export function createPretiumRoutes(runtime: AppRuntime) {
           return yield* Effect.fail(new Error("Transaction not found"));
         }
 
-        return record;
+        return formatOfframpResponse(record);
       }),
       c
     )
@@ -531,10 +566,10 @@ export function createPretiumRoutes(runtime: AppRuntime) {
               new Error(`Failed to update pretium transaction: ${error}`),
           });
 
-          return { transaction: updated, pretiumStatus: statusResult };
+          return { transaction: formatOfframpResponse(updated!), pretiumStatus: statusResult };
         }
 
-        return { transaction: record, pretiumStatus: statusResult };
+        return { transaction: formatOfframpResponse(record), pretiumStatus: statusResult };
       }),
       c
     )
@@ -568,7 +603,7 @@ export function createPretiumRoutes(runtime: AppRuntime) {
             new Error(`Failed to list pretium transactions: ${error}`),
         });
 
-        return results;
+        return results.map(formatOfframpResponse);
       }),
       c
     )

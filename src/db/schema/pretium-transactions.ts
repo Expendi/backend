@@ -50,6 +50,9 @@ export const pretiumTransactions = pgTable("pretium_transactions", {
   /** Fee in USDC (if any) */
   fee: numeric("fee", { precision: 18, scale: 6 }).default("0"),
 
+  /** Fee expressed in local fiat currency */
+  feeFiatAmount: numeric("fee_fiat_amount", { precision: 18, scale: 2 }),
+
   /** Payment type: MOBILE, BUY_GOODS, PAYBILL, BANK_TRANSFER */
   paymentType: pretiumPaymentTypeEnum("payment_type").notNull(),
 
