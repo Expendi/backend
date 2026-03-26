@@ -30,8 +30,20 @@ import type { PretiumTransaction } from "../db/schema/pretium-transactions.js";
  * Ensures `fiatAmount` is the net amount (excluding fee) and adds
  * `feeFiatAmount` as a separate field.
  *
- * For new records `feeFiatAmount` is stored directly.
- * For legacy records it is derived from `fee × exchangeRate`.
+ * Three categories of records exist:
+ *
+ * 1. **Post-PR** (feeFiatAmount column populated): both `fiatAmount`
+ *    (net) and `feeFiatAmount` are authoritative — use directly.
+ *
+ * 2. **Post-EXP-60, pre-PR** (feeFiatAmount is null, fee is in fiat):
+ *    `fee` is already a fiat amount (from the tiered fee schedule) and
+ *    `fiatAmount` is net.  Fiat fees from the tier table are always ≥ 1,
+ *    while legacy USDC fees are fractional (< 1), so `fee >= 1` reliably
+ *    distinguishes this category.
+ *
+ * 3. **Pre-EXP-60 legacy** (feeFiatAmount is null, fee is USDC):
+ *    `fee` is in USDC (always < 1) and `fiatAmount` is the gross amount
+ *    including the fee.  Derive fiat fee via `fee × exchangeRate`.
  */
 const formatOfframpResponse = (record: PretiumTransaction) => {
   const fee = Number(record.fee ?? 0);
@@ -41,11 +53,15 @@ const formatOfframpResponse = (record: PretiumTransaction) => {
   let netFiat: number;
 
   if (record.feeFiatAmount != null) {
-    // New record – both fields are authoritative
+    // Category 1: new record – both fields are authoritative
     feeFiat = Number(record.feeFiatAmount);
     netFiat = Number(record.fiatAmount);
+  } else if (fee >= 1) {
+    // Category 2: post-EXP-60 – fee is already in fiat, fiatAmount is net
+    feeFiat = fee;
+    netFiat = Number(record.fiatAmount);
   } else {
-    // Legacy record – fee is stored in USDC, fiatAmount is gross
+    // Category 3: pre-EXP-60 legacy – fee is USDC, fiatAmount is gross
     feeFiat = Math.round(fee * exchangeRate * 100) / 100;
     netFiat = Math.round((Number(record.fiatAmount) - feeFiat) * 100) / 100;
   }
