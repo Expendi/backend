@@ -142,6 +142,20 @@ export {
 } from "./goal-savings.js";
 
 export {
+  notifications,
+  notificationsRelations,
+  notificationPreferences,
+  notificationPreferencesRelations,
+  notificationTypeEnum,
+  notificationChannelEnum,
+  notificationStatusEnum,
+  type Notification,
+  type NewNotification,
+  type NotificationPreference,
+  type NewNotificationPreference,
+} from "./notifications.js";
+
+export {
   agentConversations,
   agentConversationsRelations,
   agentProfiles,

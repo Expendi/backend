@@ -18,6 +18,7 @@ import type {
   OnrampAsset,
 } from "../services/pretium/pretium-service.js";
 import { getFiatDisbursementFee, getAllFiatFeeTiers } from "../services/pretium/fee-tiers.js";
+import { NotificationService } from "../services/notification/notification-service.js";
 import {
   ONRAMP_SUPPORTED_COUNTRIES,
   ONRAMP_SUPPORTED_ASSETS,
@@ -989,6 +990,23 @@ export function createPretiumWebhookRoutes(runtime: AppRuntime) {
               ),
           });
 
+          // Send notification for completed onramp
+          const notifService = yield* NotificationService;
+          yield* notifService
+            .send({
+              userId: record.userId,
+              type: "onramp_completed",
+              title: "Deposit completed",
+              body: `Your deposit of ${record.usdcAmount ?? ""} USDC has been released to your wallet.`,
+              metadata: {
+                transactionCode: body.transaction_code,
+                txHash: body.transaction_hash,
+                pretiumId: record.id,
+              },
+              channel: "both",
+            })
+            .pipe(Effect.catchAll(() => Effect.succeed(null)));
+
           return {
             received: true,
             matched: true,
@@ -1045,6 +1063,46 @@ export function createPretiumWebhookRoutes(runtime: AppRuntime) {
               `Failed to update pretium transaction: ${error}`
             ),
         });
+
+        // Send notification for completed or failed offramp/onramp
+        if (
+          effectiveStatus === "completed" ||
+          effectiveStatus === "failed"
+        ) {
+          const notifService = yield* NotificationService;
+          const isOfframp = record.direction === "offramp";
+          const notifType = effectiveStatus === "completed"
+            ? (isOfframp ? "offramp_completed" as const : "onramp_completed" as const)
+            : (isOfframp ? "offramp_failed" as const : "onramp_failed" as const);
+
+          const amount = isOfframp
+            ? `${record.fiatAmount ?? ""} ${record.fiatCurrency ?? ""}`
+            : `${record.usdcAmount ?? ""} USDC`;
+
+          const title = effectiveStatus === "completed"
+            ? (isOfframp ? "Off-ramp completed" : "Deposit completed")
+            : (isOfframp ? "Off-ramp failed" : "Deposit failed");
+
+          const bodyText = effectiveStatus === "completed"
+            ? `Your ${isOfframp ? "off-ramp" : "deposit"} of ${amount} has been completed successfully.`
+            : `Your ${isOfframp ? "off-ramp" : "deposit"} of ${amount} has failed.${body.failure_reason ? ` Reason: ${body.failure_reason}` : ""}`;
+
+          yield* notifService
+            .send({
+              userId: record.userId,
+              type: notifType,
+              title,
+              body: bodyText,
+              metadata: {
+                transactionCode: body.transaction_code,
+                status: effectiveStatus,
+                receiptNumber: body.receipt_number,
+                pretiumId: record.id,
+              },
+              channel: "both",
+            })
+            .pipe(Effect.catchAll(() => Effect.succeed(null)));
+        }
 
         return {
           received: true,

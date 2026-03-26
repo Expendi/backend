@@ -173,3 +173,28 @@ export const inboxStatusEnum = pgEnum("inbox_status", [
   "actioned",
   "dismissed",
 ]);
+
+export const notificationTypeEnum = pgEnum("notification_type", [
+  "offramp_completed",
+  "offramp_failed",
+  "onramp_completed",
+  "onramp_failed",
+  "savings_deposit_success",
+  "savings_deposit_failed",
+  "savings_goal_completed",
+  "kyc_update",
+  "promo",
+  "general",
+]);
+
+export const notificationChannelEnum = pgEnum("notification_channel", [
+  "in_app",
+  "email",
+  "both",
+]);
+
+export const notificationStatusEnum = pgEnum("notification_status", [
+  "unread",
+  "read",
+  "archived",
+]);

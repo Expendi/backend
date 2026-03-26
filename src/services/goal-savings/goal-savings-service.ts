@@ -16,6 +16,7 @@ import {
 } from "../yield/yield-service.js";
 import { OnboardingService } from "../onboarding/onboarding-service.js";
 import { ConfigService } from "../../config.js";
+import { NotificationService } from "../notification/notification-service.js";
 
 // ── Error type ───────────────────────────────────────────────────────
 
@@ -158,7 +159,7 @@ function parseFrequencyToMs(frequency: string): number {
 export const GoalSavingsServiceLive: Layer.Layer<
   GoalSavingsService,
   never,
-  DatabaseService | YieldService | OnboardingService | ConfigService
+  DatabaseService | YieldService | OnboardingService | ConfigService | NotificationService
 > = Layer.effect(
   GoalSavingsService,
   Effect.gen(function* () {
@@ -166,6 +167,7 @@ export const GoalSavingsServiceLive: Layer.Layer<
     const yieldService = yield* YieldService;
     const onboarding = yield* OnboardingService;
     const config = yield* ConfigService;
+    const notificationService = yield* NotificationService;
 
     const depositOne = (
       goal: GoalSaving,
@@ -785,6 +787,24 @@ export const GoalSavingsServiceLive: Layer.Layer<
                   }),
               });
 
+              // Notify user of successful deposit
+              yield* notificationService
+                .send({
+                  userId: goal.userId,
+                  type: "savings_deposit_success",
+                  title: "Savings deposit successful",
+                  body: `${amount} ${goal.tokenSymbol} has been deposited into your "${goal.name}" savings goal.`,
+                  metadata: {
+                    goalId: goal.id,
+                    goalName: goal.name,
+                    depositId: result.deposit.id,
+                    amount,
+                    tokenSymbol: goal.tokenSymbol,
+                  },
+                  channel: "both",
+                })
+                .pipe(Effect.catchAll(() => Effect.succeed(null)));
+
               deposits.push(result.deposit);
             } else {
               failedCount++;
@@ -809,6 +829,24 @@ export const GoalSavingsServiceLive: Layer.Layer<
                     message: `Failed to update goal after failure`,
                   }),
               });
+
+              // Notify user of failed deposit
+              yield* notificationService
+                .send({
+                  userId: goal.userId,
+                  type: "savings_deposit_failed",
+                  title: "Savings deposit failed",
+                  body: `A scheduled deposit of ${amount} ${goal.tokenSymbol} for "${goal.name}" has failed.${newStatus === "paused" ? " The goal has been paused after too many failures." : ""}`,
+                  metadata: {
+                    goalId: goal.id,
+                    goalName: goal.name,
+                    error: result.error,
+                    consecutiveFailures: newFailures,
+                    paused: newStatus === "paused",
+                  },
+                  channel: "both",
+                })
+                .pipe(Effect.catchAll(() => Effect.succeed(null)));
             }
 
             // Check if next deposit exceeds end date
@@ -824,6 +862,23 @@ export const GoalSavingsServiceLive: Layer.Layer<
                     message: `Failed to complete goal past end date`,
                   }),
               });
+
+              // Notify user of completed savings goal
+              yield* notificationService
+                .send({
+                  userId: goal.userId,
+                  type: "savings_goal_completed",
+                  title: "Savings goal completed!",
+                  body: `Your savings goal "${goal.name}" has reached its end date and is now complete.`,
+                  metadata: {
+                    goalId: goal.id,
+                    goalName: goal.name,
+                    targetAmount: goal.targetAmount,
+                    accumulatedAmount: goal.accumulatedAmount,
+                  },
+                  channel: "both",
+                })
+                .pipe(Effect.catchAll(() => Effect.succeed(null)));
             }
           }
 
