@@ -1,5 +1,5 @@
 import { Effect, Context, Layer, Data } from "effect";
-import { eq, and, desc, inArray, notInArray } from "drizzle-orm";
+import { eq, and, desc, inArray, notInArray, isNotNull } from "drizzle-orm";
 import {
   createPublicClient,
   http,
@@ -536,9 +536,12 @@ export const YieldServiceLive: Layer.Layer<
           try: async () => {
             if (type) {
               // Get all position IDs linked to goals for this user
+              // Filter out null yieldPositionIds to avoid SQL NOT IN (…, NULL)
+              // returning no rows due to SQL ternary logic
               const goalPositionIds = db
                 .select({ id: goalSavingsDeposits.yieldPositionId })
-                .from(goalSavingsDeposits);
+                .from(goalSavingsDeposits)
+                .where(isNotNull(goalSavingsDeposits.yieldPositionId));
 
               if (type === "goal") {
                 return db

@@ -128,7 +128,9 @@ const CHALLENGE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 const RP_NAME = "Expendi";
 const RP_ID = process.env.WEBAUTHN_RP_ID ?? "expendi.app";
-const RP_ORIGIN = process.env.WEBAUTHN_ORIGIN ?? `https://${RP_ID}`;
+const RP_ORIGINS = process.env.WEBAUTHN_ORIGINS
+  ? process.env.WEBAUTHN_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
+  : [process.env.WEBAUTHN_ORIGIN ?? `https://${RP_ID}`];
 
 // ── Live implementation ──────────────────────────────────────────────
 
@@ -533,7 +535,7 @@ export const TransactionApprovalServiceLive: Layer.Layer<
               verifyRegistrationResponse({
                 response: credential,
                 expectedChallenge,
-                expectedOrigin: RP_ORIGIN,
+                expectedOrigin: RP_ORIGINS,
                 expectedRPID: RP_ID,
               }),
             catch: (error) =>
@@ -684,7 +686,7 @@ export const TransactionApprovalServiceLive: Layer.Layer<
               verifyAuthenticationResponse({
                 response: credential,
                 expectedChallenge,
-                expectedOrigin: RP_ORIGIN,
+                expectedOrigin: RP_ORIGINS,
                 expectedRPID: RP_ID,
                 credential: {
                   id: passkey.credentialId,
