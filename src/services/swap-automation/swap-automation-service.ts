@@ -15,7 +15,7 @@ import { UniswapService, BASE_CHAIN_ID } from "../uniswap/uniswap-service.js";
 import { AdapterService, type PriceData } from "../adapters/adapter-service.js";
 import { WalletService } from "../wallet/wallet-service.js";
 import { ConfigService } from "../../config.js";
-import { getSwapFeeBips } from "../uniswap/swap-fee-tiers.js";
+import { getSwapFeeBips, estimateSwapUsd } from "../uniswap/swap-fee-tiers.js";
 import { erc20Abi, type Hash } from "viem";
 import { createBasePublicClient } from "../chain/public-client.js";
 
@@ -488,7 +488,12 @@ export const SwapAutomationServiceLive: Layer.Layer<
                   })
               )
             );
-            const estimatedUsd = Number(preQuote.quote.output.amount) / 1e6;
+            const estimatedUsd = estimateSwapUsd(
+              automation.tokenIn,
+              automation.tokenOut,
+              preQuote.quote.input.amount,
+              preQuote.quote.output.amount
+            );
             portionBips = getSwapFeeBips(estimatedUsd);
             portionRecipient = feeRecipient;
           }

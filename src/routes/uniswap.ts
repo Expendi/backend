@@ -9,7 +9,7 @@ import {
 import { erc20Abi } from "viem";
 import { type AppRuntime, runEffect } from "./effect-handler.js";
 import { UniswapService, BASE_CHAIN_ID } from "../services/uniswap/uniswap-service.js";
-import { getSwapFeeBips } from "../services/uniswap/swap-fee-tiers.js";
+import { getSwapFeeBips, estimateSwapUsd } from "../services/uniswap/swap-fee-tiers.js";
 import { TransactionService } from "../services/transaction/transaction-service.js";
 import { ConfigService } from "../config.js";
 import { DatabaseService } from "../db/client.js";
@@ -169,13 +169,12 @@ export function createUniswapRoutes(runtime: AppRuntime) {
 
         if (!feeRecipient) return preQuote;
 
-        // Estimate USD value from the gas fee context (input amount ≈ output + gas)
-        // Use gasFeeUSD as a proxy — the output amount in USD is roughly:
-        // For stablecoin outputs it's the raw amount / decimals; otherwise use a
-        // conservative estimate based on output amount.
-        const estimatedUsd = Number(preQuote.quote.gasFeeUSD) > 0
-          ? Number(preQuote.quote.output.amount) / 1e6 // rough USD for USDC-like
-          : 0;
+        const estimatedUsd = estimateSwapUsd(
+          body.tokenIn,
+          body.tokenOut,
+          preQuote.quote.input.amount,
+          preQuote.quote.output.amount
+        );
         const feeBips = getSwapFeeBips(estimatedUsd);
 
         return yield* uniswap.getQuote({
@@ -319,7 +318,12 @@ export function createUniswapRoutes(runtime: AppRuntime) {
             slippageTolerance: body.slippageTolerance,
             chainId: BASE_CHAIN_ID,
           });
-          const estimatedUsd = Number(preQuote.quote.output.amount) / 1e6;
+          const estimatedUsd = estimateSwapUsd(
+            body.tokenIn,
+            body.tokenOut,
+            preQuote.quote.input.amount,
+            preQuote.quote.output.amount
+          );
           feeBips = getSwapFeeBips(estimatedUsd);
         }
 
