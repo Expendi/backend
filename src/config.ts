@@ -14,6 +14,8 @@ export interface AppConfig {
   readonly uniswapApiKey: string;
   readonly approvalTokenSecret: string;
   readonly baseRpcUrl: string;
+  readonly resendApiKey: string;
+  readonly notificationFromEmail: string;
 }
 
 export class ConfigService extends Context.Tag("ConfigService")<
@@ -54,6 +56,12 @@ export const ConfigLive: Layer.Layer<ConfigService, ConfigError.ConfigError> =
 
       const baseRpcUrl = yield* Config.withDefault(Config.string("BASE_RPC_URL"), "");
 
+      const resendApiKey = yield* Config.withDefault(Config.string("RESEND_API_KEY"), "");
+      const notificationFromEmail = yield* Config.withDefault(
+        Config.string("NOTIFICATION_FROM_EMAIL"),
+        "Expendi <notifications@expendi.app>"
+      );
+
       return {
         databaseUrl,
         privyAppId,
@@ -68,6 +76,8 @@ export const ConfigLive: Layer.Layer<ConfigService, ConfigError.ConfigError> =
         uniswapApiKey,
         approvalTokenSecret,
         baseRpcUrl,
+        resendApiKey,
+        notificationFromEmail,
       };
     })
   );

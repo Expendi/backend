@@ -33,6 +33,7 @@ import { AgentAutonomyServiceLive } from "../services/agent/agent-autonomy-servi
 import { AgentPatternServiceLive } from "../services/agent/agent-pattern-service.js";
 import { MarketResearchServiceLive } from "../services/agent/market-research-service.js";
 import { WebSearchServiceLive } from "../services/agent/web-search-service.js";
+import { NotificationServiceLive } from "../services/notification/notification-service.js";
 
 const ConfigLayer = ConfigLive;
 
@@ -143,11 +144,17 @@ const SplitExpenseServiceLayer = SplitExpenseServiceLive.pipe(
   Layer.provide(OnboardingServiceLayer)
 );
 
+const NotificationServiceLayer = NotificationServiceLive.pipe(
+  Layer.provide(DatabaseLayer),
+  Layer.provide(ConfigLayer)
+);
+
 const GoalSavingsServiceLayer = GoalSavingsServiceLive.pipe(
   Layer.provide(DatabaseLayer),
   Layer.provide(YieldServiceLayer),
   Layer.provide(OnboardingServiceLayer),
-  Layer.provide(ConfigLayer)
+  Layer.provide(ConfigLayer),
+  Layer.provide(NotificationServiceLayer)
 );
 
 const TransactionApprovalServiceLayer = TransactionApprovalServiceLive.pipe(
@@ -233,5 +240,6 @@ export const MainLayer = Layer.mergeAll(
   AgentPatternServiceLayer,
   MarketResearchServiceLayer,
   AgentInboxServiceLayer,
-  WebSearchServiceLayer
+  WebSearchServiceLayer,
+  NotificationServiceLayer
 );
