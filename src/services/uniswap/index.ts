@@ -15,3 +15,11 @@ export type {
   SwapTransaction,
   SwapResponse,
 } from "./uniswap-service.js";
+
+export {
+  SWAP_FEE_TIERS,
+  getSwapFeeBips,
+  estimateSwapUsd,
+} from "./swap-fee-tiers.js";
+
+export type { SwapFeeTier } from "./swap-fee-tiers.js";

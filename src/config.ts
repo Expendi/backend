@@ -14,6 +14,7 @@ export interface AppConfig {
   readonly uniswapApiKey: string;
   readonly approvalTokenSecret: string;
   readonly baseRpcUrl: string;
+  readonly swapFeeRecipient: string;
 }
 
 export class ConfigService extends Context.Tag("ConfigService")<
@@ -54,6 +55,11 @@ export const ConfigLive: Layer.Layer<ConfigService, ConfigError.ConfigError> =
 
       const baseRpcUrl = yield* Config.withDefault(Config.string("BASE_RPC_URL"), "");
 
+      const swapFeeRecipient = yield* Config.withDefault(
+        Config.string("SWAP_FEE_RECIPIENT"),
+        ""
+      );
+
       return {
         databaseUrl,
         privyAppId,
@@ -68,6 +74,7 @@ export const ConfigLive: Layer.Layer<ConfigService, ConfigError.ConfigError> =
         uniswapApiKey,
         approvalTokenSecret,
         baseRpcUrl,
+        swapFeeRecipient,
       };
     })
   );

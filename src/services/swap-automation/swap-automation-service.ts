@@ -15,6 +15,7 @@ import { UniswapService, BASE_CHAIN_ID } from "../uniswap/uniswap-service.js";
 import { AdapterService, type PriceData } from "../adapters/adapter-service.js";
 import { WalletService } from "../wallet/wallet-service.js";
 import { ConfigService } from "../../config.js";
+import { getSwapFeeBips, estimateSwapUsd } from "../uniswap/swap-fee-tiers.js";
 import { erc20Abi, type Hash } from "viem";
 import { createBasePublicClient } from "../chain/public-client.js";
 
@@ -463,6 +464,40 @@ export const SwapAutomationServiceLive: Layer.Layer<
           }
 
           // 3. Get quote (after approval is confirmed) — use raw amount
+          //    Determine platform fee: get a fee-less quote first to estimate USD,
+          //    then re-quote with the fee when a recipient is configured.
+          const feeRecipient = config.swapFeeRecipient || undefined;
+          let portionBips: number | undefined;
+          let portionRecipient: string | undefined;
+
+          if (feeRecipient) {
+            const preQuote = yield* uniswap.getQuote({
+              swapper: walletAddress,
+              tokenIn: automation.tokenIn,
+              tokenOut: automation.tokenOut,
+              amount: rawAmount,
+              type: "EXACT_INPUT",
+              slippageTolerance: automation.slippageTolerance,
+              chainId: automation.chainId,
+            }).pipe(
+              Effect.mapError(
+                (e) =>
+                  new SwapAutomationError({
+                    message: `Pre-quote for fee estimation failed: ${e.message}`,
+                    cause: e,
+                  })
+              )
+            );
+            const estimatedUsd = estimateSwapUsd(
+              automation.tokenIn,
+              automation.tokenOut,
+              preQuote.quote.input.amount,
+              preQuote.quote.output.amount
+            );
+            portionBips = getSwapFeeBips(estimatedUsd);
+            portionRecipient = feeRecipient;
+          }
+
           const quote = yield* uniswap.getQuote({
             swapper: walletAddress,
             tokenIn: automation.tokenIn,
@@ -471,6 +506,8 @@ export const SwapAutomationServiceLive: Layer.Layer<
             type: "EXACT_INPUT",
             slippageTolerance: automation.slippageTolerance,
             chainId: automation.chainId,
+            portionBips,
+            portionRecipient,
           }).pipe(
             Effect.mapError(
               (e) =>

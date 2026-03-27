@@ -9,6 +9,7 @@ import {
 import { erc20Abi } from "viem";
 import { type AppRuntime, runEffect } from "./effect-handler.js";
 import { UniswapService, BASE_CHAIN_ID } from "../services/uniswap/uniswap-service.js";
+import { getSwapFeeBips, estimateSwapUsd } from "../services/uniswap/swap-fee-tiers.js";
 import { TransactionService } from "../services/transaction/transaction-service.js";
 import { ConfigService } from "../config.js";
 import { DatabaseService } from "../db/client.js";
@@ -150,6 +151,31 @@ export function createUniswapRoutes(runtime: AppRuntime) {
 
         const wallet = yield* resolveWalletAddress(body.walletId);
         const uniswap = yield* UniswapService;
+        const config = yield* ConfigService;
+
+        // Build fee params when a fee recipient is configured
+        const feeRecipient = config.swapFeeRecipient || undefined;
+
+        // First get a fee-less quote to estimate USD value for tier lookup
+        const preQuote = yield* uniswap.getQuote({
+          swapper: wallet.address,
+          tokenIn: body.tokenIn,
+          tokenOut: body.tokenOut,
+          amount: body.amount,
+          type: body.type,
+          slippageTolerance: body.slippageTolerance,
+          chainId: BASE_CHAIN_ID,
+        });
+
+        if (!feeRecipient) return preQuote;
+
+        const estimatedUsd = estimateSwapUsd(
+          body.tokenIn,
+          body.tokenOut,
+          preQuote.quote.input.amount,
+          preQuote.quote.output.amount
+        );
+        const feeBips = getSwapFeeBips(estimatedUsd);
 
         return yield* uniswap.getQuote({
           swapper: wallet.address,
@@ -159,6 +185,8 @@ export function createUniswapRoutes(runtime: AppRuntime) {
           type: body.type,
           slippageTolerance: body.slippageTolerance,
           chainId: BASE_CHAIN_ID,
+          portionBips: feeBips,
+          portionRecipient: feeRecipient,
         });
       }),
       c
@@ -275,7 +303,31 @@ export function createUniswapRoutes(runtime: AppRuntime) {
           }
         }
 
-        // 2. Get a fresh quote
+        // 2. Determine platform fee
+        const feeRecipient = config.swapFeeRecipient || undefined;
+        let feeBips: number | undefined;
+
+        if (feeRecipient) {
+          // Get a preliminary quote to estimate USD value for fee tier lookup
+          const preQuote = yield* uniswap.getQuote({
+            swapper: wallet.address,
+            tokenIn: body.tokenIn,
+            tokenOut: body.tokenOut,
+            amount: body.amount,
+            type: body.type,
+            slippageTolerance: body.slippageTolerance,
+            chainId: BASE_CHAIN_ID,
+          });
+          const estimatedUsd = estimateSwapUsd(
+            body.tokenIn,
+            body.tokenOut,
+            preQuote.quote.input.amount,
+            preQuote.quote.output.amount
+          );
+          feeBips = getSwapFeeBips(estimatedUsd);
+        }
+
+        // 3. Get a fresh quote (with fee if configured)
         const quote = yield* uniswap.getQuote({
           swapper: wallet.address,
           tokenIn: body.tokenIn,
@@ -284,12 +336,14 @@ export function createUniswapRoutes(runtime: AppRuntime) {
           type: body.type,
           slippageTolerance: body.slippageTolerance,
           chainId: BASE_CHAIN_ID,
+          portionBips: feeBips,
+          portionRecipient: feeRecipient,
         });
 
-        // 3. Get the swap transaction
+        // 4. Get the swap transaction
         const swapTx = yield* uniswap.getSwapTransaction(quote);
 
-        // 4. Submit the swap transaction
+        // 5. Submit the swap transaction
         const swapResult = yield* txService.submitRawTransaction({
           walletId: body.walletId,
           walletType: wallet.type,
@@ -311,6 +365,13 @@ export function createUniswapRoutes(runtime: AppRuntime) {
             output: quote.quote.output,
             gasFeeUSD: quote.quote.gasFeeUSD,
           },
+          platformFee: feeBips
+            ? {
+                bips: feeBips,
+                recipient: feeRecipient!,
+                portionAmount: quote.portionAmount ?? null,
+              }
+            : null,
         };
       }),
       c
