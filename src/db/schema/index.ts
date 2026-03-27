@@ -180,3 +180,11 @@ export {
   type AgentInboxItem,
   type NewAgentInboxItem,
 } from "./agent.js";
+
+export {
+  cctpTransfers,
+  cctpTransfersRelations,
+  cctpTransferStatusEnum,
+  type CctpTransfer,
+  type NewCctpTransfer,
+} from "./cctp-transfers.js";

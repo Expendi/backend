@@ -15,6 +15,7 @@ import { morphoVaultDepositorConnectors } from "./morpho-vault-depositor.js";
 import { timelockConnectors } from "./timelock.js";
 import { yieldTimelockConnectors } from "./yield-timelock.js";
 import { groupAccountFactoryConnectors } from "./group-account-factory.js";
+import { cctpConnectors } from "./cctp.js";
 
 export const connectors: ContractConnector[] = [
   ...erc20Connectors,
@@ -23,4 +24,5 @@ export const connectors: ContractConnector[] = [
   ...timelockConnectors,
   ...yieldTimelockConnectors,
   ...groupAccountFactoryConnectors,
+  ...cctpConnectors,
 ];

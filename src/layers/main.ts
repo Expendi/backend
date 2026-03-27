@@ -33,6 +33,7 @@ import { AgentAutonomyServiceLive } from "../services/agent/agent-autonomy-servi
 import { AgentPatternServiceLive } from "../services/agent/agent-pattern-service.js";
 import { MarketResearchServiceLive } from "../services/agent/market-research-service.js";
 import { WebSearchServiceLive } from "../services/agent/web-search-service.js";
+import { CctpServiceLive } from "../services/cctp/cctp-service.js";
 
 const ConfigLayer = ConfigLive;
 
@@ -199,6 +200,13 @@ const AgentPatternServiceLayer = AgentPatternServiceLive.pipe(
   Layer.provide(DatabaseLayer)
 );
 
+const CctpServiceLayer = CctpServiceLive.pipe(
+  Layer.provide(DatabaseLayer),
+  Layer.provide(ContractRegistryLayer),
+  Layer.provide(WalletServiceLayer),
+  Layer.provide(ConfigLayer)
+);
+
 export const MainLayer = Layer.mergeAll(
   ConfigLayer,
   DatabaseLayer,
@@ -233,5 +241,6 @@ export const MainLayer = Layer.mergeAll(
   AgentPatternServiceLayer,
   MarketResearchServiceLayer,
   AgentInboxServiceLayer,
-  WebSearchServiceLayer
+  WebSearchServiceLayer,
+  CctpServiceLayer
 );
