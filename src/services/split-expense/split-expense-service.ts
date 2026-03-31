@@ -394,11 +394,11 @@ export const SplitExpenseServiceLive: Layer.Layer<
             );
           }
 
-          // 3. Look up creator's wallet address
+          // 3. Look up creator's wallet address (settle to user/personal wallet)
           const creatorProfile = yield* onboarding.getProfileWithWallets(
             expense.creatorUserId
           );
-          const recipientAddress = creatorProfile.serverWallet
+          const recipientAddress = creatorProfile.userWallet
             .address as `0x${string}`;
 
           // 4. Execute ERC-20 transfer via raw transaction
