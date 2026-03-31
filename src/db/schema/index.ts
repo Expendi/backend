@@ -142,6 +142,25 @@ export {
 } from "./goal-savings.js";
 
 export {
+  dcaStrategies,
+  dcaStrategiesRelations,
+  dcaExecutions,
+  dcaExecutionsRelations,
+  dcaStrategyTypeEnum,
+  dcaFrequencyEnum,
+  dcaStrategyStatusEnum,
+  dcaExecutionStatusEnum,
+  type DcaStrategy,
+  type NewDcaStrategy,
+  type DcaExecution,
+  type NewDcaExecution,
+  type IndicatorConfig,
+  type SMA200Config,
+  type RSIConfig,
+  type FearGreedConfig,
+} from "./dca-strategies.js";
+
+export {
   agentConversations,
   agentConversationsRelations,
   agentProfiles,

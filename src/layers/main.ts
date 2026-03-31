@@ -33,6 +33,8 @@ import { AgentAutonomyServiceLive } from "../services/agent/agent-autonomy-servi
 import { AgentPatternServiceLive } from "../services/agent/agent-pattern-service.js";
 import { MarketResearchServiceLive } from "../services/agent/market-research-service.js";
 import { WebSearchServiceLive } from "../services/agent/web-search-service.js";
+import { IndicatorServiceLive } from "../services/dca/indicator-service.js";
+import { DcaStrategyServiceLive } from "../services/dca/dca-strategy-service.js";
 
 const ConfigLayer = ConfigLive;
 
@@ -199,6 +201,20 @@ const AgentPatternServiceLayer = AgentPatternServiceLive.pipe(
   Layer.provide(DatabaseLayer)
 );
 
+const IndicatorServiceLayer = IndicatorServiceLive.pipe(
+  Layer.provide(MarketIntelligenceServiceLayer)
+);
+
+const DcaStrategyServiceLayer = DcaStrategyServiceLive.pipe(
+  Layer.provide(DatabaseLayer),
+  Layer.provide(TransactionServiceLayer),
+  Layer.provide(UniswapServiceLayer),
+  Layer.provide(AdapterServiceLayer),
+  Layer.provide(WalletServiceLayer),
+  Layer.provide(ConfigLayer),
+  Layer.provide(IndicatorServiceLayer)
+);
+
 export const MainLayer = Layer.mergeAll(
   ConfigLayer,
   DatabaseLayer,
@@ -233,5 +249,7 @@ export const MainLayer = Layer.mergeAll(
   AgentPatternServiceLayer,
   MarketResearchServiceLayer,
   AgentInboxServiceLayer,
-  WebSearchServiceLayer
+  WebSearchServiceLayer,
+  IndicatorServiceLayer,
+  DcaStrategyServiceLayer
 );
