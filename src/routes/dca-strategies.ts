@@ -5,6 +5,11 @@ import { DcaStrategyService } from "../services/dca/dca-strategy-service.js";
 import type { AuthVariables } from "../middleware/auth.js";
 import type { IndicatorConfig } from "../db/schema/dca-strategies.js";
 
+const VALID_FREQUENCIES = ["daily", "weekly", "biweekly", "monthly"] as const;
+const VALID_STRATEGY_TYPES = ["frequency", "indicator"] as const;
+const VALID_WALLET_TYPES = ["server", "agent"] as const;
+const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
+
 export function createDcaStrategyRoutes(runtime: AppRuntime) {
   const app = new Hono<{ Variables: AuthVariables }>();
 
@@ -26,8 +31,9 @@ export function createDcaStrategyRoutes(runtime: AppRuntime) {
     runEffect(
       runtime,
       Effect.gen(function* () {
+        const userId = c.get("userId");
         const service = yield* DcaStrategyService;
-        const strategy = yield* service.getStrategy(c.req.param("id"));
+        const strategy = yield* service.getStrategy(c.req.param("id"), userId);
         if (!strategy) {
           return yield* Effect.fail(new Error("Strategy not found"));
         }
@@ -66,6 +72,39 @@ export function createDcaStrategyRoutes(runtime: AppRuntime) {
           catch: () => new Error("Invalid request body"),
         });
 
+        // Basic input validation
+        if (!body.walletId || !body.tokenIn || !body.tokenOut || !body.amount) {
+          return yield* Effect.fail(
+            new Error("walletId, tokenIn, tokenOut, and amount are required")
+          );
+        }
+        const amountNum = Number(body.amount);
+        if (isNaN(amountNum) || amountNum <= 0) {
+          return yield* Effect.fail(new Error("amount must be a positive number"));
+        }
+        if (
+          body.slippageTolerance !== undefined &&
+          (body.slippageTolerance < 0 || body.slippageTolerance > 50)
+        ) {
+          return yield* Effect.fail(
+            new Error("slippageTolerance must be between 0 and 50")
+          );
+        }
+        if (!ADDRESS_REGEX.test(body.tokenIn) || !ADDRESS_REGEX.test(body.tokenOut)) {
+          return yield* Effect.fail(
+            new Error("tokenIn and tokenOut must be valid addresses")
+          );
+        }
+        if (!VALID_FREQUENCIES.includes(body.frequency as any)) {
+          return yield* Effect.fail(new Error("Invalid frequency"));
+        }
+        if (!VALID_STRATEGY_TYPES.includes(body.strategyType as any)) {
+          return yield* Effect.fail(new Error("Invalid strategyType"));
+        }
+        if (!VALID_WALLET_TYPES.includes(body.walletType as any)) {
+          return yield* Effect.fail(new Error("Invalid walletType"));
+        }
+
         const service = yield* DcaStrategyService;
         return yield* service.createStrategy({
           userId,
@@ -84,6 +123,7 @@ export function createDcaStrategyRoutes(runtime: AppRuntime) {
     runEffect(
       runtime,
       Effect.gen(function* () {
+        const userId = c.get("userId");
         const body = yield* Effect.tryPromise({
           try: () =>
             c.req.json<{
@@ -99,8 +139,29 @@ export function createDcaStrategyRoutes(runtime: AppRuntime) {
           catch: () => new Error("Invalid request body"),
         });
 
+        if (body.amount !== undefined) {
+          const amountNum = Number(body.amount);
+          if (isNaN(amountNum) || amountNum <= 0) {
+            return yield* Effect.fail(new Error("amount must be a positive number"));
+          }
+        }
+        if (
+          body.slippageTolerance !== undefined &&
+          (body.slippageTolerance < 0 || body.slippageTolerance > 50)
+        ) {
+          return yield* Effect.fail(
+            new Error("slippageTolerance must be between 0 and 50")
+          );
+        }
+        if (
+          body.frequency !== undefined &&
+          !VALID_FREQUENCIES.includes(body.frequency as any)
+        ) {
+          return yield* Effect.fail(new Error("Invalid frequency"));
+        }
+
         const service = yield* DcaStrategyService;
-        return yield* service.updateStrategy(c.req.param("id"), {
+        return yield* service.updateStrategy(c.req.param("id"), userId, {
           ...body,
           endDate:
             body.endDate === null
@@ -119,8 +180,9 @@ export function createDcaStrategyRoutes(runtime: AppRuntime) {
     runEffect(
       runtime,
       Effect.gen(function* () {
+        const userId = c.get("userId");
         const service = yield* DcaStrategyService;
-        return yield* service.pauseStrategy(c.req.param("id"));
+        return yield* service.pauseStrategy(c.req.param("id"), userId);
       }),
       c
     )
@@ -131,8 +193,9 @@ export function createDcaStrategyRoutes(runtime: AppRuntime) {
     runEffect(
       runtime,
       Effect.gen(function* () {
+        const userId = c.get("userId");
         const service = yield* DcaStrategyService;
-        return yield* service.resumeStrategy(c.req.param("id"));
+        return yield* service.resumeStrategy(c.req.param("id"), userId);
       }),
       c
     )
@@ -143,8 +206,9 @@ export function createDcaStrategyRoutes(runtime: AppRuntime) {
     runEffect(
       runtime,
       Effect.gen(function* () {
+        const userId = c.get("userId");
         const service = yield* DcaStrategyService;
-        return yield* service.cancelStrategy(c.req.param("id"));
+        return yield* service.cancelStrategy(c.req.param("id"), userId);
       }),
       c
     )
@@ -155,9 +219,10 @@ export function createDcaStrategyRoutes(runtime: AppRuntime) {
     runEffect(
       runtime,
       Effect.gen(function* () {
+        const userId = c.get("userId");
         const limit = Number(c.req.query("limit") ?? "50");
         const service = yield* DcaStrategyService;
-        return yield* service.getExecutionHistory(c.req.param("id"), limit);
+        return yield* service.getExecutionHistory(c.req.param("id"), userId, limit);
       }),
       c
     )

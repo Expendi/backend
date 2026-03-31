@@ -74,12 +74,9 @@ export class IndicatorService extends Context.Tag("IndicatorService")<
   IndicatorServiceApi
 >() {}
 
-// ── Fear & Greed cache ───────────────────────────────────────────────
+// ── Live implementation ──────────────────────────────────────────────
 
 const FEAR_GREED_CACHE_TTL_MS = 3_600_000; // 1 hour
-let fearGreedCache: { value: number; cachedAt: number } | null = null;
-
-// ── Live implementation ──────────────────────────────────────────────
 
 export const IndicatorServiceLive: Layer.Layer<
   IndicatorService,
@@ -89,6 +86,8 @@ export const IndicatorServiceLive: Layer.Layer<
   IndicatorService,
   Effect.gen(function* () {
     const market = yield* MarketIntelligenceService;
+
+    let fearGreedCache: { value: number; cachedAt: number } | null = null;
 
     const fetchFearGreedIndex = (): Effect.Effect<number, IndicatorError> =>
       Effect.gen(function* () {

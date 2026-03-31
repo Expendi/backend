@@ -1,5 +1,5 @@
 import { Effect, Context, Layer, Data } from "effect";
-import { eq, and, lte, sql } from "drizzle-orm";
+import { eq, and, lte, sql, desc } from "drizzle-orm";
 import { DatabaseService } from "../../db/client.js";
 import {
   dcaStrategies,
@@ -38,18 +38,15 @@ function toRawAmountStr(amount: string, tokenAddress: string): string {
   return String(Math.floor(Number(amount) * Math.pow(10, decimals)));
 }
 
-function normalizeToHumanReadable(
-  amount: string,
-  tokenAddress: string
-): string {
-  const decimals = TOKEN_DECIMALS_BY_ADDRESS[tokenAddress.toLowerCase()] ?? 18;
-  const num = Number(amount);
-  if (isNaN(num) || num === 0) return amount;
-  if (amount.includes(".")) return amount;
-  const threshold = Math.pow(10, decimals);
-  if (num >= threshold) return String(num / threshold);
-  return amount;
-}
+// ── Address-to-symbol mapping for price lookups ─────────────────────
+
+const ADDRESS_TO_SYMBOL: Record<string, string> = {
+  "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913": "USDC",
+  "0x2d1adb45bb1d7d2556c6558adb76cfd4f9f4ed16": "USDT",
+  "0x50c5725949a6f0c72e6c4a641f24049a917db0cb": "DAI",
+  "0x4200000000000000000000000000000000000006": "ETH",
+  "0x0000000000000000000000000000000000000000": "ETH",
+};
 
 // ── Error ────────────────────────────────────────────────────────────
 
@@ -101,7 +98,8 @@ export interface DcaStrategyServiceApi {
   ) => Effect.Effect<DcaStrategy, DcaStrategyError>;
 
   readonly getStrategy: (
-    id: string
+    id: string,
+    userId: string
   ) => Effect.Effect<DcaStrategy | undefined, DcaStrategyError>;
 
   readonly listByUser: (
@@ -110,23 +108,28 @@ export interface DcaStrategyServiceApi {
 
   readonly updateStrategy: (
     id: string,
+    userId: string,
     params: UpdateDcaStrategyParams
   ) => Effect.Effect<DcaStrategy, DcaStrategyError>;
 
   readonly pauseStrategy: (
-    id: string
+    id: string,
+    userId: string
   ) => Effect.Effect<DcaStrategy, DcaStrategyError>;
 
   readonly resumeStrategy: (
-    id: string
+    id: string,
+    userId: string
   ) => Effect.Effect<DcaStrategy, DcaStrategyError>;
 
   readonly cancelStrategy: (
-    id: string
+    id: string,
+    userId: string
   ) => Effect.Effect<DcaStrategy, DcaStrategyError>;
 
   readonly getExecutionHistory: (
     strategyId: string,
+    userId: string,
     limit?: number
   ) => Effect.Effect<ReadonlyArray<DcaExecution>, DcaStrategyError>;
 
@@ -161,9 +164,15 @@ function computeNextExecution(
     case "biweekly":
       next.setUTCDate(next.getUTCDate() + 14);
       break;
-    case "monthly":
-      next.setUTCMonth(next.getUTCMonth() + 1);
+    case "monthly": {
+      const targetMonth = next.getUTCMonth() + 1;
+      next.setUTCMonth(targetMonth);
+      // Clamp to last day of target month if overflow occurred (e.g. Jan 31 → Mar 3)
+      if (next.getUTCMonth() !== targetMonth % 12) {
+        next.setUTCDate(0); // last day of previous month
+      }
       break;
+    }
   }
   return next;
 }
@@ -485,11 +494,35 @@ export const DcaStrategyServiceLive: Layer.Layer<
     return {
       createStrategy: (params: CreateDcaStrategyParams) =>
         Effect.gen(function* () {
+          // Validate wallet belongs to user
+          const [walletRecord] = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .select()
+                .from(wallets)
+                .where(
+                  and(
+                    eq(wallets.id, params.walletId),
+                    eq(wallets.userId, params.userId)
+                  )
+                )
+                .limit(1),
+            catch: (error) =>
+              new DcaStrategyError({
+                message: `Failed to verify wallet ownership: ${error}`,
+                cause: error,
+              }),
+          });
+
+          if (!walletRecord) {
+            return yield* Effect.fail(
+              new DcaStrategyError({
+                message: "Wallet not found or does not belong to you",
+              })
+            );
+          }
+
           const chainId = params.chainId ?? BASE_CHAIN_ID;
-          const humanAmount = normalizeToHumanReadable(
-            params.amount,
-            params.tokenIn
-          );
           const startDate = params.startDate ?? new Date();
           const nextExecutionAt = computeNextExecution(
             params.frequency,
@@ -528,7 +561,7 @@ export const DcaStrategyServiceLive: Layer.Layer<
             strategyType: params.strategyType,
             tokenIn: params.tokenIn,
             tokenOut: params.tokenOut,
-            amount: humanAmount,
+            amount: params.amount,
             slippageTolerance: params.slippageTolerance ?? 0.5,
             chainId,
             frequency: params.frequency,
@@ -554,13 +587,15 @@ export const DcaStrategyServiceLive: Layer.Layer<
           return result!;
         }),
 
-      getStrategy: (id: string) =>
+      getStrategy: (id: string, userId: string) =>
         Effect.tryPromise({
           try: async () => {
             const [result] = await db
               .select()
               .from(dcaStrategies)
-              .where(eq(dcaStrategies.id, id));
+              .where(
+                and(eq(dcaStrategies.id, id), eq(dcaStrategies.userId, userId))
+              );
             return result;
           },
           catch: (error) =>
@@ -585,23 +620,14 @@ export const DcaStrategyServiceLive: Layer.Layer<
             }),
         }),
 
-      updateStrategy: (id: string, params: UpdateDcaStrategyParams) =>
+      updateStrategy: (id: string, userId: string, params: UpdateDcaStrategyParams) =>
         Effect.tryPromise({
           try: async () => {
             const updates: Record<string, unknown> = {
               updatedAt: new Date(),
             };
             if (params.name !== undefined) updates.name = params.name;
-            if (params.amount !== undefined) {
-              const [existing] = await db
-                .select({ tokenIn: dcaStrategies.tokenIn })
-                .from(dcaStrategies)
-                .where(eq(dcaStrategies.id, id));
-              updates.amount = normalizeToHumanReadable(
-                params.amount,
-                existing?.tokenIn ?? ""
-              );
-            }
+            if (params.amount !== undefined) updates.amount = params.amount;
             if (params.slippageTolerance !== undefined)
               updates.slippageTolerance = params.slippageTolerance;
             if (params.frequency !== undefined)
@@ -617,9 +643,12 @@ export const DcaStrategyServiceLive: Layer.Layer<
             const [result] = await db
               .update(dcaStrategies)
               .set(updates)
-              .where(eq(dcaStrategies.id, id))
+              .where(
+                and(eq(dcaStrategies.id, id), eq(dcaStrategies.userId, userId))
+              )
               .returning();
-            return result!;
+            if (!result) throw new Error("Strategy not found");
+            return result;
           },
           catch: (error) =>
             new DcaStrategyError({
@@ -628,15 +657,22 @@ export const DcaStrategyServiceLive: Layer.Layer<
             }),
         }),
 
-      pauseStrategy: (id: string) =>
+      pauseStrategy: (id: string, userId: string) =>
         Effect.tryPromise({
           try: async () => {
             const [result] = await db
               .update(dcaStrategies)
               .set({ status: "paused", updatedAt: new Date() })
-              .where(eq(dcaStrategies.id, id))
+              .where(
+                and(
+                  eq(dcaStrategies.id, id),
+                  eq(dcaStrategies.userId, userId),
+                  eq(dcaStrategies.status, "active")
+                )
+              )
               .returning();
-            return result!;
+            if (!result) throw new Error("Strategy not found or cannot be paused");
+            return result;
           },
           catch: (error) =>
             new DcaStrategyError({
@@ -645,36 +681,77 @@ export const DcaStrategyServiceLive: Layer.Layer<
             }),
         }),
 
-      resumeStrategy: (id: string) =>
-        Effect.tryPromise({
-          try: async () => {
-            const [result] = await db
-              .update(dcaStrategies)
-              .set({
-                status: "active",
-                consecutiveFailures: 0,
-                updatedAt: new Date(),
+      resumeStrategy: (id: string, userId: string) =>
+        Effect.gen(function* () {
+          // Fetch the strategy to get its frequency for nextExecutionAt recalculation
+          const [strategy] = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .select()
+                .from(dcaStrategies)
+                .where(
+                  and(
+                    eq(dcaStrategies.id, id),
+                    eq(dcaStrategies.userId, userId),
+                    eq(dcaStrategies.status, "paused")
+                  )
+                )
+                .limit(1),
+            catch: (error) =>
+              new DcaStrategyError({
+                message: `Failed to find strategy: ${error}`,
+                cause: error,
+              }),
+          });
+
+          if (!strategy) {
+            return yield* Effect.fail(
+              new DcaStrategyError({
+                message: "Strategy not found or cannot be resumed",
               })
-              .where(eq(dcaStrategies.id, id))
-              .returning();
-            return result!;
-          },
-          catch: (error) =>
-            new DcaStrategyError({
-              message: `Failed to resume strategy: ${error}`,
-              cause: error,
-            }),
+            );
+          }
+
+          const [result] = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .update(dcaStrategies)
+                .set({
+                  status: "active",
+                  consecutiveFailures: 0,
+                  nextExecutionAt: computeNextExecution(
+                    strategy.frequency as DcaFrequency,
+                    new Date()
+                  ),
+                  updatedAt: new Date(),
+                })
+                .where(eq(dcaStrategies.id, id))
+                .returning(),
+            catch: (error) =>
+              new DcaStrategyError({
+                message: `Failed to resume strategy: ${error}`,
+                cause: error,
+              }),
+          });
+
+          return result!;
         }),
 
-      cancelStrategy: (id: string) =>
+      cancelStrategy: (id: string, userId: string) =>
         Effect.tryPromise({
           try: async () => {
             const [result] = await db
               .update(dcaStrategies)
               .set({ status: "cancelled", updatedAt: new Date() })
-              .where(eq(dcaStrategies.id, id))
+              .where(
+                and(
+                  eq(dcaStrategies.id, id),
+                  eq(dcaStrategies.userId, userId)
+                )
+              )
               .returning();
-            return result!;
+            if (!result) throw new Error("Strategy not found");
+            return result;
           },
           catch: (error) =>
             new DcaStrategyError({
@@ -683,20 +760,48 @@ export const DcaStrategyServiceLive: Layer.Layer<
             }),
         }),
 
-      getExecutionHistory: (strategyId: string, limit = 50) =>
-        Effect.tryPromise({
-          try: async () =>
-            db
-              .select()
-              .from(dcaExecutions)
-              .where(eq(dcaExecutions.strategyId, strategyId))
-              .orderBy(dcaExecutions.executedAt)
-              .limit(limit),
-          catch: (error) =>
-            new DcaStrategyError({
-              message: `Failed to get execution history: ${error}`,
-              cause: error,
-            }),
+      getExecutionHistory: (strategyId: string, userId: string, limit = 50) =>
+        Effect.gen(function* () {
+          // Verify strategy belongs to user
+          const [strategy] = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .select({ id: dcaStrategies.id })
+                .from(dcaStrategies)
+                .where(
+                  and(
+                    eq(dcaStrategies.id, strategyId),
+                    eq(dcaStrategies.userId, userId)
+                  )
+                )
+                .limit(1),
+            catch: (error) =>
+              new DcaStrategyError({
+                message: `Failed to verify strategy ownership: ${error}`,
+                cause: error,
+              }),
+          });
+
+          if (!strategy) {
+            return yield* Effect.fail(
+              new DcaStrategyError({ message: "Strategy not found" })
+            );
+          }
+
+          return yield* Effect.tryPromise({
+            try: () =>
+              db
+                .select()
+                .from(dcaExecutions)
+                .where(eq(dcaExecutions.strategyId, strategyId))
+                .orderBy(desc(dcaExecutions.executedAt))
+                .limit(limit),
+            catch: (error) =>
+              new DcaStrategyError({
+                message: `Failed to get execution history: ${error}`,
+                cause: error,
+              }),
+          });
         }),
 
       processDueStrategies: () =>
@@ -732,12 +837,16 @@ export const DcaStrategyServiceLive: Layer.Layer<
             ),
           ];
 
-          // Also fetch prices for output tokens (for priceAtExecution)
+          // Resolve output token addresses to symbols for price lookup
           const outputTokenSymbols = [
-            ...new Set(dueStrategies.map((s) => s.tokenOut)),
+            ...new Set(
+              dueStrategies
+                .map((s) => ADDRESS_TO_SYMBOL[s.tokenOut.toLowerCase()])
+                .filter((s): s is string => !!s)
+            ),
           ];
 
-          // Combine unique tokens for price lookup
+          // Combine unique symbols for price lookup
           const allTokensForPrice = [
             ...new Set([...indicatorTokens, ...outputTokenSymbols]),
           ];
@@ -870,8 +979,9 @@ export const DcaStrategyServiceLive: Layer.Layer<
             }
 
             // Get current price for the output token
+            const outputSymbol = ADDRESS_TO_SYMBOL[strategy.tokenOut.toLowerCase()];
             const outputPrice =
-              priceMap.get(strategy.tokenOut.toUpperCase())?.price ?? 0;
+              (outputSymbol ? priceMap.get(outputSymbol.toUpperCase())?.price : undefined) ?? 0;
 
             // Execute the swap
             const swapResult = yield* executeSwap(strategy, outputPrice).pipe(

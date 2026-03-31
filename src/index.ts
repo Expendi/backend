@@ -102,6 +102,7 @@ app.use("/api/yield/positions/*", txApproval);
 app.use("/api/uniswap/swap", txApproval);
 app.use("/api/groups/*/pay", txApproval);
 app.use("/api/groups/*/deposit", txApproval);
+app.use("/api/dca-strategies", txApproval);
 
 app.route("/api/security/approval", createTransactionApprovalRoutes(runtime));
 app.route("/api/wallets", createWalletRoutes(runtime));
