@@ -817,9 +817,9 @@ export const YieldServiceLive: Layer.Layer<
           }
 
           // Ensure all positions belong to the same wallet and chain
-          const walletId = positions[0].walletId;
-          const chainId = positions[0].chainId;
-          const userId = positions[0].userId;
+          const walletId = positions[0]!.walletId;
+          const chainId = positions[0]!.chainId;
+          const userId = positions[0]!.userId;
 
           for (const position of positions) {
             if (position.walletId !== walletId) {
