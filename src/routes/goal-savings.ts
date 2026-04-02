@@ -275,6 +275,26 @@ export function createGoalSavingsRoutes(runtime: AppRuntime) {
     )
   );
 
+  // POST /:id/withdraw — Batch withdraw all deposits for a goal in one transaction
+  app.post("/:id/withdraw", (c) =>
+    runEffect(
+      runtime,
+      Effect.gen(function* () {
+        const userId = c.get("userId");
+        const id = c.req.param("id");
+        const service = yield* GoalSavingsService;
+
+        const goal = yield* service.getGoal(id);
+        if (!goal || goal.userId !== userId) {
+          return yield* Effect.fail(new Error("Goal not found"));
+        }
+
+        return yield* service.withdrawGoal(id);
+      }),
+      c
+    )
+  );
+
   // GET /:id/deposits — List deposits for goal
   app.get("/:id/deposits", (c) =>
     runEffect(

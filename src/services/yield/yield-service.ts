@@ -125,6 +125,10 @@ export interface YieldServiceApi {
     positionId: string
   ) => Effect.Effect<YieldPosition, YieldError>;
 
+  readonly batchWithdrawPositions: (
+    positionIds: string[]
+  ) => Effect.Effect<ReadonlyArray<YieldPosition>, YieldError>;
+
   readonly syncPositionFromChain: (
     positionId: string
   ) => Effect.Effect<YieldPosition, YieldError>;
@@ -510,7 +514,7 @@ export const YieldServiceLive: Layer.Layer<
             walletId: params.walletId,
             vaultId: params.vaultId,
             onChainLockId,
-            principalAmount: params.amount,
+            principalAmount: String(rawAmount),
             shares: "0", // updated after chain confirmation
             unlockTime: new Date(params.unlockTime * 1000),
             label: params.label ?? null,
@@ -773,6 +777,225 @@ export const YieldServiceLive: Layer.Layer<
           });
 
           return updated!;
+        }),
+
+      batchWithdrawPositions: (positionIds: string[]) =>
+        Effect.gen(function* () {
+          if (positionIds.length === 0) {
+            return [] as YieldPosition[];
+          }
+
+          // Fetch all positions
+          const positions = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .select()
+                .from(yieldPositions)
+                .where(inArray(yieldPositions.id, positionIds)),
+            catch: (error) =>
+              new YieldError({
+                message: `Failed to fetch positions: ${error}`,
+                cause: error,
+              }),
+          });
+
+          if (positions.length === 0) {
+            return yield* Effect.fail(
+              new YieldError({ message: "No positions found" })
+            );
+          }
+
+          // Validate all positions are withdrawable
+          for (const position of positions) {
+            if (!["active", "matured"].includes(position.status)) {
+              return yield* Effect.fail(
+                new YieldError({
+                  message: `Position ${position.id} is not withdrawable (status: ${position.status})`,
+                })
+              );
+            }
+          }
+
+          // Ensure all positions belong to the same wallet and chain
+          const walletId = positions[0].walletId;
+          const chainId = positions[0].chainId;
+          const userId = positions[0].userId;
+
+          for (const position of positions) {
+            if (position.walletId !== walletId) {
+              return yield* Effect.fail(
+                new YieldError({
+                  message: `All positions must belong to the same wallet for batch withdrawal`,
+                })
+              );
+            }
+            if (position.chainId !== chainId) {
+              return yield* Effect.fail(
+                new YieldError({
+                  message: `All positions must be on the same chain for batch withdrawal`,
+                })
+              );
+            }
+          }
+
+          // Look up wallet
+          const [wallet] = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .select()
+                .from(wallets)
+                .where(eq(wallets.id, walletId)),
+            catch: (error) =>
+              new YieldError({
+                message: `Failed to look up wallet: ${error}`,
+                cause: error,
+              }),
+          });
+
+          if (!wallet) {
+            return yield* Effect.fail(
+              new YieldError({
+                message: `Wallet not found: ${walletId}`,
+              })
+            );
+          }
+
+          // Verify wallet address matches on-chain depositor
+          const walletInstance = yield* walletService
+            .getWallet(walletId, wallet.type as "user" | "server" | "agent")
+            .pipe(
+              Effect.mapError(
+                (e) =>
+                  new YieldError({
+                    message: `Failed to resolve wallet instance: ${e}`,
+                    cause: e,
+                  })
+              )
+            );
+
+          const walletAddress = yield* walletInstance.getAddress().pipe(
+            Effect.mapError(
+              (e) =>
+                new YieldError({
+                  message: `Failed to get wallet address: ${e}`,
+                  cause: e,
+                })
+            )
+          );
+
+          // Validate each lock on-chain, then withdraw individually
+          for (const position of positions) {
+            const lockData = yield* executor
+              .readContract(
+                CONTRACT_NAME,
+                position.chainId,
+                "getLock",
+                [BigInt(position.onChainLockId)]
+              )
+              .pipe(
+                Effect.mapError(
+                  (e) =>
+                    new YieldError({
+                      message: `Failed to read on-chain lock ${position.onChainLockId}: ${e}`,
+                      cause: e,
+                    })
+                )
+              ) as Effect.Effect<{ depositor: string; unlockTime: bigint; withdrawn: boolean; isEmergencyWithdrawn: boolean }, YieldError>;
+
+            if (lockData.depositor.toLowerCase() !== walletAddress.toLowerCase()) {
+              return yield* Effect.fail(
+                new YieldError({
+                  message: `Depositor mismatch for lock ${position.onChainLockId}`,
+                })
+              );
+            }
+
+            if (lockData.withdrawn) {
+              // Already withdrawn on-chain — just update DB status and skip
+              yield* Effect.tryPromise({
+                try: () =>
+                  db
+                    .update(yieldPositions)
+                    .set({ status: "withdrawn", updatedAt: new Date() })
+                    .where(eq(yieldPositions.id, position.id)),
+                catch: (error) =>
+                  new YieldError({
+                    message: `Failed to update position status: ${error}`,
+                    cause: error,
+                  }),
+              });
+              continue;
+            }
+
+            if (lockData.isEmergencyWithdrawn) {
+              return yield* Effect.fail(
+                new YieldError({
+                  message: `Lock ${position.onChainLockId} was emergency-withdrawn. Use claimEmergencyFunds instead`,
+                })
+              );
+            }
+
+            const nowSeconds = BigInt(Math.floor(Date.now() / 1000));
+            if (lockData.unlockTime > nowSeconds) {
+              const unlockDate = new Date(Number(lockData.unlockTime) * 1000);
+              return yield* Effect.fail(
+                new YieldError({
+                  message: `Lock ${position.onChainLockId} has not expired yet. Unlock time: ${unlockDate.toISOString()}`,
+                })
+              );
+            }
+
+            // Submit individual withdraw transaction
+            yield* txService
+              .submitContractTransaction({
+                walletId,
+                walletType: wallet.type as "user" | "server" | "agent",
+                contractName: CONTRACT_NAME,
+                chainId,
+                method: "withdraw",
+                args: [BigInt(position.onChainLockId)],
+                userId,
+              })
+              .pipe(
+                Effect.mapError(
+                  (e) =>
+                    new YieldError({
+                      message: `Failed to submit withdraw for lock ${position.onChainLockId}: ${e}`,
+                      cause: e,
+                    })
+                )
+              );
+
+            // Update position status
+            yield* Effect.tryPromise({
+              try: () =>
+                db
+                  .update(yieldPositions)
+                  .set({ status: "withdrawn", updatedAt: new Date() })
+                  .where(eq(yieldPositions.id, position.id)),
+              catch: (error) =>
+                new YieldError({
+                  message: `Failed to update position status: ${error}`,
+                  cause: error,
+                }),
+            });
+          }
+
+          // Return updated positions
+          const updated = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .select()
+                .from(yieldPositions)
+                .where(inArray(yieldPositions.id, positionIds)),
+            catch: (error) =>
+              new YieldError({
+                message: `Failed to fetch updated positions: ${error}`,
+                cause: error,
+              }),
+          });
+
+          return updated;
         }),
 
       syncPositionFromChain: (positionId: string) =>
