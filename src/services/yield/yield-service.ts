@@ -520,7 +520,7 @@ export const YieldServiceLive: Layer.Layer<
             walletId: params.walletId,
             vaultId: params.vaultId,
             onChainLockId,
-            principalAmount: params.amount,
+            principalAmount: String(rawAmount),
             shares: "0", // updated after chain confirmation
             unlockTime: new Date(params.unlockTime * 1000),
             label: params.label ?? null,
