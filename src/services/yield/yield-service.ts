@@ -889,9 +889,7 @@ export const YieldServiceLive: Layer.Layer<
             )
           );
 
-          const lockIds: bigint[] = [];
-
-          // Validate each lock on-chain
+          // Validate each lock on-chain, then withdraw individually
           for (const position of positions) {
             const lockData = yield* executor
               .readContract(
@@ -919,11 +917,20 @@ export const YieldServiceLive: Layer.Layer<
             }
 
             if (lockData.withdrawn) {
-              return yield* Effect.fail(
-                new YieldError({
-                  message: `Lock ${position.onChainLockId} has already been withdrawn`,
-                })
-              );
+              // Already withdrawn on-chain — just update DB status and skip
+              yield* Effect.tryPromise({
+                try: () =>
+                  db
+                    .update(yieldPositions)
+                    .set({ status: "withdrawn", updatedAt: new Date() })
+                    .where(eq(yieldPositions.id, position.id)),
+                catch: (error) =>
+                  new YieldError({
+                    message: `Failed to update position status: ${error}`,
+                    cause: error,
+                  }),
+              });
+              continue;
             }
 
             if (lockData.isEmergencyWithdrawn) {
@@ -944,41 +951,52 @@ export const YieldServiceLive: Layer.Layer<
               );
             }
 
-            lockIds.push(BigInt(position.onChainLockId));
+            // Submit individual withdraw transaction
+            yield* txService
+              .submitContractTransaction({
+                walletId,
+                walletType: wallet.type as "user" | "server" | "agent",
+                contractName: CONTRACT_NAME,
+                chainId,
+                method: "withdraw",
+                args: [BigInt(position.onChainLockId)],
+                userId,
+              })
+              .pipe(
+                Effect.mapError(
+                  (e) =>
+                    new YieldError({
+                      message: `Failed to submit withdraw for lock ${position.onChainLockId}: ${e}`,
+                      cause: e,
+                    })
+                )
+              );
+
+            // Update position status
+            yield* Effect.tryPromise({
+              try: () =>
+                db
+                  .update(yieldPositions)
+                  .set({ status: "withdrawn", updatedAt: new Date() })
+                  .where(eq(yieldPositions.id, position.id)),
+              catch: (error) =>
+                new YieldError({
+                  message: `Failed to update position status: ${error}`,
+                  cause: error,
+                }),
+            });
           }
 
-          // Submit single batch withdraw transaction
-          yield* txService
-            .submitContractTransaction({
-              walletId,
-              walletType: wallet.type as "user" | "server" | "agent",
-              contractName: CONTRACT_NAME,
-              chainId,
-              method: "batchWithdraw",
-              args: [lockIds],
-              userId,
-            })
-            .pipe(
-              Effect.mapError(
-                (e) =>
-                  new YieldError({
-                    message: `Failed to submit batch withdraw transaction: ${e}`,
-                    cause: e,
-                  })
-              )
-            );
-
-          // Update all positions to withdrawn
+          // Return updated positions
           const updated = yield* Effect.tryPromise({
             try: () =>
               db
-                .update(yieldPositions)
-                .set({ status: "withdrawn", updatedAt: new Date() })
-                .where(inArray(yieldPositions.id, positionIds))
-                .returning(),
+                .select()
+                .from(yieldPositions)
+                .where(inArray(yieldPositions.id, positionIds)),
             catch: (error) =>
               new YieldError({
-                message: `Failed to update position statuses: ${error}`,
+                message: `Failed to fetch updated positions: ${error}`,
                 cause: error,
               }),
           });

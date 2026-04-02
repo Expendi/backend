@@ -32,13 +32,6 @@ const YIELD_TIMELOCK_ABI = [
     inputs: [{ name: "lockId", type: "uint256" }],
     outputs: [],
   },
-  {
-    type: "function",
-    name: "batchWithdraw",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "lockIds", type: "uint256[]" }],
-    outputs: [],
-  },
   // ── Owner-only ────────────────────────────────────────────────────
   {
     type: "function",
@@ -364,10 +357,6 @@ const yieldTimelockMethods = {
   claimEmergency: {
     functionName: "claimEmergencyFunds",
     description: "Claim funds after an owner-initiated emergency withdrawal",
-  },
-  batchWithdraw: {
-    functionName: "batchWithdraw",
-    description: "Withdraw multiple locks in a single transaction",
   },
   getLock: {
     functionName: "getYieldLock",
