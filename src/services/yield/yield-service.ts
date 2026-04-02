@@ -42,12 +42,6 @@ export class YieldError extends Data.TaggedError("YieldError")<{
   readonly cause?: unknown;
 }> {}
 
-/** Safely convert a numeric string (possibly with decimals) to BigInt by truncating the fractional part. */
-function safeBigInt(value: string): bigint {
-  const intPart = value.split(".")[0];
-  return BigInt(intPart || "0");
-}
-
 // ── Types ────────────────────────────────────────────────────────────
 
 export interface AddVaultParams {
@@ -1148,7 +1142,7 @@ export const YieldServiceLive: Layer.Layer<
 
           // Calculate APY:
           // ((currentAssets - principalAssets) / principalAssets) * (365 days / elapsed days) * 100
-          const principal = safeBigInt(position.principalAmount);
+          const principal = BigInt(position.principalAmount);
           let estimatedApy = "0";
 
           if (principal > 0n) {
@@ -1230,7 +1224,7 @@ export const YieldServiceLive: Layer.Layer<
 
               const [accruedYield, currentAssets] = yieldData;
 
-              const principal = safeBigInt(position.principalAmount);
+              const principal = BigInt(position.principalAmount);
               let estimatedApy = "0";
 
               if (principal > 0n) {
@@ -1341,7 +1335,7 @@ export const YieldServiceLive: Layer.Layer<
 
           const [accruedYield, currentAssets] = yieldData;
 
-          const principal = safeBigInt(position.principalAmount);
+          const principal = BigInt(position.principalAmount);
           let estimatedApy = "0";
 
           if (principal > 0n) {
@@ -1422,7 +1416,7 @@ export const YieldServiceLive: Layer.Layer<
           );
 
           for (const position of positions) {
-            totalPrincipal += safeBigInt(position.principalAmount);
+            totalPrincipal += BigInt(position.principalAmount);
 
             // Get latest snapshot for current value
             const [latestSnapshot] = yield* Effect.tryPromise({
@@ -1444,15 +1438,15 @@ export const YieldServiceLive: Layer.Layer<
               latestSnapshot &&
               latestSnapshot.snapshotAt > twentyFourHoursAgo
             ) {
-              totalCurrentValue += safeBigInt(latestSnapshot.currentAssets);
-              totalYield += safeBigInt(latestSnapshot.accruedYield);
+              totalCurrentValue += BigInt(latestSnapshot.currentAssets);
+              totalYield += BigInt(latestSnapshot.accruedYield);
               if (latestSnapshot.estimatedApy) {
                 apySum += parseFloat(latestSnapshot.estimatedApy);
                 apyCount++;
               }
             } else {
               // No snapshot or stale (>24h) — fall back to principal as floor
-              totalCurrentValue += safeBigInt(position.principalAmount);
+              totalCurrentValue += BigInt(position.principalAmount);
             }
           }
 
