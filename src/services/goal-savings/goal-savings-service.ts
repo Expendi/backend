@@ -119,6 +119,10 @@ export interface GoalSavingsServiceApi {
     goalId: string
   ) => Effect.Effect<GoalAccruedYieldInfo, GoalSavingsError>;
 
+  readonly withdrawGoal: (
+    goalId: string
+  ) => Effect.Effect<{ withdrawnCount: number; positionIds: string[] }, GoalSavingsError>;
+
   readonly processDueDeposits: () => Effect.Effect<
     ReadonlyArray<GoalSavingsDeposit>,
     GoalSavingsError
@@ -657,6 +661,52 @@ export const GoalSavingsServiceLive: Layer.Layer<
             totalAccruedYield: String(totalYield),
             positions: positionResults,
           } satisfies GoalAccruedYieldInfo;
+        }),
+
+      withdrawGoal: (goalId: string) =>
+        Effect.gen(function* () {
+          // Fetch all confirmed deposits with yield positions
+          const deposits = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .select()
+                .from(goalSavingsDeposits)
+                .where(
+                  and(
+                    eq(goalSavingsDeposits.goalId, goalId),
+                    eq(goalSavingsDeposits.status, "confirmed"),
+                    isNotNull(goalSavingsDeposits.yieldPositionId)
+                  )
+                ),
+            catch: (error) =>
+              new GoalSavingsError({
+                message: `Failed to list deposits for withdrawal: ${error}`,
+                cause: error,
+              }),
+          });
+
+          const positionIds = deposits
+            .map((d) => d.yieldPositionId)
+            .filter((id): id is string => id !== null);
+
+          if (positionIds.length === 0) {
+            return { withdrawnCount: 0, positionIds: [] };
+          }
+
+          // Batch withdraw all positions in a single transaction
+          yield* yieldService
+            .batchWithdrawPositions(positionIds)
+            .pipe(
+              Effect.mapError(
+                (e) =>
+                  new GoalSavingsError({
+                    message: `Batch withdrawal failed: ${e.message}`,
+                    cause: e,
+                  })
+              )
+            );
+
+          return { withdrawnCount: positionIds.length, positionIds };
         }),
 
       processDueDeposits: () =>

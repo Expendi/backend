@@ -42,6 +42,12 @@ export class YieldError extends Data.TaggedError("YieldError")<{
   readonly cause?: unknown;
 }> {}
 
+/** Safely convert a numeric string (possibly with decimals) to BigInt by truncating the fractional part. */
+function safeBigInt(value: string): bigint {
+  const intPart = value.split(".")[0];
+  return BigInt(intPart || "0");
+}
+
 // ── Types ────────────────────────────────────────────────────────────
 
 export interface AddVaultParams {
@@ -124,6 +130,10 @@ export interface YieldServiceApi {
   readonly withdrawPosition: (
     positionId: string
   ) => Effect.Effect<YieldPosition, YieldError>;
+
+  readonly batchWithdrawPositions: (
+    positionIds: string[]
+  ) => Effect.Effect<ReadonlyArray<YieldPosition>, YieldError>;
 
   readonly syncPositionFromChain: (
     positionId: string
@@ -775,6 +785,207 @@ export const YieldServiceLive: Layer.Layer<
           return updated!;
         }),
 
+      batchWithdrawPositions: (positionIds: string[]) =>
+        Effect.gen(function* () {
+          if (positionIds.length === 0) {
+            return [] as YieldPosition[];
+          }
+
+          // Fetch all positions
+          const positions = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .select()
+                .from(yieldPositions)
+                .where(inArray(yieldPositions.id, positionIds)),
+            catch: (error) =>
+              new YieldError({
+                message: `Failed to fetch positions: ${error}`,
+                cause: error,
+              }),
+          });
+
+          if (positions.length === 0) {
+            return yield* Effect.fail(
+              new YieldError({ message: "No positions found" })
+            );
+          }
+
+          // Validate all positions are withdrawable
+          for (const position of positions) {
+            if (!["active", "matured"].includes(position.status)) {
+              return yield* Effect.fail(
+                new YieldError({
+                  message: `Position ${position.id} is not withdrawable (status: ${position.status})`,
+                })
+              );
+            }
+          }
+
+          // Ensure all positions belong to the same wallet and chain
+          const walletId = positions[0].walletId;
+          const chainId = positions[0].chainId;
+          const userId = positions[0].userId;
+
+          for (const position of positions) {
+            if (position.walletId !== walletId) {
+              return yield* Effect.fail(
+                new YieldError({
+                  message: `All positions must belong to the same wallet for batch withdrawal`,
+                })
+              );
+            }
+            if (position.chainId !== chainId) {
+              return yield* Effect.fail(
+                new YieldError({
+                  message: `All positions must be on the same chain for batch withdrawal`,
+                })
+              );
+            }
+          }
+
+          // Look up wallet
+          const [wallet] = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .select()
+                .from(wallets)
+                .where(eq(wallets.id, walletId)),
+            catch: (error) =>
+              new YieldError({
+                message: `Failed to look up wallet: ${error}`,
+                cause: error,
+              }),
+          });
+
+          if (!wallet) {
+            return yield* Effect.fail(
+              new YieldError({
+                message: `Wallet not found: ${walletId}`,
+              })
+            );
+          }
+
+          // Verify wallet address matches on-chain depositor
+          const walletInstance = yield* walletService
+            .getWallet(walletId, wallet.type as "user" | "server" | "agent")
+            .pipe(
+              Effect.mapError(
+                (e) =>
+                  new YieldError({
+                    message: `Failed to resolve wallet instance: ${e}`,
+                    cause: e,
+                  })
+              )
+            );
+
+          const walletAddress = yield* walletInstance.getAddress().pipe(
+            Effect.mapError(
+              (e) =>
+                new YieldError({
+                  message: `Failed to get wallet address: ${e}`,
+                  cause: e,
+                })
+            )
+          );
+
+          const lockIds: bigint[] = [];
+
+          // Validate each lock on-chain
+          for (const position of positions) {
+            const lockData = yield* executor
+              .readContract(
+                CONTRACT_NAME,
+                position.chainId,
+                "getLock",
+                [BigInt(position.onChainLockId)]
+              )
+              .pipe(
+                Effect.mapError(
+                  (e) =>
+                    new YieldError({
+                      message: `Failed to read on-chain lock ${position.onChainLockId}: ${e}`,
+                      cause: e,
+                    })
+                )
+              ) as Effect.Effect<{ depositor: string; unlockTime: bigint; withdrawn: boolean; isEmergencyWithdrawn: boolean }, YieldError>;
+
+            if (lockData.depositor.toLowerCase() !== walletAddress.toLowerCase()) {
+              return yield* Effect.fail(
+                new YieldError({
+                  message: `Depositor mismatch for lock ${position.onChainLockId}`,
+                })
+              );
+            }
+
+            if (lockData.withdrawn) {
+              return yield* Effect.fail(
+                new YieldError({
+                  message: `Lock ${position.onChainLockId} has already been withdrawn`,
+                })
+              );
+            }
+
+            if (lockData.isEmergencyWithdrawn) {
+              return yield* Effect.fail(
+                new YieldError({
+                  message: `Lock ${position.onChainLockId} was emergency-withdrawn. Use claimEmergencyFunds instead`,
+                })
+              );
+            }
+
+            const nowSeconds = BigInt(Math.floor(Date.now() / 1000));
+            if (lockData.unlockTime > nowSeconds) {
+              const unlockDate = new Date(Number(lockData.unlockTime) * 1000);
+              return yield* Effect.fail(
+                new YieldError({
+                  message: `Lock ${position.onChainLockId} has not expired yet. Unlock time: ${unlockDate.toISOString()}`,
+                })
+              );
+            }
+
+            lockIds.push(BigInt(position.onChainLockId));
+          }
+
+          // Submit single batch withdraw transaction
+          yield* txService
+            .submitContractTransaction({
+              walletId,
+              walletType: wallet.type as "user" | "server" | "agent",
+              contractName: CONTRACT_NAME,
+              chainId,
+              method: "batchWithdraw",
+              args: [lockIds],
+              userId,
+            })
+            .pipe(
+              Effect.mapError(
+                (e) =>
+                  new YieldError({
+                    message: `Failed to submit batch withdraw transaction: ${e}`,
+                    cause: e,
+                  })
+              )
+            );
+
+          // Update all positions to withdrawn
+          const updated = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .update(yieldPositions)
+                .set({ status: "withdrawn", updatedAt: new Date() })
+                .where(inArray(yieldPositions.id, positionIds))
+                .returning(),
+            catch: (error) =>
+              new YieldError({
+                message: `Failed to update position statuses: ${error}`,
+                cause: error,
+              }),
+          });
+
+          return updated;
+        }),
+
       syncPositionFromChain: (positionId: string) =>
         Effect.gen(function* () {
           const [position] = yield* Effect.tryPromise({
@@ -919,7 +1130,7 @@ export const YieldServiceLive: Layer.Layer<
 
           // Calculate APY:
           // ((currentAssets - principalAssets) / principalAssets) * (365 days / elapsed days) * 100
-          const principal = BigInt(position.principalAmount);
+          const principal = safeBigInt(position.principalAmount);
           let estimatedApy = "0";
 
           if (principal > 0n) {
@@ -1001,7 +1212,7 @@ export const YieldServiceLive: Layer.Layer<
 
               const [accruedYield, currentAssets] = yieldData;
 
-              const principal = BigInt(position.principalAmount);
+              const principal = safeBigInt(position.principalAmount);
               let estimatedApy = "0";
 
               if (principal > 0n) {
@@ -1112,7 +1323,7 @@ export const YieldServiceLive: Layer.Layer<
 
           const [accruedYield, currentAssets] = yieldData;
 
-          const principal = BigInt(position.principalAmount);
+          const principal = safeBigInt(position.principalAmount);
           let estimatedApy = "0";
 
           if (principal > 0n) {
@@ -1193,7 +1404,7 @@ export const YieldServiceLive: Layer.Layer<
           );
 
           for (const position of positions) {
-            totalPrincipal += BigInt(position.principalAmount);
+            totalPrincipal += safeBigInt(position.principalAmount);
 
             // Get latest snapshot for current value
             const [latestSnapshot] = yield* Effect.tryPromise({
@@ -1215,15 +1426,15 @@ export const YieldServiceLive: Layer.Layer<
               latestSnapshot &&
               latestSnapshot.snapshotAt > twentyFourHoursAgo
             ) {
-              totalCurrentValue += BigInt(latestSnapshot.currentAssets);
-              totalYield += BigInt(latestSnapshot.accruedYield);
+              totalCurrentValue += safeBigInt(latestSnapshot.currentAssets);
+              totalYield += safeBigInt(latestSnapshot.accruedYield);
               if (latestSnapshot.estimatedApy) {
                 apySum += parseFloat(latestSnapshot.estimatedApy);
                 apyCount++;
               }
             } else {
               // No snapshot or stale (>24h) — fall back to principal as floor
-              totalCurrentValue += BigInt(position.principalAmount);
+              totalCurrentValue += safeBigInt(position.principalAmount);
             }
           }
 
