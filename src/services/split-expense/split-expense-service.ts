@@ -1,5 +1,5 @@
 import { Effect, Context, Layer, Data } from "effect";
-import { eq, and, or } from "drizzle-orm";
+import { eq, and, or, inArray } from "drizzle-orm";
 import { encodeFunctionData } from "viem";
 import { DatabaseService } from "../../db/client.js";
 import {
@@ -7,8 +7,10 @@ import {
   splitExpenseShares,
   userProfiles,
   wallets,
+  transactions,
   type SplitExpense,
   type SplitExpenseShare,
+  type Transaction,
 } from "../../db/schema/index.js";
 import {
   TransactionService,
@@ -32,8 +34,11 @@ export class SplitExpenseError extends Data.TaggedError("SplitExpenseError")<{
 
 // ── Types ────────────────────────────────────────────────────────────
 
+export type SplitTx = Transaction & { amount: string };
+
 export interface SplitExpenseWithShares extends SplitExpense {
   shares: (SplitExpenseShare & { username: string | null })[];
+  splitTxs: SplitTx[];
 }
 
 export interface CreateSplitExpenseParams {
@@ -178,7 +183,37 @@ export const SplitExpenseServiceLive: Layer.Layer<
             }),
         });
 
-        return { ...expense, shares: shareRows };
+        // Fetch transactions for paid shares
+        const paidShares = shareRows.filter((s) => s.transactionId != null);
+        const txIds = paidShares.map((s) => s.transactionId!);
+
+        let splitTxs: SplitTx[] = [];
+        if (txIds.length > 0) {
+          const txRows = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .select()
+                .from(transactions)
+                .where(inArray(transactions.id, txIds)),
+            catch: (error) =>
+              new SplitExpenseError({
+                message: `Failed to fetch split transactions: ${error}`,
+                cause: error,
+              }),
+          });
+
+          // Build a map of txId → share amount
+          const amountByTxId = new Map(
+            paidShares.map((s) => [s.transactionId!, s.amount])
+          );
+
+          splitTxs = txRows.map((tx) => ({
+            ...tx,
+            amount: amountByTxId.get(tx.id) ?? (tx.payload as Record<string, unknown>)?.amount as string ?? "0",
+          }));
+        }
+
+        return { ...expense, shares: shareRows, splitTxs };
       });
 
     // ── Service methods ───────────────────────────────────────────
