@@ -47,6 +47,8 @@ export interface SubmitRawTxParams {
   readonly categoryId?: string;
   readonly userId?: string;
   readonly sponsor?: boolean;
+  readonly amount?: string;
+  readonly recipientProfileName?: string;
 }
 
 export interface SubmitTransferParams {
@@ -188,6 +190,8 @@ export const TransactionServiceLive: Layer.Layer<
               to: params.to,
               data: params.data,
               value: params.value ? String(params.value) : undefined,
+              amount: params.amount,
+              recipientProfileName: params.recipientProfileName,
             },
             categoryId: params.categoryId,
             userId: params.userId,

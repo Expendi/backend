@@ -197,6 +197,7 @@ export function createWalletRoutes(runtime: AppRuntime) {
           formattedAmount: string;
           blockNumber: string;
           transactionHash: string;
+          timestamp: string | null;
         }> = [];
 
         for (const token of tokens) {
@@ -217,11 +218,37 @@ export function createWalletRoutes(runtime: AppRuntime) {
               ),
           });
 
+          // Collect unique block numbers for timestamp lookups
+          const blockNumbers = new Set<bigint>();
+          for (const log of logs) {
+            const toAddr = (log.args.to as string).toLowerCase();
+            const walletInfo = addressSet.get(toAddr as Address);
+            if (walletInfo && log.blockNumber) {
+              blockNumbers.add(log.blockNumber);
+            }
+          }
+
+          // Batch-fetch block timestamps
+          const blockTimestamps = new Map<string, string>();
+          for (const bn of blockNumbers) {
+            const block = yield* Effect.tryPromise({
+              try: () => publicClient.getBlock({ blockNumber: bn }),
+              catch: () => null,
+            });
+            if (block) {
+              blockTimestamps.set(
+                String(bn),
+                new Date(Number(block.timestamp) * 1000).toISOString()
+              );
+            }
+          }
+
           for (const log of logs) {
             const toAddr = (log.args.to as string).toLowerCase();
             const walletInfo = addressSet.get(toAddr as Address);
             if (!walletInfo) continue;
 
+            const blockStr = String(log.blockNumber);
             allDeposits.push({
               walletId: walletInfo.walletId,
               walletType: walletInfo.walletType,
@@ -234,8 +261,9 @@ export function createWalletRoutes(runtime: AppRuntime) {
                 log.args.value as bigint,
                 token.decimals
               ),
-              blockNumber: String(log.blockNumber),
+              blockNumber: blockStr,
               transactionHash: log.transactionHash,
+              timestamp: blockTimestamps.get(blockStr) ?? null,
             });
           }
         }
