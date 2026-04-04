@@ -410,6 +410,21 @@ export const SplitExpenseServiceLive: Layer.Layer<
             args: [recipientAddress, BigInt(rawShareAmount)],
           });
 
+          // Look up creator's profile name for the payload
+          const creatorProfileRows = yield* Effect.tryPromise({
+            try: () =>
+              db
+                .select({ username: userProfiles.username })
+                .from(userProfiles)
+                .where(eq(userProfiles.privyUserId, expense.creatorUserId))
+                .limit(1),
+            catch: (error) =>
+              new SplitExpenseError({
+                message: `Failed to fetch creator profile: ${error}`,
+                cause: error,
+              }),
+          });
+
           const tx = yield* txService.submitRawTransaction({
             walletId,
             walletType,
@@ -418,6 +433,8 @@ export const SplitExpenseServiceLive: Layer.Layer<
             data: transferData,
             userId,
             categoryId: expense.categoryId ?? undefined,
+            amount: share.amount,
+            recipientProfileName: creatorProfileRows[0]?.username ?? undefined,
           });
 
           // 5. Update share status
